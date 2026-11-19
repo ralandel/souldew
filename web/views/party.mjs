@@ -5,7 +5,7 @@
 //   <PartyGrid party=${mons} gen=${4} accent="var(--p1)" />            board / pages
 //   <PartyGrid party=${mons} gen=${4} compact />                       ~300px sidebar (2 × ~145px)
 //   <PartyGrid party=${mons} gen=${4} layout="row" />                  overlay strip (6 in a row, 3 × 2 when narrow)
-//   <TeamColumns slots=${['p1','p2','p3']} teams=${{ p1: [...] }} … />  one party menu per player (1–4 columns)
+//   <TeamColumns slots=${['p1','p2','p3']} teams=${{ p1: [...] }} … />  one party menu per player (1–8 players, up to 4 columns)
 //
 //   <TeamColumns … onPick=${(mon, slot) => …} />                       panels as buttons (the board: a Pokémon's details)
 //
@@ -130,7 +130,7 @@ export function PartyGrid({ party, gen = 4, compact, accent, emptySlots = true, 
 }
 
 /**
- * Every player's party menu next to each other – one column per player (1–4). Each column gets its player
+ * Every player's party menu next to each other – one column per player (1–4; 5–8 players wrap into rows of four). Each column gets its player
  * colour (`--p1` … `--p4`) as the accent and a header with name and team size; four columns fall back to
  * 2 × 2 when the board is narrow, a solo run is one column.
  * Props: slots (['p1', …]), teams ({ slot: [mon] }), names ({ slot: name }), gen, typesOf(species, slot),

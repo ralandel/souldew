@@ -189,12 +189,13 @@ test('the fallback: only when the bot’s own domain gives no answer at all – 
     return { calls, fetchImpl };
   };
   const env = {}; // (not process.env: the server tests below point SOULDEW_LIVE_URL at their mock bot)
+  const edition = { liveRunsUrl: LIVE_RUNS_URL }; // the official bot – this build has none (shared/edition.mjs)
   // 1. blocked or unknown host (DNS, connection, TLS – fetch throws): the same POST again at workers.dev
   const blocked = mock((url) => {
     if (url.startsWith(LIVE_RUNS_URL)) throw new TypeError('fetch failed');
     return reply(200, { token, user: { id: '1', name: 'Lou' } });
   });
-  const linked = await link('ABC-234', { fetchImpl: blocked.fetchImpl, env });
+  const linked = await link('ABC-234', { fetchImpl: blocked.fetchImpl, env, edition });
   assert.equal(linked.ok, true);
   assert.deepEqual(blocked.calls.map((c) => c.url), [`${LIVE_RUNS_URL}/live/link`, `${LIVE_RUNS_FALLBACK_URL}/live/link`]);
   for (const c of blocked.calls) {
@@ -204,19 +205,19 @@ test('the fallback: only when the bot’s own domain gives no answer at all – 
   }
   // 2. the bot's own domain answers – also with an error status: that's the bot's answer, no second request
   const down = mock(() => reply(503, {}));
-  const st = await status({ fetchImpl: down.fetchImpl, env });
+  const st = await status({ fetchImpl: down.fetchImpl, env, edition });
   assert.equal(down.calls.length, 1);
   assert.equal(down.calls[0].url, `${LIVE_RUNS_URL}/live/me`);
   assert.equal(down.calls[0].init.headers.Authorization, `Bearer ${token}`);
   assert.equal(st.linked, true);
   const ok = mock(() => reply(200, { user: { id: '1', name: 'Lou' }, limits: { perDay: 20, usedToday: 1 } }));
-  assert.equal((await status({ fetchImpl: ok.fetchImpl, env })).limits.left, 19);
+  assert.equal((await status({ fetchImpl: ok.fetchImpl, env, edition })).limits.left, 19);
   assert.equal(ok.calls.length, 1);
   // 3. a timeout counts as no answer, too; both addresses silent → offline
   const silent = mock(() => {
     throw Object.assign(new Error('timeout'), { name: 'TimeoutError' });
   });
-  assert.equal((await status({ fetchImpl: silent.fetchImpl, env })).offline, true);
+  assert.equal((await status({ fetchImpl: silent.fetchImpl, env, edition })).offline, true);
   assert.deepEqual(silent.calls.map((c) => c.url), [`${LIVE_RUNS_URL}/live/me`, `${LIVE_RUNS_FALLBACK_URL}/live/me`]);
   // 4. a mock bot (SOULDEW_LIVE_URL) is the only address – a test never falls through to the real bot
   const mockBot = mock(() => {
@@ -229,7 +230,7 @@ test('the fallback: only when the bot’s own domain gives no answer at all – 
     if (url.startsWith(LIVE_RUNS_URL)) throw new TypeError('fetch failed');
     return reply(204, {});
   });
-  const out = await unlink({ fetchImpl: bye.fetchImpl, env });
+  const out = await unlink({ fetchImpl: bye.fetchImpl, env, edition });
   assert.equal(out.reached, true);
   assert.equal(out.linked, false);
   assert.equal(bye.calls.length, 2);

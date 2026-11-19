@@ -127,9 +127,9 @@ export function Onboarding({ onDone }) {
     </div>` },
     { id: 'start', label: t('onb.sStart', 'Start'), body: html`<div class="stack-l">
       <div class="stack-s"><h1>${t('onb.startTitle', 'How do you want to start?')}</h1>
-        <p class="muted">${t('onb.startTextAny', 'A SoulLink needs 2–4 players: one hosts, the others join with a code. A Nuzlocke you play on your own.')}</p></div>
+        <p class="muted">${t('onb.startTextAny', 'A SoulLink needs 2–8 players: one hosts, the others join with a code. A Nuzlocke you play on your own.')}</p></div>
       <div class="onb-choices four">
-        ${choice('link', t('onb.startHostLink', 'Host a SoulLink'), t('onb.startHostTextLink', 'For 2–4 players: pick game and randomizer, then invite the others with a 6-digit code.'), 'host', true)}
+        ${choice('link', t('onb.startHostLink', 'Host a SoulLink'), t('onb.startHostTextLink', 'For 2–8 players: pick game and randomizer, then invite the others with a 6-digit code.'), 'host', true)}
         ${choice('user', t('onb.startNuzlocke', 'Start a Nuzlocke'), t('onb.startNuzlockeText', 'Just you: pick game, randomizer and the Nuzlocke rules.'), 'nuzlocke')}
         ${choice('load', t('onb.startJoin', 'I got a code'), t('onb.startJoinTextAny', 'Somebody hosts a SoulLink – enter their code and your app fetches the run.'), 'join')}
         ${choice('play', t('onb.startSolo', 'Just look around'), t('onb.startSoloText', 'To the library – the “First steps” guide shows the way whenever you’re ready.'), 'solo')}

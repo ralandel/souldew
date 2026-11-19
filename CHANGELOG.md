@@ -4,6 +4,13 @@
 
 ## souldew Renaissance – à venir
 
+- **Des SoulLinks jusqu'à 8 joueurs.** À la création d'une run, on choisit de 2 à 8 joueurs. Les joueurs 5 à 8 ont
+  leurs propres couleurs (cyan, rose, paille, sable), recalculées pour chacun des quatre thèmes, y compris ceux pour
+  daltoniens ; les noms et les icônes accompagnent toujours la couleur. À partir de 5 joueurs, le tableau, les équipes,
+  les routes et la barre latérale passent sur des rangées de quatre. Un K.O. emporte tout le groupe de la zone, donc
+  jusqu'à 8 Pokémon d'un coup. L'écran du partenaire montre toujours un joueur à la fois (on passe au suivant d'un
+  clic) ; au-delà de 3 joueurs qui regardent la même personne, ils reçoivent des images fixes plutôt que la vidéo, pour
+  ne pas saturer sa connexion. Les overlays OBS et l'API de stream gèrent aussi les joueurs 5 à 8.
 - **souldew Renaissance a sa propre identité.** Elle s'installe à côté de souldew officiel sans le remplacer : son propre
   dossier d'installation, son dossier de données (`souldew Renaissance`), son raccourci et son port local. Les runs de
   l'une ne sont pas visibles dans l'autre.

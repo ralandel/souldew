@@ -1,6 +1,7 @@
 // Stream overlays: what the overlay endpoint hands out (nothing secret), how a snapshot becomes teams, linked
 // groups, counters and alerts, and the live push (SSE) from a doc upload to an open overlay.
 import { test } from 'node:test';
+import { MAX_PLAYERS } from '../shared/slots.mjs';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -167,7 +168,7 @@ test('widget size: one fixed box per widget and player count – the same for on
   }
   assert.ok(overlaySize('team', 2, { nick: true }).at(1) > overlaySize('team', 2, { nick: false }).at(1));
   assert.ok(overlaySize('team', 2, { hp: true }).at(1) > overlaySize('team', 2, { hp: false }).at(1));
-  assert.deepEqual(overlaySize('team', 9), overlaySize('team', 4), 'at most four players');
+  assert.deepEqual(overlaySize('team', 99), overlaySize('team', MAX_PLAYERS), 'at most as many players as a run can have');
   assert.deepEqual(overlaySize('team', 0), overlaySize('team', 1));
 });
 
@@ -277,7 +278,7 @@ test('server: overlay snapshot, live push after a doc upload, test alerts and th
   }
 });
 
-test('overlay escaping covers quotes of both kinds and backticks; slots reach CSS only as p1–p4 (#26)', async () => {
+test('overlay escaping covers quotes of both kinds and backticks; slots reach CSS only as p1–p8 (#26)', async () => {
   const { escHtml, slotVar } = await import('../shared/overlay.mjs');
   assert.equal(escHtml(`<img src=x onerror="a">'b'\`c\`&`), '&lt;img src=x onerror=&quot;a&quot;&gt;&#39;b&#39;&#96;c&#96;&amp;');
   assert.equal(escHtml(null), '');
@@ -286,7 +287,8 @@ test('overlay escaping covers quotes of both kinds and backticks; slots reach CS
   const name = "x' onmouseover='alert(1)";
   assert.ok(!`<b title='${escHtml(name)}'>`.includes("' onmouseover"));
   assert.equal(slotVar('p3'), 'var(--p3)');
-  for (const bad of ['"x', 'p5', '', undefined, 'p1;color:red']) assert.equal(slotVar(bad), 'var(--p1)', String(bad));
+  assert.equal(slotVar(`p${MAX_PLAYERS}`), `var(--p${MAX_PLAYERS})`);
+  for (const bad of ['"x', `p${MAX_PLAYERS + 1}`, 'p0', '', undefined, 'p1;color:red']) assert.equal(slotVar(bad), 'var(--p1)', String(bad));
   // the page uses the shared helpers, no copy of its own
   const { readFileSync } = await import('node:fs');
   const page = readFileSync(new URL('../web/overlay.html', import.meta.url), 'utf8');

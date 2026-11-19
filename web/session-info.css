@@ -201,7 +201,7 @@
 .restart-wait { display: flex; align-items: center; gap: 8px; margin: 0; }
 
 /* ===================================================================================================
-   1–4 players and the solo Nuzlocke (board, sidebar, party columns). Player colours p3/p4 sit next to
+   1–8 players and the solo Nuzlocke (board, sidebar, party columns). Player colours p3–p8 sit next to
    --p1 (cross) and --p2 (square) from styles.css: hues the signal colours (--tri alive, --cir death,
    --warn careful) don't use, re-picked per colour scheme. A player colour never carries a state alone –
    names and icons always come with it. (The tokens themselves live in styles.css.) */
@@ -211,6 +211,10 @@
 .board-head.multi::before { left: 0; right: 0; top: 0; bottom: auto; width: auto; height: 4px; box-shadow: none;
   background: linear-gradient(90deg, var(--p1) 0 25%, var(--p2) 25% 50%, var(--p3) 50% 75%, var(--p4) 75%); }
 .board-head.multi.n3::before { background: linear-gradient(90deg, var(--p1) 0 33.4%, var(--p2) 33.4% 66.7%, var(--p3) 66.7%); }
+.board-head.multi.n5::before { background: linear-gradient(90deg, var(--p1) 0 20%, var(--p2) 20% 40%, var(--p3) 40% 60%, var(--p4) 60% 80%, var(--p5) 80%); }
+.board-head.multi.n6::before { background: linear-gradient(90deg, var(--p1) 0 16.7%, var(--p2) 16.7% 33.3%, var(--p3) 33.3% 50%, var(--p4) 50% 66.7%, var(--p5) 66.7% 83.3%, var(--p6) 83.3%); }
+.board-head.multi.n7::before { background: linear-gradient(90deg, var(--p1) 0 14.3%, var(--p2) 14.3% 28.6%, var(--p3) 28.6% 42.9%, var(--p4) 42.9% 57.1%, var(--p5) 57.1% 71.4%, var(--p6) 71.4% 85.7%, var(--p7) 85.7%); }
+.board-head.multi.n8::before { background: linear-gradient(90deg, var(--p1) 0 12.5%, var(--p2) 12.5% 25%, var(--p3) 25% 37.5%, var(--p4) 37.5% 50%, var(--p5) 50% 62.5%, var(--p6) 62.5% 75%, var(--p7) 75% 87.5%, var(--p8) 87.5%); }
 .board-head.multi::after { display: none; }
 .bh-players { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
 .bh-players .player-tag { min-width: 0; padding: 8px 12px; border-radius: var(--r-m); background: color-mix(in srgb, var(--acc) 11%, transparent); box-shadow: inset 3px 0 0 var(--acc); }
@@ -218,6 +222,10 @@
 .bh-players .player-tag .who { font-size: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* four plates that no longer fit in one row go 2 × 2 instead of 3 + 1 */
 @media (max-width: 1120px) { .board-head.n4 .bh-players { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* 5–8 players: rows of four plates (two rows at most), two per row in a narrow window */
+.board-head:is(.n5, .n6, .n7, .n8) .bh-players { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.board-head:is(.n5, .n6, .n7, .n8) .bh-players .player-tag .who { font-size: 17px; }
+@media (max-width: 1120px) { .board-head:is(.n5, .n6, .n7, .n8) .bh-players { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* solo: one plate, the five counters next to it */
 .board-head.solo { grid-template-columns: minmax(0, auto) minmax(0, 1fr); background: linear-gradient(90deg, color-mix(in srgb, var(--p1) 16%, var(--shell-2)) 0%, var(--shell-2) 45%); }
 .board-head.solo::after { display: none; }
@@ -244,10 +252,11 @@
 .group-mons { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 6px; }
 .group-mons.n3 { --n: 3; }
 .group-mons.n4 { --n: 4; }
+.group-mons:is(.n5, .n6, .n7, .n8) { --n: 4; } /* 5–8 players: two rows of panels, the header's names in the same grid */
 .group-mons.group-head { padding: 0 9px; }
 .group-cell { display: grid; min-width: 0; }
 .group-cell > .pp { height: 100%; }
-@media (max-width: 1180px) { .group-mons.n4 { --n: 2; } }
+@media (max-width: 1180px) { .group-mons:is(.n4, .n5, .n6, .n7, .n8) { --n: 2; } }
 @media (max-width: 860px) { .group-mons.n3 { --n: 2; } .group-mons.group-head { display: none; } }
 
 /* Teams view: one party menu per player (TeamColumns in party.mjs) */
@@ -255,7 +264,8 @@
 .team-cols.n1 { --n: 1; max-width: 720px; }
 .team-cols.n3 { --n: 3; }
 .team-cols.n4 { --n: 4; gap: 12px; }
-@media (max-width: 1180px) { .team-cols.n4 { --n: 2; } .team-cols.n3 { --n: 2; } }
+.team-cols:is(.n5, .n6, .n7, .n8) { --n: 4; gap: 12px; }
+@media (max-width: 1180px) { .team-cols:is(.n4, .n5, .n6, .n7, .n8) { --n: 2; } .team-cols.n3 { --n: 2; } }
 @media (max-width: 860px) { .team-cols { --n: 1 !important; } }
 
 /* Solo live tab: team + a side card with cap, box, badges */
@@ -274,6 +284,10 @@
 .routes-wrap.solo .route { grid-template-columns: minmax(130px, 220px) minmax(0, 1fr) 104px 90px; }
 .routes-wrap.n3 .route { grid-template-columns: minmax(120px, 170px) repeat(3, minmax(0, 1fr)) 76px; }
 .routes-wrap.n4 .route { grid-template-columns: minmax(110px, 160px) repeat(4, minmax(0, 1fr)) 76px; }
+/* 5–8 players: too many for one line – the area on its own line, the players' cells four per row, the action below */
+.routes-wrap:is(.n5, .n6, .n7, .n8) .route { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.routes-wrap:is(.n5, .n6, .n7, .n8) .route .area-name, .routes-wrap:is(.n5, .n6, .n7, .n8) .route .route-act { grid-column: 1 / -1; }
+.routes-wrap:is(.n5, .n6, .n7, .n8) .route.route-head { display: none; }
 .route .mon.acc { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--acc) 55%, transparent); }
 .routes-wrap.n2 .route .mon.acc, .routes-wrap.solo .route .mon.acc { box-shadow: none; }
 .route.grp .mon img { width: 36px; height: 36px; }
@@ -284,6 +298,7 @@
   .routes-wrap.n3 .route, .routes-wrap.n4 .route { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .routes-wrap.n3 .route .area-name, .routes-wrap.n4 .route .area-name, .routes-wrap.n3 .route .route-act, .routes-wrap.n4 .route .route-act { grid-column: 1 / -1; }
   .routes-wrap.n3 .route.route-head, .routes-wrap.n4 .route.route-head { display: none; }
+  .routes-wrap:is(.n5, .n6, .n7, .n8) .route { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .routes-wrap.solo .route { grid-template-columns: minmax(0, 1fr) auto; }
   .routes-wrap.solo .route .area-name { grid-column: 1 / -1; }
   .routes-wrap.solo .route.route-head { display: none; }
@@ -378,6 +393,7 @@ label.check input:disabled + span { color: var(--ink-2); }
 .pairs.group { gap: 6px; }
 .grp-head { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 4px; font-size: 12px; padding: 0 2px; }
 .pairs.n4 { --n: 4; }
+.pairs:is(.n5, .n6, .n7, .n8) { --n: 4; } /* 5–8 players: the cells of an area wrap into a second row */
 .grp-head b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
 .grp-row { display: grid; gap: 3px; }
 .grp-area { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11.5px; color: var(--ink-2); }
@@ -424,8 +440,8 @@ label.check input:disabled + span { color: var(--ink-2); }
 .team-list.compact .tl-row .sprite img { width: 26px; height: 26px; }
 
 /* Death alert for groups: everybody's fallen mon, underlined in their player colour */
-.death-mons.n3, .death-mons.n4 { gap: 14px; flex-wrap: wrap; }
-.death-mons.n3 .death-mon, .death-mons.n4 .death-mon { border-bottom: 2px solid color-mix(in srgb, var(--acc) 60%, transparent); padding-bottom: 4px; }
+.death-mons:is(.n3, .n4, .n5, .n6, .n7, .n8) { gap: 14px; flex-wrap: wrap; }
+.death-mons:is(.n3, .n4, .n5, .n6, .n7, .n8) .death-mon { border-bottom: 2px solid color-mix(in srgb, var(--acc) 60%, transparent); padding-bottom: 4px; }
 .route.grp .mon { min-height: 44px; }
 
 /* The board's Rules tab inside the narrow sheet over the game: presets stacked, every rule's options in one full-width

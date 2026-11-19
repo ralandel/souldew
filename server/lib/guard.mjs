@@ -42,7 +42,7 @@ export function apiRequestError(req, port) {
  */
 export const PRIVATE_GETS = [
   /^\/api\/runs\/[a-f0-9]{8}$/,
-  /^\/api\/runs\/[a-f0-9]{8}\/(download|file|doc|discord|log\/p[1-4]|data\/p[1-4]|save\/p[1-4])$/,
+  /^\/api\/runs\/[a-f0-9]{8}\/(download|file|doc|discord|log\/p[1-8]|data\/p[1-8]|save\/p[1-8])$/,
   /^\/api\/library\/(rom|patched|download)$/,
   /^\/api\/saves\/(solo|solo\/download|states|state|state\/thumb)$/,
   /^\/api\/(stream|status|events)$/,

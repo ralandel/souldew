@@ -1,4 +1,4 @@
-// Live link between the players of a run (1–4: p1..p4). Two transports run side by side:
+// Live link between the players of a run (p1..pN, up to shared/slots.mjs MAX_PLAYERS). Two transports run side by side:
 //  1. Trystero (WebRTC, signalling over public Nostr relays) – direct, fast, end-to-end encrypted. One room
 //     per run; every player is a peer in it (a full mesh), document ops go to all of them.
 //  2. MQTT relay over WSS (public brokers) – works behind any NAT and keeps an encrypted,
@@ -12,6 +12,7 @@
 // STUN/TURN, and an app id / topic root of its own, so it never meets another build's apps in a room. (Relative
 // import: it resolves to /shared/ in the page and to the repository's shared/ in Node.)
 import { EDITION } from '../../shared/edition.mjs';
+import { ALL_SLOTS } from '../../shared/slots.mjs'; // when the caller doesn't pass the run's slots
 
 const APP_ID = EDITION.netId;
 export const BROKERS = [...EDITION.brokers];
@@ -71,6 +72,9 @@ const SCREEN = {
   maxBytes: 40 * 1024, // … and are dropped above this
   resendSame: 6000, // an unchanged picture is resent only this often (keeps the "x s ago" honest)
   streamGrace: 8000, // viewer: announced video that hasn't arrived after this long → ask for pictures
+  // sender: video to at most this many watchers at once – in a big group (up to 7 partners) everybody watching one
+  // player would cost that player one upload stream each; more watchers than this get the still pictures instead
+  maxVideoWatchers: 3,
 };
 const FRAME_TYPES = ['image/jpeg', 'image/webp', 'image/png'];
 
@@ -103,7 +107,6 @@ const P2P_RETRY = 90000; // P2P down while the relay hears a partner → rejoin 
 // P2P up to some partners but not to another one that the relay hears: rejoining drops the working links for a
 // moment (and their video), and the missing player retries from their side anyway – so only now and then.
 const P2P_PARTIAL_RETRY = 5 * 60000;
-const ALL_SLOTS = ['p1', 'p2', 'p3', 'p4']; // when the caller doesn't pass the run's slots
 const RETAINED_FRESH = 35000; // a retained "online" counts only when it is younger than this (by its own timestamp)
 /** No sign of life for this long → the partner counts as gone (app.mjs uses the same window). */
 export const PARTNER_TTL = 45000;
@@ -171,7 +174,7 @@ function signallingDead(mod) {
 export class SyncLink {
   /**
    * @param {object} o { room, secret, slot, name, doc, slots?, onStatus, onMessage }
-   * slots (optional): the run's slots, e.g. ['p1','p2','p3'] – picks the default partner screen; all four if absent.
+   * slots (optional): the run's slots, e.g. ['p1','p2','p3'] – picks the default partner screen; all of ALL_SLOTS if absent.
    * onMessage(msg) receives non-doc messages (chat, pings) from the other players (msg.from = their slot).
    * onPartnerScreen(view, slot) (optional) receives every change of any partner's screen – see watchPartnerScreen().
    * importers (optional, for tests/Node): { mqtt: () => import('mqtt'), trystero: () => … }
@@ -203,7 +206,7 @@ export class SyncLink {
     this.clockOffset = 0; // the same for whoever spoke last (older callers)
   }
 
-  /** The other slots of the run (all four when the caller didn't say). */
+  /** The other slots of the run (every other one of ALL_SLOTS when the caller didn't say). */
   get others() {
     return (Array.isArray(this.slots) && this.slots.length ? this.slots : ALL_SLOTS).filter((s) => s !== this.slot);
   }
@@ -835,7 +838,7 @@ export class SyncLink {
     // video only when every watcher has a direct link – see above
     const direct = this._p2pSlots();
     const targets = watchers.flatMap((slot) => this._peersOf(slot));
-    const p2p = wanted && !!this.trysteroRoom && watchers.every((slot) => direct.has(slot));
+    const p2p = wanted && !!this.trysteroRoom && watchers.length <= SCREEN.maxVideoWatchers && watchers.every((slot) => direct.has(slot));
     let mode = null;
     if (active && wanted) mode = p2p && s.src.getStream && !s.noStream && (await this._ensureStream(s, targets)) ? 'stream' : 'image';
     if (this.stopped || this.share !== s) return;

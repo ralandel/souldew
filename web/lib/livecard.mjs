@@ -14,9 +14,9 @@ const C = {
   ink: '#ebe6da', ink2: '#b4b0a6', ink3: '#8d897f', ink4: '#5f5c66',
   lcd0: '#0e130f', lcd1: '#18211a', lcd2: '#2c3b2d', lcd3: '#6f8a62', lcd4: '#b9cb98', lcd5: '#dbe6c2',
   alive: '#6fb39b', dead: '#dc7268', deadInk: '#ef9a90', gold: '#e1b05a', goldHi: '#ffd37a',
-  p1: '#8cb0ff', p2: '#ff8fdc', p3: '#b3c770', p4: '#a993e6',
+  p1: '#8cb0ff', p2: '#ff8fdc', p3: '#b3c770', p4: '#a993e6', p5: '#64c6dc', p6: '#e888a8', p7: '#e2d26c', p8: '#cdbfa3',
 };
-export const PLAYER_COLORS = { p1: C.p1, p2: C.p2, p3: C.p3, p4: C.p4 };
+export const PLAYER_COLORS = { p1: C.p1, p2: C.p2, p3: C.p3, p4: C.p4, p5: C.p5, p6: C.p6, p7: C.p7, p8: C.p8 };
 
 const PIXEL = '"Pixel Digits", "Pixelify Sans", monospace';
 const DISPLAY = '"Pixelify Sans", monospace';

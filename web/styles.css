@@ -30,6 +30,10 @@
   --p2: var(--sqr);
   --p3: #b3c770;    /* player 3 (3–4 player SoulLinks) */
   --p4: #a993e6;    /* player 4 */
+  --p5: #64c6dc;    /* players 5–8 (souldew Renaissance): cyan, rose, straw, sand */
+  --p6: #e888a8;
+  --p7: #e2d26c;
+  --p8: #cdbfa3;
   --warn: #e1b05a;  /* careful / near the limit */
   --ok-ink: #9ed3bf;   /* text on an "ok" tint */
   --bad-ink: #ef9a90;  /* text on a "danger" tint */
@@ -55,17 +59,20 @@ html[data-theme='contrast'] {
   --edge: #77757f; --edge-hi: #a6a3ae;
   --ink: #ffffff; --ink-2: #e6e2d8; --ink-3: #c4c0b6;
   --tri: #4fe0a8; --cir: #ff6b5e; --warn: #ffd34d; --crs: #8fb3ff; --sqr: #ff9de6; --p3: #d4f27c; --p4: #c8b2ff;
+  --p5: #7fe3f5; --p6: #ffa3c4; --p7: #fff07a; --p8: #eadfc4;
   --ok-ink: #a8ffdd; --bad-ink: #ffc2bb; --warn-ink: #ffe58f; --focus: #ffd34d;
 }
 html[data-theme='deutan'] { /* red-green colour blindness (deuteranopia / protanopia): blue ↔ orange */
   --tri: #3aa7e8; --cir: #e8731c; --warn: #f0d84a; --crs: #9db8ff; --sqr: #ff9fd1; --led: #e8731c;
   --p3: #e6dcb4; --p4: #c2a8ff; /* sand / violet: apart by lightness from the blue/orange/yellow signals */
+  --p5: #8fe3e8; --p6: #ffc89a; --p7: #e4e4e4; --p8: #8f9bb3; /* aqua / peach / white / slate */
   --ok-ink: #a9d9f7; --bad-ink: #ffc08f; --warn-ink: #f7ea9a; --focus: #f0d84a;
   --ink-3: #99958d;
 }
 html[data-theme='tritan'] { /* blue-yellow colour blindness (tritanopia): teal ↔ magenta-red */
   --tri: #2fc89a; --cir: #ff4f7b; --warn: #ff9d5c; --crs: #d6a6ff; --sqr: #ff86b8; --led: #ff4f7b;
   --p3: #c5d98a; --p4: #7fc6f0; /* lime / sky: away from the teal / magenta-red signals */
+  --p5: #e6e6e6; --p6: #a8ecd2; --p7: #f6c9a8; --p8: #9aa3b8; /* white / mint / peach / slate */
   --ok-ink: #9cf0d4; --bad-ink: #ffb3c6; --warn-ink: #ffc9a3; --focus: #2fc89a;
   --ink-3: #99958d;
 }
@@ -348,6 +355,10 @@ button.hack-card:hover { background: var(--shell-4); }
 .player-tag.p2 .who { color: var(--p2); }
 .player-tag.p3 .who { color: var(--p3); }
 .player-tag.p4 .who { color: var(--p4); }
+.player-tag.p5 .who { color: var(--p5); }
+.player-tag.p6 .who { color: var(--p6); }
+.player-tag.p7 .who { color: var(--p7); }
+.player-tag.p8 .who { color: var(--p8); }
 .vs { font-family: var(--font-pixel); color: var(--ink-3); font-size: 14px; text-align: center; }
 .tabs { display: flex; gap: 4px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
 .tabs button { border: 0; background: transparent; padding: 8px 15px; cursor: pointer; color: var(--ink-2); font-family: var(--font-pixel); font-size: 15px; border-radius: 999px; position: relative; transition: color .15s, background .2s, transform .15s; }
@@ -406,6 +417,10 @@ button.hack-card:hover { background: var(--shell-4); }
 .who-p2 { color: var(--p2); font-weight: 500; }
 .who-p3 { color: var(--p3); font-weight: 500; }
 .who-p4 { color: var(--p4); font-weight: 500; }
+.who-p5 { color: var(--p5); font-weight: 500; }
+.who-p6 { color: var(--p6); font-weight: 500; }
+.who-p7 { color: var(--p7); font-weight: 500; }
+.who-p8 { color: var(--p8); font-weight: 500; }
 .warnings { display: flex; flex-direction: column; gap: 6px; }
 .warnings-more { align-self: flex-start; }
 .warning { font-size: 13px; padding: 8px 12px; border-radius: var(--r-m); background: #3a321f; color: var(--warn-ink); }
@@ -983,6 +998,12 @@ ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
 .theme-card[data-theme-preview='contrast'] .sw.p3 { background: #d4f27c; } .theme-card[data-theme-preview='contrast'] .sw.p4 { background: #c8b2ff; }
 .theme-card[data-theme-preview='deutan'] .sw.p3 { background: #e6dcb4; } .theme-card[data-theme-preview='deutan'] .sw.p4 { background: #c2a8ff; }
 .theme-card[data-theme-preview='tritan'] .sw.p3 { background: #c5d98a; } .theme-card[data-theme-preview='tritan'] .sw.p4 { background: #7fc6f0; }
+.theme-card .sw.p5 { background: #64c6dc; } .theme-card .sw.p6 { background: #e888a8; } .theme-card .sw.p7 { background: #e2d26c; } .theme-card .sw.p8 { background: #cdbfa3; }
+.theme-card[data-theme-preview='contrast'] .sw.p5 { background: #7fe3f5; } .theme-card[data-theme-preview='contrast'] .sw.p6 { background: #ffa3c4; } .theme-card[data-theme-preview='contrast'] .sw.p7 { background: #fff07a; } .theme-card[data-theme-preview='contrast'] .sw.p8 { background: #eadfc4; }
+.theme-card[data-theme-preview='deutan'] .sw.p5 { background: #8fe3e8; } .theme-card[data-theme-preview='deutan'] .sw.p6 { background: #ffc89a; } .theme-card[data-theme-preview='deutan'] .sw.p7 { background: #e4e4e4; } .theme-card[data-theme-preview='deutan'] .sw.p8 { background: #8f9bb3; }
+.theme-card[data-theme-preview='tritan'] .sw.p5 { background: #e6e6e6; } .theme-card[data-theme-preview='tritan'] .sw.p6 { background: #a8ecd2; } .theme-card[data-theme-preview='tritan'] .sw.p7 { background: #f6c9a8; } .theme-card[data-theme-preview='tritan'] .sw.p8 { background: #9aa3b8; }
+/* new SoulLink: one card per head count, 2 up to 8 (soullink.mjs ShapeCards) */
+.shape-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 
 
 /* ---------- reactive UI: depth, hover light and motion everywhere ---------- */

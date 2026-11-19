@@ -6,7 +6,7 @@
 // ids, no spoiler data. The server pushes a fresh one whenever the run's doc changes.
 
 import { PROGRESSION } from './routes.mjs';
-import { slotsOf, runMode } from './slots.mjs';
+import { slotsOf, runMode, MAX_PLAYERS } from './slots.mjs';
 
 export const OVERLAY_FEED = 30; // newest log entries in a snapshot (alerts only need the latest ones)
 export const WIDGETS = ['team', 'card', 'counters', 'where', 'alerts', 'stats', 'popup'];
@@ -141,8 +141,8 @@ export function overlaySnapshot(manifest, doc, { lang = 'en', speciesName = null
 const HTML_ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' };
 export const escHtml = (s) => String(s ?? '').replace(/[&<>"'`]/g, (c) => HTML_ESC[c]);
 
-/** A player slot for CSS (`var(--p1)` …): anything but p1–p4 becomes p1. */
-export const slotVar = (slot) => `var(--${/^p[1-4]$/.test(slot) ? slot : 'p1'})`;
+/** A player slot for CSS (`var(--p1)` …): anything but p1–p8 becomes p1. */
+export const slotVar = (slot) => `var(--${/^p[1-8]$/.test(slot) ? slot : 'p1'})`;
 
 export const validLevel = (l) => (Number.isInteger(l) && l >= 1 && l <= 100 ? l : null);
 
@@ -324,14 +324,14 @@ export function currentRunId({ lastRun = null, runs = [] } = {}) {
 export const TEAM_SLOTS = 6;
 
 /**
- * [w, h] of a widget at scale 1 for `n` players (1–4): a fixed box that holds a full team, the longest names and the
+ * [w, h] of a widget at scale 1 for `n` players (1..MAX_PLAYERS): a fixed box that holds a full team, the longest names and the
  * biggest (DS) sprites – the size of its OBS browser source. The overlay lays its widget out inside exactly this box
  * whatever the data, so the source never grows or moves while the team fills up. `nick`/`hp` add the team strip's
  * nickname and HP-bar lines.
  */
 export function overlaySize(w, n = 1, { layout = 'h', nick = false, hp = true } = {}) {
   const v = layout === 'v';
-  const p = Math.min(4, Math.max(1, Math.round(n) || 1));
+  const p = Math.min(MAX_PLAYERS, Math.max(1, Math.round(n) || 1));
   const cell = 80 + (hp ? 9 : 0) + (nick ? 19 : 0); // one Pokémon of the team strip: sprite, HP bar, nickname
   switch (w) {
     // measured with six Pokémon, long names and nicknames, plus a few pixels of air (test/overlay.test.mjs checks the

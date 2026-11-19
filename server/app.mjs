@@ -397,7 +397,7 @@ function patchedTitle(patchId, config) {
  *   /api/library/download?id=<romId>              raw ROM (extracted from its zip if needed)
  *   /api/library/download?romId=<id>&patchId=<id> patched ROM
  *   /api/library/download?patchId=<id>            the patch file itself
- *   /api/runs/:id/download?what=rom|save|spoiler|pack&slot=p1..p4
+ *   /api/runs/:id/download?what=rom|save|spoiler|pack&slot=p1..p8
  *   /api/saves/solo/download?id=<solo id>         save file of a solo game
  */
 function handleExport(req, res, path, url) {
@@ -433,7 +433,7 @@ function handleExport(req, res, path, url) {
     if (!manifest) return send(res, 404, { error: 'Run not found', code: 'runNotFound' });
     const what = q('what') || 'rom';
     const slot = q('slot') || 'p1';
-    if (!ALL_SLOTS.includes(slot)) return send(res, 400, { error: 'slot must be p1 to p4', code: 'badPlayer' });
+    if (!ALL_SLOTS.includes(slot)) return send(res, 400, { error: 'slot must be p1 to p8', code: 'badPlayer' });
     const out = manifest.outputs?.[slot];
     let name = null;
     let downloadName = null;
@@ -568,7 +568,7 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
       mkdirSync(SOLO_SAVES, { recursive: true });
       return { path: join(SOLO_SAVES, `${keyOf(u.searchParams.get('id'))}.sav`), runId: null };
     }
-    const m = u.pathname.match(/^\/api\/runs\/([a-f0-9]{8})\/save\/(p[1-4])$/);
+    const m = u.pathname.match(/^\/api\/runs\/([a-f0-9]{8})\/save\/(p[1-8])$/);
     if (m) {
       const p = defaultSavePath(readManifest(m[1]), m[2]);
       return p ? { path: p, runId: m[1] } : null;
@@ -1297,11 +1297,11 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
     return { rules: signed, host: manifest.host, hostKey: manifest.hostKey };
   });
 
-  route('GET', /^\/api\/runs\/([a-f0-9]{8})\/data\/(p[1-4])$/, (req, m) => {
+  route('GET', /^\/api\/runs\/([a-f0-9]{8})\/data\/(p[1-8])$/, (req, m) => {
     const p = join(runDir(m[1]), `${m[2]}.data.json`);
     return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
   });
-  route('GET', /^\/api\/runs\/([a-f0-9]{8})\/log\/(p[1-4])$/, (req, m) => {
+  route('GET', /^\/api\/runs\/([a-f0-9]{8})\/log\/(p[1-8])$/, (req, m) => {
     const name = readManifest(m[1])?.outputs?.[m[2]]?.log;
     const p = name ? runPath(m[1], name) : null;
     return p && existsSync(p) ? readFileSync(p, 'utf8') : '';
@@ -1399,12 +1399,12 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
   });
 
   // Run save file: written by the integrated emulator, read back when playing again.
-  route('GET', /^\/api\/runs\/([a-f0-9]{8})\/save\/(p[1-4])$/, (req, m) => {
+  route('GET', /^\/api\/runs\/([a-f0-9]{8})\/save\/(p[1-8])$/, (req, m) => {
     const p = defaultSavePath(readManifest(m[1]), m[2]);
     if (!p || !existsSync(p)) throw httpError(404, 'No save file yet', 'noSaveYet');
     return readFileSync(p);
   });
-  route('PUT', /^\/api\/runs\/([a-f0-9]{8})\/save\/(p[1-4])$/, async (req, m) => {
+  route('PUT', /^\/api\/runs\/([a-f0-9]{8})\/save\/(p[1-8])$/, async (req, m) => {
     const manifest = readManifest(m[1]);
     if (!manifest) throw httpError(404, 'Run not found', 'runNotFound');
     const p = defaultSavePath(manifest, m[2]);
@@ -1438,13 +1438,13 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
     return { intro: publicIntro(introFor(key)) };
   });
   route('DELETE', /^\/api\/intro-saves\/([a-f0-9]{16})$/, (req, m) => ({ removed: removeIntroSave(m[1]) }));
-  route('GET', /^\/api\/runs\/([a-f0-9]{8})\/intro\/(p[1-4])$/, (req, m) => {
+  route('GET', /^\/api\/runs\/([a-f0-9]{8})\/intro\/(p[1-8])$/, (req, m) => {
     const manifest = readManifest(m[1]);
     if (!manifest) throw httpError(404, 'Run not found', 'runNotFound');
     return introState(manifest, m[2], { savePath: defaultSavePath });
   });
   // keep this player's current battery save (3DS: save folder) as the intro save of the run's game
-  route('POST', /^\/api\/runs\/([a-f0-9]{8})\/intro\/(p[1-4])$/, (req, m) => {
+  route('POST', /^\/api\/runs\/([a-f0-9]{8})\/intro\/(p[1-8])$/, (req, m) => {
     const manifest = readManifest(m[1]);
     if (!manifest) throw httpError(404, 'Run not found', 'runNotFound');
     if (!slotsOf(manifest).includes(m[2])) throw httpError(400, 'Invalid player', 'badPlayer');

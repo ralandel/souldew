@@ -10,7 +10,7 @@
        the app under Stream. Transparent by default; souldew's palette and type, readable over any game. */
     :root {
       --ink: #ebe6da; --ink-2: #b9b5ab; --ink-3: #8f8b83; --tri: #6fb39b; --cir: #dc7268; --warn: #e1b05a; --gold: #f0c75e;
-      --p1: #7f9ddb; --p2: #c98bbf; --p3: #b3c770; --p4: #a993e6;
+      --p1: #7f9ddb; --p2: #c98bbf; --p3: #b3c770; --p4: #a993e6; --p5: #64c6dc; --p6: #e888a8; --p7: #e2d26c; --p8: #cdbfa3;
       --panel: #16151bd1; --edge: #ffffff1c; --hi: #ffffff14; --sh: 0 14px 34px -14px #000d, 0 2px 0 #0008;
       --sp: 80px; --r: 14px;
       --pixel: 'Pixel Digits', 'Pixelify Sans', ui-monospace, monospace;
@@ -388,7 +388,7 @@
       w: WIDGETS.includes(params.get('w')) ? params.get('w') : 'team',
       legacy: !params.has('w'), // the old single-box overlay URL: team plus the numbers underneath
       layout: params.get('layout') === 'v' ? 'v' : 'h',
-      p: (params.get('p') || '').split(',').filter((s) => /^p[1-4]$/.test(s)),
+      p: (params.get('p') || '').split(',').filter((s) => /^p[1-8]$/.test(s)),
       theme: ['glass', 'solid', 'minimal'].includes(params.get('theme')) ? params.get('theme') : 'glass',
       scale: Math.min(3, Math.max(0.4, Number(params.get('scale')) || 1)),
       bg: ['dark', 'green', 'light'].includes(params.get('bg')) ? params.get('bg') : '',
@@ -432,7 +432,7 @@
     const species = (id) => S?.species?.[id] || (id ? `#${id}` : '');
     const monName = (m) => m.nick || species(m.species);
     const nameOf = (slot) => S?.players?.[slot]?.name || String(slot || '').toUpperCase();
-    const acc = slotVar; // only p1–p4 reach the style attribute
+    const acc = slotVar; // only p1–p8 reach the style attribute
     const hpClass = (p) => (p > 50 ? '' : p > 20 ? 'mid' : 'low');
 
     // ---- keyed updates: a cell is only rebuilt when what it shows changed (HP bars glide, animations keep running) ----

@@ -30,7 +30,8 @@ const caught = (species = 16) => ({ outcome: 'caught', species });
 const feedTexts = (d) => R.feedList(d).map((f) => f.text);
 
 test('slots and mode come from the manifest; older runs are a p1+p2 SoulLink', () => {
-  assert.deepEqual(R.ALL_SLOTS, ['p1', 'p2', 'p3', 'p4']);
+  assert.deepEqual(R.ALL_SLOTS.slice(0, 4), ['p1', 'p2', 'p3', 'p4']);
+  assert.equal(R.ALL_SLOTS.length, 8); // souldew Renaissance: up to 8 players (test/slots8.test.mjs)
   assert.deepEqual(R.slotsOf(HG), ['p1', 'p2']);
   assert.deepEqual(R.slotsOf({ players: { p1: {}, p2: {} } }), ['p1', 'p2']);
   assert.deepEqual(R.slotsOf(M3), ['p1', 'p2', 'p3']);

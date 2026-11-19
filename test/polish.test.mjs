@@ -1,6 +1,7 @@
 // Edge cases of runs with 1–4 players found in a logic review: undoing a deathless death, a death in the tick the
 // battle ended, the missed-encounter question, who "me" is, invite seats, run packs, file names and seeds.
 import { test } from 'node:test';
+import { ALL_SLOTS } from '../shared/slots.mjs';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -244,7 +245,8 @@ test('run packs: players must be contiguous; old packs and a missing p2 still im
   assert.throws(() => checkPack(pack), /players/);
   assert.throws(() => checkPack({ ...pack, players: { p2: { name: 'B' } } }), /players/);
   assert.deepEqual(Object.keys(checkPack({ ...pack, players: { p1: { name: 'A' } } }).players), ['p1']);
-  assert.deepEqual(Object.keys(checkPack({ ...pack, players: { p1: {}, p2: {}, p3: {}, p4: {}, p5: {} } }).players), ['p1', 'p2', 'p3', 'p4']);
+  const beyond = Object.fromEntries([...ALL_SLOTS, `p${ALL_SLOTS.length + 1}`].map((s) => [s, {}])); // one more than a run may have
+  assert.deepEqual(Object.keys(checkPack({ ...pack, players: beyond }).players), [...ALL_SLOTS]);
   assert.equal(checkPack({ ...pack, players: { p1: {}, p2: { name: '' } } }).players.p2.name, 'Player 2');
   assert.deepEqual(checkPack({ ...pack, mode: 'nuzlocke', players: { p1: { name: 'A' }, p3: { name: 'C' } } }).players, { p1: { name: 'A' } }, 'solo: only p1 counts');
 });

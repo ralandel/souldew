@@ -1,10 +1,14 @@
-// Who plays a run: 1–4 player slots (p1..pN) and the run mode. Shared by the server (builds, summaries)
-// and the browser (web/lib/run.mjs re-exports it), so both read a manifest the same way.
+// Who plays a run: player slots p1..pN (N = shared/edition.mjs → maxPlayers) and the run mode. Shared by the server
+// (builds, summaries) and the browser (web/lib/run.mjs re-exports it), so both read a manifest the same way.
+import { EDITION } from './edition.mjs';
 
-export const ALL_SLOTS = ['p1', 'p2', 'p3', 'p4'];
+/** Most players in a run – a SoulLink has 2..MAX_PLAYERS. */
+export const MAX_PLAYERS = Math.max(2, Math.min(9, EDITION.maxPlayers || 4));
+/** Every slot a run may have, in order: ['p1', 'p2', …]. (Slot patterns elsewhere are written as p[1-8]; test/slots8.test.mjs keeps them in step.) */
+export const ALL_SLOTS = Object.freeze(Array.from({ length: MAX_PLAYERS }, (_, i) => `p${i + 1}`));
 export const MODES = ['soullink', 'nuzlocke'];
 
-/** 'soullink' (2–4 players) or 'nuzlocke' (solo). Runs from before modes existed are SoulLinks. */
+/** 'soullink' (2..MAX_PLAYERS players) or 'nuzlocke' (solo). Runs from before modes existed are SoulLinks. */
 export function runMode(manifest) {
   return manifest?.mode === 'nuzlocke' ? 'nuzlocke' : 'soullink';
 }

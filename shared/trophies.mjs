@@ -6,6 +6,8 @@
 // A digest only holds what the run doc really records (catches, deaths with their killer, badges, the run's end,
 // evolutions, cheats, the last live party), so every achievement here is one the app can actually detect.
 
+import { ALL_SLOTS } from './slots.mjs';
+
 /** National dex ranges by generation – the "regional" dexes of the games souldew plays. */
 export const GENERATIONS = [
   { gen: 1, region: 'Kanto', from: 1, to: 151 },
@@ -74,7 +76,7 @@ export function digestRun(manifest, entries, slot, opts = {}) {
   const doc = {};
   for (const [k, e] of Object.entries(entries || {})) if (e && typeof e === 'object' && e.v !== null && e.v !== undefined) doc[k] = e.v;
   const mode = manifest?.mode === 'nuzlocke' ? 'nuzlocke' : 'soullink';
-  const slots = mode === 'nuzlocke' ? ['p1'] : ['p1', 'p2', 'p3', 'p4'].filter((s, i) => i < 2 || manifest?.players?.[s]);
+  const slots = mode === 'nuzlocke' ? ['p1'] : ALL_SLOTS.filter((s, i) => i < 2 || manifest?.players?.[s]);
   const me = slots.includes(slot) ? slot : 'p1';
   const names = {};
   for (const s of slots) names[s] = str(doc[`player:${s}`]?.name || manifest?.players?.[s]?.name || s.toUpperCase(), 40);
@@ -129,7 +131,7 @@ export function digestRun(manifest, entries, slot, opts = {}) {
   const missed = [];
   const partners = [];
   for (const [k, e] of Object.entries(doc)) {
-    const m = /^enc:(.+):(p[1-4])$/.exec(k);
+    const m = /^enc:(.+):(p[1-8])$/.exec(k);
     if (!m || !e || typeof e !== 'object') continue;
     const [, area, s] = m;
     const pair = doc[`pair:${area}`];

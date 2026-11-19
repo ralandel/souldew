@@ -17,6 +17,8 @@ export const EDITION = Object.freeze({
   /** Port of the local server the window loads. A fixed one keeps the page's storage across restarts; it differs from
    *  the official app's 47390 so both can run side by side. Taken → a random port (electron/main.mjs). */
   port: 47391,
+  /** Most players in a SoulLink (slots p1..pN, 2–9; the official app has 4). Colours exist for up to 8 (styles.css). */
+  maxPlayers: 8,
 
   // ---- live sync (web/lib/sync.mjs, web/lib/invitecode.mjs) ------------------------------------------------------
   /** Trystero app id and key-derivation salt: changing it makes every existing run unreachable. */

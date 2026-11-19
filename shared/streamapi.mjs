@@ -15,8 +15,9 @@ import { levelCapFor, gymCapsFamily, vanillaCapFor, romCapFor, prettyTrainer } f
 
 export const API_VERSION = 1;
 export const API_PREFIX = '/api/v1';
-/** The players' colours – the same as the app's and the overlays' (p1 blue, p2 pink, p3 green, p4 violet). */
-export const PLAYER_COLORS = { p1: '#7f9ddb', p2: '#c98bbf', p3: '#b3c770', p4: '#a993e6' };
+/** The players' colours – the same as the app's and the overlays' (p1 blue, p2 pink, p3 green, p4 violet, p5 cyan, p6 rose,
+ *  p7 straw, p8 sand). */
+export const PLAYER_COLORS = { p1: '#7f9ddb', p2: '#c98bbf', p3: '#b3c770', p4: '#a993e6', p5: '#64c6dc', p6: '#e888a8', p7: '#e2d26c', p8: '#cdbfa3' };
 export const API_LANGS = ['en', 'de', 'fr', 'es', 'it'];
 export const apiLang = (v) => (API_LANGS.includes(String(v || '').slice(0, 2)) ? String(v).slice(0, 2) : 'en');
 const LIVE_FRESH = 10 * 60 * 1000;

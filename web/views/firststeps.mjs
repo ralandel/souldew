@@ -53,7 +53,7 @@ export function useFirstSteps(mode) {
       action: t('fs.gameGo', 'Open the library'), go: () => navigate('library') },
     nuzlocke ? { id: 'run', title: t('fs.runSolo', 'Start a Nuzlocke'), text: t('fs.runSoloText', 'Pick your game, the rules (Classic, Hardcore or your own) and build – you play it on your own.'),
       action: t('runs.newSolo', 'New Nuzlocke'), go: () => navigate('nuzlocke', { new: '' }) }
-    : { id: 'run', title: t('fs.runAny', 'Start a SoulLink (2–4) or a solo Nuzlocke – or join one'),
+    : { id: 'run', title: t('fs.runAny', 'Start a SoulLink (2–8) or a solo Nuzlocke – or join one'),
       text: t('fs.runTextNav', 'SoulLink (in the sidebar): one of you hosts (game, randomizer, rules), the others join with the 6-digit code. A Nuzlocke you start under “Nuzlocke” and play on your own.'),
       action: t('fs.runGoLink', 'SoulLink'), go: () => navigate('soullink'),
       alt: { action: t('fs.runGoSolo', 'Nuzlocke'), go: () => navigate('nuzlocke') } },

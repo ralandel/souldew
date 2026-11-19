@@ -113,12 +113,12 @@ function forget() {
  * One request to the bot: api.souldew.app, and the workers.dev address only when that gives no answer at all (see
  * LIVE_RUNS_FALLBACK_URL). Network trouble on every address → { status: 0 }. The body is parsed JSON or {}.
  */
-async function botFetch(path, { method = 'GET', token, json, form, timeout = 20000, fetchImpl = fetch, env = process.env } = {}) {
+async function botFetch(path, { method = 'GET', token, json, form, timeout = 20000, fetchImpl = fetch, env = process.env, edition } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (json) headers['Content-Type'] = 'application/json';
   let r = null;
-  for (const base of liveBases(env)) {
+  for (const base of liveBases(env, edition)) {
     try {
       r = await fetchImpl(`${base}${path}`, {
         method, headers, redirect: 'error', signal: AbortSignal.timeout(timeout),

@@ -130,7 +130,7 @@ export function syncTrophies({ slots = {}, seen = [], moments = [] } = {}) {
   const state = loaded || migrate({ schema: SCHEMA, createdAt: Date.now() });
   const before = first ? '' : JSON.stringify(state);
   for (const [id, s] of Object.entries(slots && typeof slots === 'object' ? slots : {})) {
-    if (/^[a-f0-9]{8}$/.test(id) && /^p[1-4]$/.test(s)) state.slots[id] = s;
+    if (/^[a-f0-9]{8}$/.test(id) && /^p[1-8]$/.test(s)) state.slots[id] = s;
   }
   const now = Date.now();
   for (const id of Array.isArray(seen) ? seen.slice(0, 200) : []) {

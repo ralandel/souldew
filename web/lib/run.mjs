@@ -1016,7 +1016,7 @@ function dupeInPass(doc, manifest, rd, species, slot, exceptArea, writes) {
   const found = dupeOf(doc, manifest, rd, species, slot, exceptArea);
   if (found && !found.missed) return found;
   for (const [k, e] of Object.entries(writes)) {
-    const m = /^enc:(.+):(p[1-4])$/.exec(k);
+    const m = /^enc:(.+):(p[1-8])$/.exec(k);
     if (!m || m[1] === exceptArea || (r.dupes !== 'both' && m[2] !== slot)) continue;
     if (e?.outcome === 'caught' && e.species && sameDupe(r, rd, species, slot, e.species, m[2])) return { area: m[1], slot: m[2] };
   }

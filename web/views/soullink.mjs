@@ -12,7 +12,7 @@ import { RestartModal } from './restart.mjs';
 import { mySlotIn } from '../lib/restart.mjs';
 import { numberedName, baseRomsFor, needsIdenticalRom, pairJoin, joinGameId } from '/shared/restart.mjs';
 import { pairMate } from '/shared/pair-titles.mjs';
-import { ALL_SLOTS, slotsOf, runMode, othersOf, defaultRunName } from '/shared/slots.mjs';
+import { ALL_SLOTS, MAX_PLAYERS, slotsOf, runMode, othersOf, defaultRunName } from '/shared/slots.mjs';
 import { NUZLOCKE_RULES, joinNames, shinyNote } from '../lib/run.mjs';
 import { NEW_RUN_RULES } from '/shared/rules.mjs';
 import { suggestSlot } from '../lib/invitecode.mjs';
@@ -237,7 +237,7 @@ function RunsHome({ mode }) {
   const joinBtn = (big) => html`<button class=${`btn ${big ? 'big' : ''}`} onClick=${() => navigate('soullink', { join: 1 })}><${Icon} name="load" size=${16} />${t('runs.joinCode', 'Join with code')}</button>`;
   return html`<div class="stack-l">
     <div class="topbar"><div class="stack-s" style="gap:2px; margin-right:auto"><h1>${solo ? t('nav.nuzlocke', 'Nuzlocke') : t('nav.soullink', 'SoulLink')}</h1>
-        <span class="small muted">${solo ? t('runs.leadSolo', 'Solo runs – just you against the game, tracked live.') : t('runs.leadLink', 'Runs for 2–4 players – the catches of each area are linked.')}</span></div>
+        <span class="small muted">${solo ? t('runs.leadSolo', 'Solo runs – just you against the game, tracked live.') : t('runs.leadLink', 'Runs for 2–8 players – the catches of each area are linked.')}</span></div>
       ${runs.length > 0 && html`<div class="row">${!solo && joinBtn(false)}${hostBtn(false)}</div>`}</div>
     <${FirstSteps} mode=${mode} />
     <${RunningHere} mode=${mode} />
@@ -272,7 +272,7 @@ function RunsHome({ mode }) {
     </div>` : html`<div class="grid-2 entry-choices">
       <section class="panel entry host">
         <div class="row nowrap"><${Icon} name="plus" size=${28} /><h2>${t('runs.hostTitleLink', 'Host a new SoulLink')}</h2></div>
-        <p class="muted">${t('runs.hostTextLink', 'A SoulLink for 2–4 players: you set it up and invite the others with a code.')}</p>
+        <p class="muted">${t('runs.hostTextLink', 'A SoulLink for 2–8 players: you set it up and invite the others with a code.')}</p>
         <ol class="small muted steps">
           <li>${t('runs.host1', 'Pick the game, ROM hack and randomizer settings')}</li>
           <li>${t('runs.host2Link', 'The app builds the games – for everyone or just for you')}</li>
@@ -461,30 +461,31 @@ function useGameChoices(gameId, hackId) {
     } };
 }
 
-/** First step of a new SoulLink: how many play – one card per head count, the player figures show it.
- * (A solo Nuzlocke has its own wizard in the Nuzlocke section.) */
+/** First step of a new SoulLink: how many play – one card per head count (2 up to MAX_PLAYERS), the player figures
+ * show it, and what that head count means below the cards. (A solo Nuzlocke has its own wizard in the Nuzlocke section.) */
 function ShapeCards({ count, onPick }) {
   const hint = {
     2: t('new.modeLink2Hint', 'The classic: two games, the catches of each area are linked as a pair.'),
     3: t('new.modeLink3Hint', 'Three players – the catches of each area form a linked group.'),
     4: t('new.modeLink4Hint', 'Four players, four teams – one fate per area.'),
   };
-  return html`<div role="radiogroup" aria-label=${t('new.modeAriaLink', 'Number of players')} style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px">
-    ${[2, 3, 4].map((n) => {
+  const counts = Array.from({ length: MAX_PLAYERS - 1 }, (_, i) => i + 2);
+  return html`<div class="stack-s"><div role="radiogroup" aria-label=${t('new.modeAriaLink', 'Number of players')} class="shape-cards">
+    ${counts.map((n) => {
       const on = n === count;
       return html`<button type="button" role="radio" aria-checked=${on} class=${`theme-card ${on ? 'on' : ''}`} onClick=${() => onPick(n)}>
-        <span class="row tight" aria-hidden="true" style="gap:2px">${ALL_SLOTS.slice(0, n).map((s) => html`<span style=${`color:var(--${s}, var(--ink-2))`}><${Icon} name="user" size=${18} /></span>`)}</span>
-        <b>${t('new.modeLink', 'SoulLink · {n} players', { n })}</b>
-        <span class="hint">${hint[n]}</span></button>`;
+        <span class="row tight" aria-hidden="true" style="gap:2px; flex-wrap:wrap">${ALL_SLOTS.slice(0, n).map((s) => html`<span style=${`color:var(--${s}, var(--ink-2))`}><${Icon} name="user" size=${n > 4 ? 14 : 18} /></span>`)}</span>
+        <b>${t('new.modeLink', 'SoulLink · {n} players', { n })}</b></button>`;
     })}
-  </div>`;
+  </div>
+  <p class="small muted" style="margin:0" aria-live="polite">${hint[count] || t('new.modeLinkManyHint', '{n} players, {n} teams – one fate per area: a single knockout takes {n} Pokémon with it.', { n: count })}</p></div>`;
 }
 
 /** Names for a restart: this computer's player first, then the others in their order. */
 function namesFrom(from, fallback) {
   const mine = mySlotIn(from);
   const order = [mine, ...othersOf(mine, from)].filter((s) => from.players?.[s]);
-  const out = { p1: '', p2: '', p3: '', p4: '' };
+  const out = Object.fromEntries(ALL_SLOTS.map((s) => [s, '']));
   order.forEach((s, i) => { out[ALL_SLOTS[i]] = from.players[s].name || ''; });
   if (!out.p1) out.p1 = fallback;
   return out;
@@ -568,7 +569,7 @@ function ShinyOption({ support, gen, solo, hack, rate, trainers, onRate, onTrain
   </div>`;
 }
 
-/** The new-run wizard of one mode: a SoulLink (2–4 players, invite at the end) or a solo Nuzlocke (rules step).
+/** The new-run wizard of one mode: a SoulLink (2–8 players, invite at the end) or a solo Nuzlocke (rules step).
  * A restart (`from`) always keeps the mode of the old run. */
 function NewRun({ gameId, hackId, patchPick, romPick, from, mode: sectionMode }) {
   const { status, navigate, reloadStatus, setRunId, setMe } = useApp();
@@ -611,7 +612,7 @@ function NewRun({ gameId, hackId, patchPick, romPick, from, mode: sectionMode })
   const [shinyTrainers, setShinyTrainers] = useState(!!from?.shiny?.trainers);
   const [seedMode, setSeedMode] = useState(from?.randomizer?.sharedSeed ? 'shared' : 'separate');
   const [seeds, setSeeds] = useState(() => Object.fromEntries(ALL_SLOTS.map((s) => [s, randomSeed()])));
-  const [names, setNames] = useState(() => (from ? namesFrom(from, status?.config?.playerName || '') : { p1: status?.config?.playerName || '', p2: '', p3: '', p4: '' }));
+  const [names, setNames] = useState(() => (from ? namesFrom(from, status?.config?.playerName || '') : { ...Object.fromEntries(ALL_SLOTS.map((s) => [s, ''])), p1: status?.config?.playerName || '' }));
   const [buildFor, setBuildFor] = useState('all');
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState([]);

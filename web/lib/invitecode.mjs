@@ -215,7 +215,7 @@ const WIRE_ERROR = { sending: 'used', done: 'used', cancelled: 'expired', error:
  * that are live right now, the host's own included.
  */
 export function suggestSlot(players, taken = [], name = '', online = null) {
-  const all = Object.keys(players || {}).filter((s) => /^p[1-4]$/.test(s)).sort();
+  const all = Object.keys(players || {}).filter((s) => /^p[1-8]$/.test(s)).sort();
   const free = all.filter((s) => !taken.includes(s));
   const n = String(name || '').trim().toLowerCase();
   const named = (s) => n && String(players[s]?.name || '').trim().toLowerCase() === n;

@@ -125,7 +125,7 @@ export function corsHeaders(req) {
 }
 
 const ENDPOINTS = [
-  'GET /api/v1', 'GET /api/v1/runs', 'GET /api/v1/runs/{id|current}', 'GET /api/v1/runs/{id|current}/players', 'GET /api/v1/runs/{id|current}/players/{p1-p4}',
+  'GET /api/v1', 'GET /api/v1/runs', 'GET /api/v1/runs/{id|current}', 'GET /api/v1/runs/{id|current}/players', 'GET /api/v1/runs/{id|current}/players/{p1-p8}',
   'GET /api/v1/runs/{id|current}/links', 'GET /api/v1/runs/{id|current}/graveyard', 'GET /api/v1/runs/{id|current}/encounters', 'GET /api/v1/runs/{id|current}/feed',
   'GET /api/v1/runs/{id|current}/events (Server-Sent Events)', 'GET /api/v1/events?run={id|current} (Server-Sent Events)',
   'GET /api/v1/species/{id}', 'GET /api/v1/legendaries', 'GET /api/v1/sprites/{style}/{variant}/{id}.png', 'GET /api/v1/coffee', 'GET /api/v1/coffee/qr.svg',
@@ -377,7 +377,7 @@ export function createStreamHub(deps) {
         const gen = Number(url.searchParams.get('gen')) || 5;
         return json(req, res, 200, { id, name: deps.lookups(lang).speciesName(id), legendary: legendaryKind(id), sprites: spriteUrls(id, { gen, base, shiny: url.searchParams.get('shiny') === '1' }) });
       }
-      const run = sub.match(/^\/runs\/(current|[a-f0-9]{8})(?:\/(players|links|graveyard|encounters|feed|events)(?:\/(p[1-4]))?)?$/);
+      const run = sub.match(/^\/runs\/(current|[a-f0-9]{8})(?:\/(players|links|graveyard|encounters|feed|events)(?:\/(p[1-8]))?)?$/);
       if (run) {
         const manifest = resolveRun(run[1]);
         if (run[2] === 'events') {
