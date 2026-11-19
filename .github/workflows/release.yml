@@ -16,7 +16,7 @@ name: Release
 #   draft and publish it.
 #
 # One-time setup for the automatic route: Settings › Secrets and variables › Actions › New repository secret
-#   SLS_RELEASE_KEY = the full contents of ~/.config/soullink-studio/release-key.pem
+#   SLS_RELEASE_KEY = the full contents of ~/.config/souldew-renaissance/release-key.pem
 # (the private half of package.json → updates.publicKey; the apps only accept a feed signed with it).
 
 on:
@@ -204,7 +204,7 @@ jobs:
             # not a draft or pre-release: the apps read releases/latest/download/latest.json
             gh release create "v$VERSION" "$out/souldew-$VERSION-arm64.dmg" "$out/souldew-$VERSION-win-x64-setup.exe" \
               "$out/souldew-$VERSION-linux-x86_64.AppImage" "$out/souldew-$VERSION-linux-amd64.deb" "$out/latest.json" \
-              --repo "$GITHUB_REPOSITORY" --title "souldew $VERSION" --notes-file "$out/notes.md" --verify-tag
+              --repo "$GITHUB_REPOSITORY" --title "souldew Renaissance $VERSION" --notes-file "$out/notes.md" --verify-tag
             echo "Published v$VERSION with macOS + Windows + Linux and a signed latest.json." >> "$GITHUB_STEP_SUMMARY"
           else
             [ -f "$dmg" ] && echo "::warning::SLS_RELEASE_KEY is not set – the feed can't be signed, creating a draft instead"
@@ -214,7 +214,7 @@ jobs:
               const notes = changelogSection(readFileSync('CHANGELOG.md', 'utf8'), process.env.VERSION);
               if (notes == null) { console.error('CHANGELOG.md has no ## ' + process.env.VERSION + ' section'); process.exit(1); }
               writeFileSync('notes.md', notes + '\n');"
-            gh release create "v$VERSION" "$exe" "$appimage" "$deb" --draft --repo "$GITHUB_REPOSITORY" --title "souldew $VERSION" --notes-file notes.md --verify-tag
+            gh release create "v$VERSION" "$exe" "$appimage" "$deb" --draft --repo "$GITHUB_REPOSITORY" --title "souldew Renaissance $VERSION" --notes-file notes.md --verify-tag
             {
               echo "### Draft release v$VERSION created (Windows installer + Linux packages)"
               echo "Installed apps don't see it yet. Finish it on a Mac (docs/DEVELOPMENT.md › Releasing):"

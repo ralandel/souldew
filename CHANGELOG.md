@@ -2,7 +2,9 @@
 
 `npm run release` takes the release notes from the section of the version being released.
 
-## souldew Renaissance – à venir
+## 2.8.3-r.1
+
+Première version de **souldew Renaissance**, basée sur souldew 2.8.3.
 
 - **Des SoulLinks jusqu'à 8 joueurs.** À la création d'une run, on choisit de 2 à 8 joueurs. Les joueurs 5 à 8 ont
   leurs propres couleurs (cyan, rose, paille, sable), recalculées pour chacun des quatre thèmes, y compris ceux pour

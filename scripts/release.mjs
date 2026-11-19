@@ -9,7 +9,7 @@
 // Without --win-exe the installer is picked up from dist/souldew-<version>-win-x64-setup.exe when it is there; likewise
 // dist/souldew-<version>-linux-x86_64.AppImage and dist/souldew-<version>-linux-amd64.deb. The .deb is only uploaded –
 // it isn't in the feed, because a package installed as root can't replace itself (those apps link to the release page).
-// latest.json is signed (Ed25519) with the private key from --key, $SLS_RELEASE_KEY or ~/.config/soullink-studio/release-key.pem.
+// latest.json is signed (Ed25519) with the private key from --key, $SLS_RELEASE_KEY or ~/.config/souldew-renaissance/release-key.pem.
 //
 // One-time setup: npm run release -- --init-key [--key file]
 // creates that key (never overwrites one) and puts its public half into package.json → updates.publicKey.
@@ -24,9 +24,10 @@ import { unwrapNotes } from '../shared/notes.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-export const DEFAULT_KEY = join(homedir(), '.config', 'soullink-studio', 'release-key.pem');
+// souldew Renaissance's own folder – never the official app's key (~/.config/soullink-studio)
+export const DEFAULT_KEY = join(homedir(), '.config', 'souldew-renaissance', 'release-key.pem');
 
-/** --key, then $SLS_RELEASE_KEY, then ~/.config/soullink-studio/release-key.pem. */
+/** --key, then $SLS_RELEASE_KEY, then ~/.config/souldew-renaissance/release-key.pem. */
 export const keyPathFrom = (a = {}, env = process.env) => resolve(a.key || env.SLS_RELEASE_KEY || DEFAULT_KEY);
 
 /**

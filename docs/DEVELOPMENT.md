@@ -240,7 +240,7 @@ Your data stays untouched on both.
 **One-time setup** (already done for this repository: `updates.repo` and `updates.publicKey` are in `package.json`):
 
 1. The repository must be **public** – release files have to be downloadable without login.
-2. The signing key was created with `npm run release -- --init-key`: the private key lives in `~/.config/soullink-studio/release-key.pem`, its public half is `updates.publicKey`. **Back the key up and never commit or share it** – without it you can't publish updates the apps accept.
+2. The signing key was created with `npm run release -- --init-key`: the private key lives in `~/.config/souldew-renaissance/release-key.pem` (souldew Renaissance), its public half is `updates.publicKey`. **Back the key up and never commit or share it** – without it you can't publish updates the apps accept.
 3. Add the key's contents as the repository secret `SLS_RELEASE_KEY` (Settings › Secrets and variables › Actions) so GitHub Actions can sign releases.
 
 **Publishing a version** – with GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)):
