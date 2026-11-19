@@ -1,6 +1,6 @@
 {
   "name": "souldew-renaissance",
-  "version": "2.8.3-r.1",
+  "version": "2.8.3-r.2",
   "private": true,
   "description": "souldew Renaissance – a souldew build for big groups: Pokémon SoulLinks and Nuzlockes with a built-in emulator, live sync through its own server and a game library",
   "license": "GPL-3.0-or-later",

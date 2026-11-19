@@ -2,7 +2,7 @@
 
 `npm run release` takes the release notes from the section of the version being released.
 
-## 2.8.3-r.1
+## 2.8.3-r.2
 
 Première version de **souldew Renaissance**, basée sur souldew 2.8.3.
 
