@@ -29,8 +29,11 @@ const tidBE = (b, o, tid) => {
   w32be(b, o + 4, parseInt(tid.slice(8), 16));
 };
 
-/** A 0x200-byte NCCH header. */
-export function ncchHeader({ productCode = 'CTR-P-EKJA', titleId = '0004000000055D00', version = 0, encrypted = false } = {}) {
+/**
+ * A 0x200-byte NCCH header. `hashes`: the ExeFS and RomFS superblock hashes (0x1C0 / 0x1E0) as one 128-digit hex
+ * string – or a short seed repeated to fill them (a different game content → a different fingerprint).
+ */
+export function ncchHeader({ productCode = 'CTR-P-EKJA', titleId = '0004000000055D00', version = 0, encrypted = false, hashes = null } = {}) {
   const b = new Uint8Array(0x200);
   ascii(b, 0x100, 'NCCH');
   tidLE(b, 0x108, titleId);
@@ -38,6 +41,10 @@ export function ncchHeader({ productCode = 'CTR-P-EKJA', titleId = '000400000005
   tidLE(b, 0x118, titleId);
   ascii(b, 0x150, productCode);
   b[0x18f] = encrypted ? 0 : 0x04;
+  if (hashes) {
+    const hex = hashes.length >= 128 ? hashes : hashes.repeat(Math.ceil(128 / hashes.length));
+    for (let i = 0; i < 64; i++) b[0x1c0 + i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
   return b;
 }
 
@@ -55,7 +62,7 @@ export function cci(opts = {}) {
 
 const align = (n) => Math.ceil(n / 64) * 64;
 /** A .cia with an RSA-2048-signed TMD; the first content is an NCCH (encrypted per `contentEncrypted`). */
-export function cia({ titleId = '0004000000055E00', productCode = 'CTR-P-EK2A', version = 0x1450, contentEncrypted = false } = {}) {
+export function cia({ titleId = '0004000000055E00', productCode = 'CTR-P-EK2A', version = 0x1450, contentEncrypted = false, hashes = null } = {}) {
   const certSize = 0xa00;
   const ticketSize = 0x350;
   const tmdSize = 0x140 + 0xc4 + 0x900 + 0x30;
@@ -78,7 +85,7 @@ export function cia({ titleId = '0004000000055E00', productCode = 'CTR-P-EK2A', 
   b[chunk + 7] = contentEncrypted ? 1 : 0;
   // an encrypted content's bytes are random, not an NCCH
   if (contentEncrypted) b.fill(0x33, contentOff);
-  else b.set(ncchHeader({ productCode, titleId }), contentOff);
+  else b.set(ncchHeader({ productCode, titleId, hashes }), contentOff);
   return b;
 }
 

@@ -54,6 +54,22 @@ export function titleKind(titleId) {
   return 'other';
 }
 
+/**
+ * The game's contents as one short hex string, from the NCCH header alone: the first 16 bytes of the ExeFS superblock
+ * hash (0x1C0, SHA-256 over the ExeFS header that holds the hash of the game's code) and of the RomFS superblock hash
+ * (0x1E0, over the RomFS's master hashes – which cover every file in it). Two files with the same game inside (a .3ds,
+ * the .cxi cut out of it, a .cia of it) give the same string; any change to the code or a file of the game gives
+ * another – a ROM hack that ships as an already-built game (Rising Ruby) is told from its base game by it. null when
+ * the header holds no hashes.
+ */
+export function ncchFingerprint(b, o = 0) {
+  if (!b || b.length < o + 0x200) return null;
+  const part = (at) => Array.from(b.subarray(o + at, o + at + 16), (x) => x.toString(16).padStart(2, '0')).join('');
+  const exefs = part(0x1c0);
+  const romfs = part(0x1e0);
+  return /^0+$/.test(exefs + romfs) ? null : exefs + romfs;
+}
+
 /** NCCH header (0x200 bytes at `b[o]`): product code, program ID, version, whether its contents are encrypted. */
 function ncch(b, o = 0) {
   if (!b || b.length < o + 0x200 || tag(b, o + 0x100) !== 'NCCH') return null;
@@ -65,6 +81,7 @@ function ncch(b, o = 0) {
     titleId: id64(b, o + 0x118),
     version: u16(b, o + 0x112),
     encrypted: !(flags7 & 0x04), // flag "NoCrypto"
+    fingerprint: ncchFingerprint(b, o),
   };
 }
 
@@ -100,8 +117,9 @@ function sigBlock(type) {
 
 /**
  * Identify a 3DS file. `ext` is the file extension (lower case, no dot). Returns
- * { system: '3ds', format, title, code, productCode, titleId, kind, version, encrypted } – fields it can't read are
- * '' / null – or null when the bytes are no 3DS file of that kind. Never throws.
+ * { system: '3ds', format, title, code, productCode, titleId, kind, version, encrypted, fingerprint? } – fields it
+ * can't read are '' / null (fingerprint: ncchFingerprint, only where the NCCH header is read) – or null when the bytes
+ * are no 3DS file of that kind. Never throws.
  */
 export function identifyCtr(readAt, ext = '') {
   ext = String(ext).toLowerCase().replace(/^\./, '');
@@ -142,7 +160,7 @@ export function identifyCtr(readAt, ext = '') {
       const contentEncrypted = !!(((tmd[chunk + 6] << 8) | tmd[chunk + 7]) & 1);
       const n = contentEncrypted ? null : ncch(readAt(contentOff, 0x200));
       return { system: '3ds', format: 'cia', title: '', code: n?.code || '', productCode: n?.productCode || '', titleId, kind: titleKind(titleId), version,
-        encrypted: contentEncrypted || !!n?.encrypted };
+        encrypted: contentEncrypted || !!n?.encrypted, fingerprint: n?.fingerprint || null };
     }
     // .3ds / .cci (NCSD) or .cxi (NCCH) – decided by the header, not the name
     const h = readAt(0, 0x200);
@@ -163,7 +181,8 @@ export function identifyCtr(readAt, ext = '') {
       n = ncch(h);
       if (!n) return null;
     }
-    return { system: '3ds', format, title: '', code: n.code, productCode: n.productCode, titleId: n.titleId, kind: titleKind(n.titleId), version: n.version, encrypted: n.encrypted };
+    return { system: '3ds', format, title: '', code: n.code, productCode: n.productCode, titleId: n.titleId, kind: titleKind(n.titleId), version: n.version, encrypted: n.encrypted,
+      fingerprint: n.fingerprint };
   } catch {
     return null;
   }

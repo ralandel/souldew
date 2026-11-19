@@ -2,6 +2,14 @@
 
 `npm run release` takes the release notes from the section of the version being released.
 
+## 2.8.3-r.3
+
+- **Rising Ruby et Sinking Sapphire reconnus comme des ROM hacks** (v2.1, `.3ds` décrypté) : ils ont leur propre fiche
+  dans la bibliothèque, comme Blaze Black 2 ou Radical Red.
+- **En SoulLink, tout le monde doit avoir la même version du hack** : souldew prévient si la tienne diffère de celle de
+  l'hôte.
+- **Pas de mise à jour du jeu sur ces hacks** : elle remplacerait le hack.
+
 ## 2.8.3-r.2
 
 Première version de **souldew Renaissance**, basée sur souldew 2.8.3.

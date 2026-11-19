@@ -346,10 +346,11 @@ export function runPack(m) {
     createdAt: m.createdAt,
     ...(m.mode ? { mode: m.mode } : {}),
     players: m.players,
-    base: m.base ? { crc: m.base.crc, name: m.base.name } : null,
+    // (a 3DS game: its contents fingerprint – shared/ctr.mjs – instead of a CRC32; a ROM hack run is joined with the same)
+    base: m.base ? { crc: m.base.crc, name: m.base.name, ...(m.base.fingerprint ? { fingerprint: m.base.fingerprint } : {}) } : null,
     patch: m.patch ? { name: m.patch.name, sha1: m.patch.sha1, resultCrc: m.patch.resultCrc } : null,
     randomizer: m.randomizer,
-    outputs: Object.fromEntries(Object.entries(m.outputs || {}).map(([k, v]) => [k, { sha1: v.sha1 }])),
+    outputs: Object.fromEntries(Object.entries(m.outputs || {}).map(([k, v]) => [k, { sha1: v.sha1, ...(v.fingerprint ? { fingerprint: v.fingerprint } : {}) }])),
     rules: stripLocalRules(m.rules || null),
     game: m.game || null,
     // who sets the rules, and the key their signature is checked with (shared/hostrules.mjs – older apps ignore both)
@@ -440,7 +441,8 @@ async function buildInto(opts, onLog, onProgress, bridge) {
     updatedAt: now,
     mode,
     players,
-    base: { crc: patched.baseCrc, name: basename(String(opts.romId).split('::').pop()), gameId: opts.gameId || null },
+    base: { crc: patched.baseCrc, name: basename(String(opts.romId).split('::').pop()), gameId: opts.gameId || null,
+      ...(ctr && patched.header?.fingerprint ? { fingerprint: patched.header.fingerprint } : {}) },
     patch: opts.patchId ? { name: patched.patchName, sha1: patched.patchSha1 || opts.patchSha1 || null, resultCrc: patched.crc, hackId: opts.hackId || null } : null,
     game: { id: opts.gameId || existing?.game?.id || null, system: patched.system, code: patched.header?.code || '', title: patched.header?.title || '', hackId: opts.hackId || null,
       // an already-patched ROM the player marked as a hack the catalog doesn't know (library.mjs romHacks): its name
@@ -564,18 +566,23 @@ async function buildInto(opts, onLog, onProgress, bridge) {
         : logLine('shinyRate', `Shiny rate 1/${manifest.shiny.rate} built in`, { rate: manifest.shiny.rate }));
     }
     // (a plain 3DS game isn't hashed – 1–4 GB, and each player may play their own release; a randomized one must be
-    // byte-identical, its SHA-1 came from the stream above)
+    // byte-identical, its SHA-1 came from the stream above. A 3DS ROM hack played as it is (Rising Ruby): every player
+    // needs the same build of it – compared by the contents fingerprint its header holds, shared/ctr.mjs)
     const sha1 = ctr ? ctrSha1 : fileSha1(romOut);
+    const fingerprint = ctr && !ctrRando && (manifest.game.hackId || manifest.game.hackName) ? patched.header?.fingerprint || null : null;
+    const expectedFingerprint = fingerprint ? opts.expectedOutputs?.[slot]?.fingerprint || null : null;
     manifest.outputs[slot] = {
       rom: basename(romOut),
       log: manifest.randomizer.enabled ? basename(logOut) : null,
       data: manifest.randomizer.enabled ? basename(dataOut) : null,
       sha1,
+      ...(fingerprint ? { fingerprint } : {}),
       builtAt: new Date().toISOString(),
       expectedSha1: opts.expectedOutputs?.[slot]?.sha1 || null,
+      ...(expectedFingerprint ? { expectedFingerprint } : {}),
     };
-    if (manifest.outputs[slot].expectedSha1) {
-      manifest.outputs[slot].matchesFriend = manifest.outputs[slot].expectedSha1 === sha1;
+    if (manifest.outputs[slot].expectedSha1 || expectedFingerprint) {
+      manifest.outputs[slot].matchesFriend = manifest.outputs[slot].expectedSha1 ? manifest.outputs[slot].expectedSha1 === sha1 : expectedFingerprint === fingerprint;
       // Only randomized or patched runs need byte-identical ROMs – a plain run may use another release of the game,
       // or the other title of its pair (SoulSilver in a HeartGold run).
       const mustMatch = needsIdenticalRom(manifest);

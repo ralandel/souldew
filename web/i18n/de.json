@@ -2896,5 +2896,8 @@
   "lib.addedUpdateName": "Update {version} für {game}",
   "lib.addedUpdateWaiting": "souldew nutzt es, sobald du das Spiel hinzufügst.",
   "lib.addedUpdates": "{count} Update|{count} Updates",
-  "err.notCtrUpdate": "Kein Update für ein 3DS-Spiel"
+  "err.notCtrUpdate": "Kein Update für ein 3DS-Spiel",
+  "ctrUpdate.playHack": "ROM-Hacks starten ohne das Update des Spiels ({version}) – der Hack baut auf einer eigenen Version auf, und das Update würde ihn ersetzen.",
+  "join.missingHack": "In diesem Run wird {hack} gespielt. Füge zuerst deine eigene Kopie davon zur Bibliothek hinzu – dieselbe Version wie die des Hosts.",
+  "join.otherHackBuild": "Deine Kopie von {hack} ist nicht derselbe Build wie die des Hosts – eine andere Version des Hacks? Alle brauchen dieselbe: frag den Host, welche Version er spielt."
 }

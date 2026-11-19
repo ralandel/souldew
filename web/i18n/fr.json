@@ -2896,5 +2896,8 @@
   "lib.addedUpdateName": "Mise à jour {version} pour {game}",
   "lib.addedUpdateWaiting": "souldew l’utilise dès que tu ajoutes le jeu.",
   "lib.addedUpdates": "{count} mise à jour|{count} mises à jour",
-  "err.notCtrUpdate": "Ce n’est pas une mise à jour de jeu 3DS"
+  "err.notCtrUpdate": "Ce n’est pas une mise à jour de jeu 3DS",
+  "ctrUpdate.playHack": "Les ROM hacks démarrent sans la mise à jour du jeu ({version}) – le hack est construit sur sa propre version, la mise à jour le remplacerait.",
+  "join.missingHack": "Cette run se joue sur {hack}. Ajoute d’abord ta propre copie à ta bibliothèque – la même version que celle de l’hôte.",
+  "join.otherHackBuild": "Ta copie de {hack} n’est pas la même que celle de l’hôte – une autre version du hack ? Tout le monde doit avoir la même : demande à l’hôte quelle version il utilise."
 }

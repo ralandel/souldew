@@ -1596,13 +1596,20 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
   /** The update a 3DS game starts with (prepareUpdate): from the library – none for a randomized run's game. */
   const ctrUpdateFor = async (rom, titleId, key) => {
     let randomized = false;
+    let hacked = false; // a ROM hack built on a version of its own (Rising Ruby: 1.0) – the update's code would replace the hack's
+    let libId = null;
     try {
-      const run = new URL(String(rom || ''), 'http://localhost').pathname.match(/^\/api\/runs\/([a-f0-9]{8})\/file$/);
-      randomized = !!(run && readManifest(run[1])?.randomizer?.enabled);
+      const u = new URL(String(rom || ''), 'http://localhost');
+      const run = u.pathname.match(/^\/api\/runs\/([a-f0-9]{8})\/file$/);
+      const m = run ? readManifest(run[1]) : null;
+      randomized = !!m?.randomizer?.enabled;
+      hacked = !!(m?.game?.hackId || m?.game?.hackName);
+      if (u.pathname === '/api/library/rom') libId = u.searchParams.get('id');
     } catch {
       // (romPathFromUrl accepted it already)
     }
     const lib = scanLibrary(loadConfig());
+    if (libId && lib.roms.some((r) => r.id === libId && (r.hackId || r.customHack))) hacked = true;
     const keep = [];
     for (const u of lib.ctrUpdates || []) {
       try {
@@ -1611,7 +1618,7 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
         // gone meanwhile
       }
     }
-    return prepareUpdate({ saveDir: saveDirFor(key), gameTid: titleId, update: pickUpdate(lib.ctrUpdates, titleId), randomized, keep });
+    return prepareUpdate({ saveDir: saveDirFor(key), gameTid: titleId, update: pickUpdate(lib.ctrUpdates, titleId), randomized, hacked, keep });
   };
   // the game's own saves changed? (a fingerprint – see saveStamp)
   route('GET', /^\/api\/ctr\/savestamp$/, (req, m, url) => ({ stamp: saveStamp(ctr.get(url.searchParams.get('id')).save) }));

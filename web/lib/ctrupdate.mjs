@@ -17,6 +17,7 @@ export function ctrUpdateNote(u, live = false) {
   const version = u.versionText || '';
   if (!u.installed) {
     if (u.why === 'randomized') return t('ctrUpdate.playRandomized', 'Randomized games start without their update ({version}) – the randomizer builds them from version 1.0 of the game.', { version });
+    if (u.why === 'hack') return t('ctrUpdate.playHack', 'ROM hacks start without the game’s update ({version}) – the hack is built on a version of its own, and the update would replace it.', { version });
     if (u.why === 'encrypted') return t('ctrUpdate.playEncrypted', 'The update {version} is encrypted, so the game starts without it. souldew needs a decrypted copy of the update.', { version });
     return t('ctrUpdate.playFailed', 'The update {version} couldn’t be installed, so the game starts without it.', { version });
   }

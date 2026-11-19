@@ -216,7 +216,7 @@ export function removeInstalledUpdate(saveDir, gameTid) {
  * 'invalid' | 'diskFull' | … } when it isn't used. `keep`: the stamps of every update file the library has (the cache
  * keeps those). Never throws.
  */
-export async function prepareUpdate({ saveDir, gameTid, update, randomized = false, keep = null, cache = UPDATE_CACHE }) {
+export async function prepareUpdate({ saveDir, gameTid, update, randomized = false, hacked = false, keep = null, cache = UPDATE_CACHE }) {
   const tid = String(gameTid || '').toUpperCase();
   if (!/^00040000[0-9A-F]{8}$/.test(tid)) return null;
   const info = (u, extra) => ({ titleId: `0004000E${tid.slice(8)}`, version: u.version ?? null, ...updateStatus(tid, u.version ?? null), ...extra });
@@ -226,9 +226,10 @@ export async function prepareUpdate({ saveDir, gameTid, update, randomized = fal
       removeInstalledUpdate(saveDir, tid);
       return null;
     }
-    if (randomized || update.encrypted) {
+    // (a ROM hack – Rising Ruby, built on version 1.0 – would run the update's code instead of its own)
+    if (randomized || hacked || update.encrypted) {
       removeInstalledUpdate(saveDir, tid);
-      return info(update, { installed: false, why: randomized ? 'randomized' : 'encrypted' });
+      return info(update, { installed: false, why: randomized ? 'randomized' : hacked ? 'hack' : 'encrypted' });
     }
     const unpacked = await unpackUpdate(update.file, { cache });
     if (unpacked.titleId.toUpperCase() !== `0004000E${tid.slice(8)}`) throw Object.assign(new Error('the update belongs to another game'), { code: 'otherGame' });

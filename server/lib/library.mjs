@@ -30,8 +30,26 @@ export function catalog() {
     } catch {
       catalogCache = { games: [], hacks: [] };
     }
+    catalogCache = withEditionHacks(catalogCache, readEditionCatalog());
   }
   return catalogCache;
+}
+
+/** This edition's own catalog additions (shared/data/catalog-edition.json – kept apart so upstream's catalog merges cleanly). */
+function readEditionCatalog() {
+  try {
+    return JSON.parse(readFileSync(join(SHARED_DIR, 'data', 'catalog-edition.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** The catalog with this edition's hacks added – one of upstream's with the same id is replaced by the edition's. */
+export function withEditionHacks(cat, extra) {
+  const add = Array.isArray(extra?.hacks) ? extra.hacks.filter((h) => h && h.id) : [];
+  if (!add.length) return cat;
+  const ids = new Set(add.map((h) => h.id));
+  return { ...cat, hacks: [...(cat.hacks || []).filter((h) => !ids.has(h.id)), ...add] };
 }
 
 export function libraryRoots(config = {}) {
@@ -121,7 +139,7 @@ export function ctrEntry(path, ext) {
     // must not remember that, or the game stays missing from the library until the file changes)
     if (ioError) return undefined;
     if (!info || ['dlc', 'system'].includes(info.kind)) return null;
-    return { ...info, crc: null };
+    return { fingerprint: null, ...info, crc: null };
   } catch {
     return undefined;
   } finally {
@@ -270,9 +288,17 @@ function unpackError(e, name, size, dir) {
 function describeRom(info, cat) {
   const m = matchCatalog(info, cat);
   // a ROM that was patched before it was added (Too Many Types from a download site): its CRC32 is a known version
-  // of a hack – the run gets the hack, not only the base game it shares its header with
-  const hack = info.crc ? (cat.hacks || []).find((h) => (h.romCrc32 || []).includes(info.crc)) : null;
+  // of a hack – the run gets the hack, not only the base game it shares its header with. A 3DS game has no CRC32: a
+  // hack shipped as an already-built game (Rising Ruby) is known by its contents' fingerprint (shared/ctr.mjs).
+  const hack = info.crc ? (cat.hacks || []).find((h) => (h.romCrc32 || []).includes(info.crc))
+    : info.fingerprint ? ctrHackOf(info.fingerprint, cat) : null;
   return { ...info, gameId: m?.game?.id || null, exact: !!m?.exact, hackId: hack?.id || null };
+}
+
+/** The catalog hack a 3DS game with this contents fingerprint is (hack.ctrFingerprints), or null. */
+export function ctrHackOf(fingerprint, cat = catalog()) {
+  const fp = String(fingerprint || '').toLowerCase();
+  return (fp && (cat.hacks || []).find((h) => (h.ctrFingerprints || []).some((x) => String(x).toLowerCase() === fp))) || null;
 }
 
 /** Scan all library folders. Fast after the first run thanks to the index cache. */
@@ -313,8 +339,8 @@ export function scanLibrary(config = {}) {
       const ext = extname(name).slice(1).toLowerCase();
       const cacheKey = `${path}|${st.size}|${st.mtimeMs}`;
       if (isCtrExt(ext)) {
-        // (indexes before 2.8.3 kept null for update files – a null is read again, a few header bytes)
-        const info = index[cacheKey] != null ? index[cacheKey] : ctrEntry(path, ext);
+        // (indexes before 2.8.3 kept null for update files, and no fingerprint – those are read again, a few header bytes)
+        const info = index[cacheKey] != null && 'fingerprint' in index[cacheKey] ? index[cacheKey] : ctrEntry(path, ext);
         nextIndex[cacheKey] = info;
         if (info?.kind === 'update') updates.push(updateEntry(info, { id: makeId(path), name, file: path, size: st.size }, cat, detached.has(resolve(path))));
         else if (info) roms.push(describeRom({ id: makeId(path), name, file: path, size: st.size, container: null, ...info }, cat));
@@ -413,8 +439,9 @@ export function scanLibrary(config = {}) {
     // a hack the catalog doesn't know: its versions are told together by the file name ("Crest v1.bps", "Crest v2.bps")
     if (!p.hackId) p.family = patchFamily(p.name);
   }
-  // each 3DS game with the update it plays with (the newest one souldew can install)
-  for (const r of roms) if (r.system === '3ds' && r.kind === 'game') r.update = updateSummary(pickUpdate(updates, r.titleId));
+  // each 3DS game with the update it plays with (the newest one souldew can install) – a ROM hack none: it is built on
+  // a version of the game of its own, and the update's code would replace the hack's (server/lib/ctrupdate.mjs)
+  for (const r of roms) if (r.system === '3ds' && r.kind === 'game') r.update = r.hackId ? null : updateSummary(pickUpdate(updates, r.titleId));
   return { roms, patches: newestFirst(patches, patchTime), zipped: zipped.filter((z) => !unpacked.has(ctrKey(z))), ctrUpdates: updates, roots: libraryRoots(config), libraryDir: LIBRARY_DIR };
 }
 

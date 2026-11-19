@@ -1,0 +1,51 @@
+{
+  "about": "souldew Renaissance's own additions to shared/data/catalog.json (merged by server/lib/library.mjs catalog(); a hack with the same id as upstream's replaces it). Kept in a file of its own so upstream's catalog merges without conflicts. Titles and metadata only – no links to ROM hacks or their download pages. ctrFingerprints: shared/ctr.mjs ncchFingerprint of the already-built game (.3ds / .cxi / .cia of it give the same).",
+  "hacks": [
+    {
+      "id": "rising-ruby",
+      "name": "Pokémon Rising Ruby",
+      "author": "Drayano",
+      "baseGameId": "pokemon-omega-ruby",
+      "baseCrc32": null,
+      "system": "3ds",
+      "patchFormat": null,
+      "latestVersion": "2.1",
+      "descriptionEn": "Drayano's enhancement hack of Omega Ruby in the style of Blaze Black 2 and Renegade Platinum: tougher trainers, a much wider choice of Pokémon and rebalanced Pokémon.",
+      "descriptionDe": "Drayanos Erweiterungs-Hack von Omega Rubin im Stil von Blaze Black 2 und Renegade Platinum: stärkere Trainer, eine viel größere Pokémon-Auswahl und überarbeitete Pokémon.",
+      "features": ["Harder trainers", "Wider Pokémon availability", "Rebalanced Pokémon"],
+      "difficulty": "hard",
+      "nuzlockeFriendly": true,
+      "uprCompatible": "unknown",
+      "uprNote": "Not tested with UPR ZX – the run is played without the randomizer.",
+      "color": "#7E1626",
+      "live": "untested",
+      "notes": "Recognised as an already-built game (decrypted .3ds of v2.1, title ID of Omega Ruby 000400000011C400) by its contents fingerprint. Built on version 1.0 of Omega Ruby – souldew never installs the game's update for it.",
+      "uncertain": true,
+      "uncertainFields": ["features"],
+      "ctrFingerprints": ["39e5aad95703884be65cf663a9b1f9bac52e2088bfabd02d7c3626b72a86e953"]
+    },
+    {
+      "id": "sinking-sapphire",
+      "name": "Pokémon Sinking Sapphire",
+      "author": "Drayano",
+      "baseGameId": "pokemon-alpha-sapphire",
+      "baseCrc32": null,
+      "system": "3ds",
+      "patchFormat": null,
+      "latestVersion": "2.1",
+      "descriptionEn": "The Alpha Sapphire counterpart of Rising Ruby: tougher trainers, a much wider choice of Pokémon and rebalanced Pokémon.",
+      "descriptionDe": "Das Alpha-Saphir-Gegenstück zu Rising Ruby: stärkere Trainer, eine viel größere Pokémon-Auswahl und überarbeitete Pokémon.",
+      "features": ["Harder trainers", "Wider Pokémon availability", "Rebalanced Pokémon"],
+      "difficulty": "hard",
+      "nuzlockeFriendly": true,
+      "uprCompatible": "unknown",
+      "uprNote": "Not tested with UPR ZX – the run is played without the randomizer.",
+      "color": "#173F80",
+      "live": "untested",
+      "notes": "Recognised as an already-built game (decrypted .3ds of v2.1, title ID of Alpha Sapphire 000400000011C500) by its contents fingerprint. Built on version 1.0 of Alpha Sapphire – souldew never installs the game's update for it.",
+      "uncertain": true,
+      "uncertainFields": ["features"],
+      "ctrFingerprints": ["35ed6cf4e31b255d405069cc51edd2aa20964afe9dfdb263ae0007e2b6613e81"]
+    }
+  ]
+}

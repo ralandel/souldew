@@ -41,7 +41,14 @@ export function baseRomsFor(m, roms, rootOf = null) {
   if (m?.game?.system !== '3ds') return [];
   const id = m.game.id;
   const code = String(m.game.code || '').toUpperCase();
-  const fits = (roms || []).filter((r) => r.system === '3ds' && (id ? r.gameId === id : !!code && String(r.code || '').toUpperCase() === code));
+  // a 3DS ROM hack played as it is (Rising Ruby – recognised by its contents fingerprint, r.hackId): the players' copies
+  // of that hack, the host's build first (base.fingerprint); a run of the game itself never takes a hack's file
+  if (m.game.hackId) {
+    const fp = String(m.base?.fingerprint || '').toLowerCase();
+    const mine = (roms || []).filter((r) => r.system === '3ds' && r.hackId === m.game.hackId);
+    return fp ? [...mine.filter((r) => String(r.fingerprint || '').toLowerCase() === fp), ...mine.filter((r) => String(r.fingerprint || '').toLowerCase() !== fp)] : mine;
+  }
+  const fits = (roms || []).filter((r) => r.system === '3ds' && !r.hackId && (id ? r.gameId === id : !!code && String(r.code || '').toUpperCase() === code));
   if (!mate) return fits;
   return [...fits, ...(roms || []).filter((r) => r.system === '3ds' && !fits.includes(r) && unpatched(r) && rootOf(r.gameId) === mate)];
 }

@@ -306,6 +306,12 @@ test('prepareUpdate: installs the library\'s update, replaces another, removes i
   const rnd = await prepareUpdate({ saveDir: save, gameTid: US, update: u, randomized: true, cache });
   assert.deepEqual({ installed: rnd.installed, why: rnd.why }, { installed: false, why: 'randomized' });
   assert.equal(installedUpdate(save, US), null);
+  // a ROM hack (Rising Ruby, built on 1.0): the update's code would replace the hack's – installed before, removed now
+  await prepareUpdate({ saveDir: save, gameTid: US, update: u, cache });
+  const hack = await prepareUpdate({ saveDir: save, gameTid: US, update: u, hacked: true, cache });
+  assert.deepEqual({ installed: hack.installed, why: hack.why }, { installed: false, why: 'hack' });
+  assert.equal(installedUpdate(save, US), null);
+  assert.match(ctrUpdateNote(hack), /hack/i, 'the play view says why');
   // encrypted: not installed, said why
   const enc = await prepareUpdate({ saveDir: save, gameTid: US, update: { ...u, encrypted: true }, cache });
   assert.deepEqual({ installed: enc.installed, why: enc.why }, { installed: false, why: 'encrypted' });

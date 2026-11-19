@@ -927,6 +927,9 @@ function JoinRun() {
     return null;
   };
   const otherRelease = rom && baseCrc && String(rom.crc || '').toUpperCase() !== String(baseCrc).toUpperCase();
+  // a 3DS ROM hack played as it is (Rising Ruby): the players' copies are compared by their contents fingerprint
+  const ctrHackRun = !!(pack?.game?.system === '3ds' && pack.game.hackId);
+  const otherHackBuild = !!(ctrHackRun && rom && pack.base?.fingerprint && rom.fingerprint && rom.fingerprint !== pack.base.fingerprint);
   // the other title of the run's pair (SoulSilver for a HeartGold run, shared/pair-titles.mjs): { host, yours } when
   // that's the game we join with – fine on a plain run, every player catches in their own game
   const pair = pack && rom ? pairJoin(pack, rom, rootOf) : null;
@@ -1017,8 +1020,10 @@ function JoinRun() {
       <h2>${t('join.step2', '2 · Your game')}</h2>
       ${rom ? html`<p class="small"><span class="chip ok">${t('join.found', 'Found in your library')}</span> <span class="mono">${rom.name}</span></p>
         ${pair && html`<p class="small"><span class="chip ok">${t('join.pairChip', 'Other edition')}</span> ${t('join.pairTitle', 'You play {yours}, the host plays {host} – that’s fine for a run without randomizer or ROM hack: everyone catches in their own game.', { yours: titleOf(pair.yours), host: titleOf(pair.host) })}</p>`}
-        ${otherRelease && !pair && html`<p class="small muted">${t('join.otherRelease', 'Another release than the host’s ({host}) – that’s fine: everyone plays their own copy in this run.', { host: releaseOf(baseCrc) || `CRC32 ${baseCrc}` })}</p>`}`
-        : html`<p class="warning">${baseCrc && needsIdenticalRom(pack) ? t('join.missingExact', 'This run is {kind}, so everyone needs exactly the same release: {release}. Add it to your library first.', {
+        ${otherRelease && !pair && html`<p class="small muted">${t('join.otherRelease', 'Another release than the host’s ({host}) – that’s fine: everyone plays their own copy in this run.', { host: releaseOf(baseCrc) || `CRC32 ${baseCrc}` })}</p>`}
+        ${otherHackBuild && html`<p class="warning">${t('join.otherHackBuild', 'Your copy of {hack} isn’t the same build as the host’s – another version of the hack? Everyone needs the same one: ask the host which version they play.', { hack: hackById(pack.game.hackId)?.name || pack.game.hackId })}</p>`}`
+        : html`<p class="warning">${ctrHackRun ? t('join.missingHack', 'This run plays {hack}. Add your own copy of it to your library first – the same version as the host’s.', { hack: hackById(pack.game.hackId)?.name || pack.game.hackId })
+          : baseCrc && needsIdenticalRom(pack) ? t('join.missingExact', 'This run is {kind}, so everyone needs exactly the same release: {release}. Add it to your library first.', {
             kind: pack.patch || pack.game?.hackId || pack.game?.hackName ? t('join.kindPatched', 'a ROM hack') : t('join.kindRandom', 'randomized'), release: releaseOf(baseCrc) || `CRC32 ${baseCrc}` })
             + (ownReleases.length ? ' ' + t('join.youHave', 'You have: {list}.', { list: ownReleases.map((r) => releaseOf(r.crc) || r.name).join(', ') }) : '')
             + (ownMate ? ' ' + t('join.pairNeedsPlain', 'Your copy of {game} only fits a run without randomizer or ROM hack.', { game: titleOf(mateId) }) : '')
