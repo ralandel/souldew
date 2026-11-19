@@ -33,7 +33,7 @@
   "updates": {
     "repo": "ralandel/souldew",
     "feed": "https://github.com/{repo}/releases/latest/download/latest.json",
-    "publicKey": "MCowBQYDK2VwAyEArc8Rmt1yZjjd7DnBkqzno70mZ9JAiH7qFvN2lnvgdeA="
+    "publicKey": "MCowBQYDK2VwAyEAUt/HWwEPmR64hSoFVw/w0HX8wtDMfD2cpwkFdMBpKU0="
   },
   "engines": {
     "node": ">=22.15"
