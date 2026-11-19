@@ -1,16 +1,16 @@
 {
-  "name": "souldew",
+  "name": "souldew-renaissance",
   "version": "2.8.3",
   "private": true,
-  "description": "souldew – Pokémon SoulLinks (2–4 players) and Nuzlockes with a built-in emulator, live sync and a game library",
+  "description": "souldew Renaissance – a souldew build for big groups: Pokémon SoulLinks and Nuzlockes with a built-in emulator, live sync through its own server and a game library",
   "license": "GPL-3.0-or-later",
-  "homepage": "https://github.com/souldewapp/souldew",
+  "homepage": "https://github.com/ralandel/souldew",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/souldewapp/souldew.git"
+    "url": "git+https://github.com/ralandel/souldew.git"
   },
   "bugs": {
-    "url": "https://github.com/souldewapp/souldew/issues"
+    "url": "https://github.com/ralandel/souldew/issues"
   },
   "funding": "https://buymeacoffee.com/souldew",
   "type": "module",
@@ -31,9 +31,8 @@
     "matrix": "node scripts/rom-matrix.mjs --live"
   },
   "updates": {
-    "repo": "souldewapp/souldew",
-    "feed": "https://github.com/{repo}/releases/latest/download/latest.json",
-    "publicKey": "MCowBQYDK2VwAyEANG4Ng/ROJT1UWYJ0XQ0k3ZfY3mYKKmiiF0tunuAzlBA="
+    "repo": "ralandel/souldew",
+    "feed": "https://github.com/{repo}/releases/latest/download/latest.json"
   },
   "engines": {
     "node": ">=22.15"
@@ -52,12 +51,12 @@
     "globals": "14.0.0"
   },
   "main": "electron/main.mjs",
-  "desktopName": "souldew.desktop",
+  "desktopName": "souldew-renaissance.desktop",
   "author": "souldew",
   "build": {
-    "appId": "studio.soullink.app",
-    "productName": "souldew",
-    "copyright": "souldew",
+    "appId": "com.pkmnrenaissance.souldew",
+    "productName": "souldew Renaissance",
+    "copyright": "souldew, souldew Renaissance",
     "asar": false,
     "directories": {
       "output": "dist",
@@ -130,10 +129,11 @@
             "LICENSE-*"
           ]
         }
-      ]
+      ],
+      "artifactName": "souldew-${version}-${arch}.${ext}"
     },
     "dmg": {
-      "title": "souldew",
+      "title": "souldew Renaissance",
       "background": "build/background.png",
       "iconSize": 96,
       "window": {
@@ -193,9 +193,9 @@
       "runAfterFinish": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "souldew",
+      "shortcutName": "souldew Renaissance",
       "include": "build/installer.nsh",
-      "uninstallDisplayName": "souldew",
+      "uninstallDisplayName": "souldew Renaissance",
       "deleteAppDataOnUninstall": false,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
@@ -204,10 +204,10 @@
       "icon": "build/icon.png",
       "category": "Game",
       "synopsis": "Pokémon SoulLinks and Nuzlockes with a built-in emulator",
-      "description": "Pokémon SoulLinks for 2–4 players and solo Nuzlockes: built-in emulator, live tracking from game memory, randomizer, real-time sync and OBS overlays.",
-      "maintainer": "souldew <https://github.com/souldewapp/souldew>",
-      "vendor": "souldew",
-      "executableName": "souldew",
+      "description": "souldew Renaissance: Pokémon SoulLinks and solo Nuzlockes with a built-in emulator, live tracking from game memory, randomizer, real-time sync through its own server and OBS overlays.",
+      "maintainer": "souldew Renaissance <https://github.com/ralandel/souldew>",
+      "vendor": "souldew Renaissance",
+      "executableName": "souldew-renaissance",
       "syncDesktopName": true,
       "target": [
         {

@@ -4,7 +4,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { SyncLink, BROKERS, PARTNER_TTL } from '../web/lib/sync.mjs';
+import { SyncLink, PARTNER_TTL } from '../web/lib/sync.mjs';
+
+// Three brokers, as a build may list (shared/edition.mjs): the redundancy logic is tested whatever this build ships with.
+const BROKERS = ['wss://broker-a.example:8084/mqtt', 'wss://broker-b.example:8884/mqtt', 'wss://broker-c.example:8081/mqtt'];
 import { RunDoc } from '../web/lib/doc.mjs';
 
 /**
@@ -203,7 +206,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const mkDoc = (by) => Object.assign(new RunDoc('sync-test'), { by, _persistSoon() {} });
 const links = [];
 function mkLink(net, slot, doc, o = {}) {
-  const l = new SyncLink({ room: 'room-s', secret: 'secret-s', slot, name: slot, doc, importers: { mqtt: net.importer, trystero: o.trystero || noP2P }, ...o });
+  const l = new SyncLink({ room: 'room-s', secret: 'secret-s', slot, name: slot, doc, importers: { mqtt: net.importer, trystero: o.trystero || noP2P }, brokers: BROKERS, ...o });
   links.push(l);
   return l;
 }

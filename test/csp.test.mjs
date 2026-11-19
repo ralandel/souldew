@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { inlineScriptHashes, brokerOrigins, trysteroRelays, cspFor } from '../server/lib/csp.mjs';
+import { inlineScriptHashes, syncSources, cspFor } from '../server/lib/csp.mjs';
+import { EDITION, syncOrigins } from '../shared/edition.mjs';
 
 const sha = (s) => `'sha256-${createHash('sha256').update(s, 'utf8').digest('base64')}'`;
 const directive = (policy, name) => policy.split('; ').find((d) => d.startsWith(`${name} `))?.split(' ').slice(1) || null;
@@ -13,12 +14,12 @@ test('inline scripts are hashed exactly as the browser sees them, external ones 
   assert.deepEqual(inlineScriptHashes(html), [sha('\nconsole.log(1)\n'), sha('x()')]);
 });
 
-test('broker origins and Trystero relays are read from the sources', () => {
-  assert.deepEqual(brokerOrigins("export const BROKERS = ['wss://a.example:8084/mqtt', 'wss://b.example/mqtt'];"), ['wss://a.example:8084', 'wss://b.example']);
-  assert.deepEqual(trysteroRelays('Ar=(/* @__PURE__ */ `nos.lol,r.example:8443`.split(`,`)).map(e=>`wss://`+e);'), ['wss://nos.lol', 'wss://r.example:8443']);
-  // the real vendored files still have the expected shape (otherwise the policy falls back to any wss:)
-  assert.ok(brokerOrigins(readFileSync(new URL('../web/lib/sync.mjs', import.meta.url), 'utf8')).length >= 1);
-  assert.ok(trysteroRelays(readFileSync(new URL('../web/vendor/trystero-nostr.min.js', import.meta.url), 'utf8')).length >= 5);
+test("the page may only reach this build's own brokers and signalling relays", () => {
+  assert.deepEqual(syncOrigins({ brokers: ['wss://a.example:8084/mqtt', 'wss://b.example/mqtt', 'not a url'], signalRelays: ['wss://b.example/nostr', 'https://c.example'] }), ['wss://a.example:8084', 'wss://b.example']);
+  const sources = syncSources();
+  assert.ok(sources.length >= 1 && sources.every((o) => /^wss:\/\/[^/]+$/.test(o)));
+  for (const u of [...EDITION.brokers, ...EDITION.signalRelays]) assert.ok(sources.includes(`wss://${new URL(u).host}`), u);
+  assert.ok(!sources.includes('wss:'), 'never any wss: host');
 });
 
 test('app pages: same-origin scripts only, sync relays allowed', () => {

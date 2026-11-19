@@ -12,6 +12,7 @@ import { detectJava, uprStatus, installUpr, runBridge, inspectRom } from './lib/
 import { preparePatchedRom, KNOWN_PATCHES } from './lib/roms.mjs';
 import { ROM_EXTENSIONS, PATCH_EXTENSIONS, isCtrExt, matchCatalog } from '../shared/romid.mjs';
 import { ALL_SLOTS, slotsOf, runMode } from '../shared/slots.mjs';
+import { EDITION } from '../shared/edition.mjs';
 import { scanLibrary, catalog, loadFile, importFiles, removeStaleParts, uploadTarget, resolveId, discoverRoms, approvedFolder, placeUploadedZip, unpackLibraryZip, MAX_CTR_BYTES, setRomHack, removeCtrUpdate } from './lib/library.mjs';
 import { freeBytes } from './lib/zip.mjs';
 import { saveCover, deleteCover, coverFile, customCovers, coverUrl, COVER_LIMIT } from './lib/covers.mjs';
@@ -530,7 +531,7 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
   /** The save watch of a run as the page gets it – with whether souldew can read and edit (the graveyard) its saves. */
   const watchStatus = (runId, manifest) => ({ ...watcher.status(runId), readable: !!parserOfRun(manifest), graveyard: isHgssRun(manifest) });
   // the anonymous "playing now" heartbeat – it reads the setting on every call, so "off" applies at once
-  const playingNow = presenceCounter({ enabled: () => loadConfig().presence !== false });
+  const playingNow = presenceCounter({ enabled: () => EDITION.presence && loadConfig().presence !== false });
   const live = new LiveBridge(emit);
   // 3DS in souldew's own player (server/lib/ctr.mjs): one game at a time
   const ctr = new CtrSessions();
@@ -922,7 +923,7 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
         padNav: config.padNav !== false,
         ctrRenderer: validRenderer(config.ctrRenderer),
         ctrScale: validScale(config.ctrScale),
-        presence: config.presence !== false,
+        presence: EDITION.presence && config.presence !== false,
       },
     };
   });

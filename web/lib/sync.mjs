@@ -8,9 +8,18 @@
 // Presence is tracked per slot: status.partners = { [slot]: { seen, via, p2p } } for every other player
 // that is live; status.partner / partnerSeen stay as "the partner heard from most recently" (older callers).
 
-// The app's former name, kept on purpose: every app in a run must meet in the same rooms, older versions too.
-const APP_ID = 'soullink-studio-v1';
-export const BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081/mqtt'];
+// Servers and namespace come from this build's edition (shared/edition.mjs): its own brokers, signalling relays and
+// STUN/TURN, and an app id / topic root of its own, so it never meets another build's apps in a room. (Relative
+// import: it resolves to /shared/ in the page and to the repository's shared/ in Node.)
+import { EDITION } from '../../shared/edition.mjs';
+
+const APP_ID = EDITION.netId;
+export const BROKERS = [...EDITION.brokers];
+/** Trystero options for this build's servers: its signalling relays and its STUN/TURN (instead of the public defaults). */
+export const P2P_CONFIG = Object.freeze({
+  relayConfig: { urls: [...EDITION.signalRelays] },
+  rtcConfig: { iceServers: EDITION.iceServers.map((s) => ({ ...s })) },
+});
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -166,6 +175,7 @@ export class SyncLink {
    * onMessage(msg) receives non-doc messages (chat, pings) from the other players (msg.from = their slot).
    * onPartnerScreen(view, slot) (optional) receives every change of any partner's screen – see watchPartnerScreen().
    * importers (optional, for tests/Node): { mqtt: () => import('mqtt'), trystero: () => … }
+   * brokers (optional, for tests): MQTT broker URLs instead of the edition's (BROKERS)
    */
   constructor(o) {
     Object.assign(this, o);
@@ -254,7 +264,7 @@ export class SyncLink {
     const hash = await sha256hex(`${this.room}:${this.secret}`);
     if (this.stopped) return;
     this.key = key;
-    this.topic = `slstudio/v1/${hash.slice(0, 32)}`;
+    this.topic = `${EDITION.topicRoot}/v1/${hash.slice(0, 32)}`;
     this.unsubs.push(this.doc.onLocalChange((entries) => this._queue(entries)));
     await Promise.allSettled([this._startP2P(), this._startRelay()]);
     if (this.stopped) return;
@@ -542,7 +552,7 @@ export class SyncLink {
       if (this.stopped) return;
       this.trysteroMod = mod;
       const { joinRoom } = mod;
-      const room = joinRoom({ appId: APP_ID, password: this.secret }, this.room);
+      const room = joinRoom({ appId: APP_ID, password: this.secret, ...P2P_CONFIG }, this.room);
       this.trysteroRoom = room;
       const action = room.makeAction('ops');
       this.ops = action;
@@ -629,7 +639,7 @@ export class SyncLink {
       if (this.stopped) return;
       const mqtt = mod.default || mod;
       this._set({ relay: 'connecting' });
-      this.mqtt = relayGroup(BROKERS.map((url) => this._relayClient(mqtt, url)));
+      this.mqtt = relayGroup((this.brokers || BROKERS).map((url) => this._relayClient(mqtt, url)));
     } catch (e) {
       console.warn('relay unavailable', e);
       this._set({ relay: 'error', error: `Relay: ${e.message}` });

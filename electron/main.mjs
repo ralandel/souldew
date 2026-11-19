@@ -11,20 +11,21 @@ import { grantPicked } from '../server/lib/grants.mjs';
 import { chromiumSwitches, startDecision, crashDecision, gpuInfoSummary, safeGraphicsRequested, withoutSafeGraphics } from '../shared/gpu.mjs';
 import { sameOrigin, safeExternalUrl, subframeNavigationAllowed, permissionAllowed, isTrustedIpcSender, titleBarColors, initialWindowSize } from './guards.mjs';
 import { appLang, textsFor } from './texts.mjs';
+import { EDITION } from '../shared/edition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MAC = process.platform === 'darwin';
 const WIN = process.platform === 'win32';
 const LINUX = process.platform === 'linux';
-app.setName('souldew');
+app.setName(EDITION.name);
 // Windows: the same id as the installer's shortcuts (package.json → build.appId), so the taskbar groups the window
 // with a pinned shortcut and shows the app's own name and icon.
-if (WIN) app.setAppUserModelId('studio.soullink.app');
-// The app used to be called "SoulLink Studio": its data folder keeps that name, so runs, saves, settings and the
-// web storage (localStorage, EmulatorJS' IndexedDB) carry over after the rename. (macOS: ~/Library/Application
-// Support/SoulLink Studio, Windows: %APPDATA%\SoulLink Studio, Linux: ~/.config/SoulLink Studio – $XDG_CONFIG_HOME.)
+if (WIN) app.setAppUserModelId(EDITION.appId);
+// This build's own data folder (shared/edition.mjs), never the official app's "SoulLink Studio" one: runs, saves,
+// settings and the web storage stay apart, so both apps can be installed side by side. (macOS: ~/Library/Application
+// Support/<folder>, Windows: %APPDATA%\<folder>, Linux: ~/.config/<folder> – $XDG_CONFIG_HOME.)
 // An explicit --user-data-dir (tests, a second profile) still wins.
-if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', join(app.getPath('appData'), 'SoulLink Studio'));
+if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', join(app.getPath('appData'), EDITION.dataFolder));
 // Boot chime + emulator audio without a prior click.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // The game must keep running when the window is covered by another app: without these Chromium treats an
@@ -127,7 +128,7 @@ async function boot() {
   const { startServer } = await import('../server/app.mjs');
   // A fixed port keeps the page origin stable, so localStorage and EmulatorJS' IndexedDB survive
   // restarts; only if it's taken fall back to a random one.
-  const { url } = await startServer({ port: 47390 }).catch((e) => {
+  const { url } = await startServer({ port: EDITION.port }).catch((e) => {
     if (e.code !== 'EADDRINUSE') throw e;
     return startServer({ port: 0 });
   });
@@ -164,7 +165,7 @@ function createWindow() {
   }
   win = new BrowserWindow({
     ...initialWindowSize(workArea),
-    title: 'souldew',
+    title: EDITION.name,
     backgroundColor: '#1b1a1f',
     ...windowChrome(),
     // the window / taskbar icon when running from source (`npm run app`) – and always on Linux, where X11 window
@@ -310,7 +311,7 @@ function buildMenu(labels = {}) {
   const settings = { label: l('settings', t('menu.settings', 'Settings …')), accelerator: 'CmdOrCtrl+,', click: nav('settings') };
   const template = [
     ...(MAC ? [{
-      label: 'souldew',
+      label: EDITION.name,
       submenu: [
         { role: 'about' },
         { type: 'separator' },

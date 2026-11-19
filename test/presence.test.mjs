@@ -10,6 +10,7 @@ import { createServer } from 'node:http';
 import { presenceLoop, presenceSystem, presenceBody } from '../web/lib/presence.mjs';
 import { createPresence, presenceOf } from '../server/lib/presence.mjs';
 import { LIVE_RUNS_URL, LIVE_RUNS_FALLBACK_URL } from '../server/lib/liveruns.mjs';
+import { EDITION } from '../shared/edition.mjs';
 
 const DATA = mkdtempSync(join(tmpdir(), 'souldew-presence-'));
 process.env.SLS_DATA_DIR = DATA;
@@ -141,7 +142,8 @@ test('server: the setting is obeyed at once – off: nothing sent, switched off 
 test('server: offline is silent – no throw, the fallback address tried once, the next minute tries again', async () => {
   const bot = fakeBot({ fail: true });
   let clock = 0;
-  const p = createPresence({ fetchImpl: bot.fetchImpl, env: {}, version: () => '2.7.4', now: () => clock, timers: fakeTimers() });
+  // (with the official bot as the build's bot – this build has none, see the route test)
+  const p = createPresence({ fetchImpl: bot.fetchImpl, env: {}, edition: { liveRunsUrl: LIVE_RUNS_URL }, version: () => '2.7.4', now: () => clock, timers: fakeTimers() });
   const r = await p.beat({ system: '3ds', mode: 'nuzlocke' });
   assert.equal(r.sent, false);
   assert.deepEqual(bot.calls.map((c) => c.url), [`${LIVE_RUNS_URL}/presence`, `${LIVE_RUNS_FALLBACK_URL}/presence`]);
@@ -217,6 +219,15 @@ const call = async (method, path, body) => {
 
 test('route: /api/presence forwards while on, the setting shows in the status, switching off stops at once', async () => {
   await starting;
+  if (!EDITION.presence) {
+    // this build sends no heartbeat at all (shared/edition.mjs → presence: false): off in the status, whatever the setting
+    assert.equal((await call('GET', '/api/status')).body.config.presence, false);
+    await call('POST', '/api/config', { presence: true });
+    assert.equal((await call('GET', '/api/status')).body.config.presence, false);
+    assert.equal((await call('POST', '/api/presence', { system: 'nds', mode: 'soullink' })).body.sent, false);
+    assert.equal(seen.length, 0, 'nothing ever reaches the bot');
+    return;
+  }
   assert.equal((await call('GET', '/api/status')).body.config.presence, true, 'on unless switched off');
   const r = await call('POST', '/api/presence', { system: 'nds', mode: 'soullink' });
   assert.equal(r.status, 200);

@@ -3,8 +3,7 @@
 // so editing an inline script never needs a manual hash update (and nothing else inline can run).
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-import { WEB_DIR } from './paths.mjs';
+import { syncOrigins, EDITION } from '../../shared/edition.mjs';
 
 /** 'sha256-…' sources for every inline <script> (no src attribute) in an HTML document. */
 export function inlineScriptHashes(html) {
@@ -18,38 +17,9 @@ export function inlineScriptHashes(html) {
   return [...new Set(out)];
 }
 
-/** Origins of the public MQTT brokers (BROKERS in web/lib/sync.mjs). */
-export function brokerOrigins(syncSource) {
-  const list = String(syncSource).match(/BROKERS\s*=\s*\[([^\]]*)\]/);
-  const urls = list ? [...list[1].matchAll(/['"`](wss:\/\/[^'"`]+)['"`]/g)].map((m) => m[1]) : [];
-  return [...new Set(urls.map((u) => { try { return new URL(u).origin.replace(/^https?:/, 'wss:'); } catch { return null; } }).filter(Boolean))];
-}
-
-/** Default Nostr relays the vendored Trystero build connects to (a comma list prefixed with wss://). */
-export function trysteroRelays(trysteroSource) {
-  const m = String(trysteroSource).match(/`([a-z0-9.,:-]+)`\.split\(`,`\)\)\.map\(\(?\w+\)?=>`wss:\/\/`\+\w+\)/i);
-  return m ? m[1].split(',').filter(Boolean).map((h) => `wss://${h}`) : [];
-}
-
-let relayCache = null;
-function syncSources() {
-  if (relayCache) return relayCache;
-  let brokers = [];
-  let relays = [];
-  try {
-    brokers = brokerOrigins(readFileSync(join(WEB_DIR, 'lib', 'sync.mjs'), 'utf8'));
-  } catch {
-    // fall through to the generic wss: below
-  }
-  try {
-    relays = trysteroRelays(readFileSync(join(WEB_DIR, 'vendor', 'trystero-nostr.min.js'), 'utf8'));
-  } catch {
-    // idem
-  }
-  // If either list can't be read (format changed) allow any wss: host rather than silently breaking sync.
-  relayCache = brokers.length && relays.length ? [...brokers, ...relays] : ['wss:'];
-  return relayCache;
-}
+/** The sockets the page may open: this build's brokers and signalling relays (shared/edition.mjs). Nothing else –
+ *  not the public brokers or Nostr relays the official app uses. */
+export const syncSources = () => syncOrigins(EDITION);
 
 /**
  * The policy for one HTML page.

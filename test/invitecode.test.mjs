@@ -84,7 +84,7 @@ test('code derivation: deterministic, slow-KDF topic that does not show the code
   assert.deepEqual(a.pad, b.pad);
   assert.notEqual(a.topic, c.topic);
   assert.notDeepEqual(a.pad, c.pad);
-  assert.match(a.topic, /^slstudio\/invite\/v1\/[0-9a-f]{32}$/);
+  assert.match(a.topic, /^souldew\/[a-z0-9-]+\/invite\/v1\/[0-9a-f]{32}$/);
   assert.ok(!a.topic.includes('123456'));
   assert.equal(a.pad.length, 32);
   assert.ok(!a.topic.includes(Buffer.from(a.pad.subarray(0, 8)).toString('hex')), 'the pad is not part of the topic');

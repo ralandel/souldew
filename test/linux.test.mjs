@@ -88,8 +88,8 @@ test('release: the asset names are exactly what electron-builder builds (package
   assert.deepEqual(pkg.build.linux.extraResources, [{ from: 'tools/jre/linux-x64', to: 'tools/jre/linux-x64' }, { from: 'tools/ctr/linux-x64', to: 'tools/ctr/linux-x64' },
     { from: 'tools/native/linux-x64', to: 'tools/native/linux-x64', filter: ['retrohost*', '*_libretro.*', 'SOURCES.txt', 'LICENSE-*'] }]);
   assert.ok(pkg.build.linux.files.includes('build/icon.png'));
-  assert.equal(pkg.desktopName, 'souldew.desktop');
-  assert.equal(pkg.build.linux.executableName, 'souldew');
+  assert.equal(pkg.desktopName, `${pkg.build.linux.executableName}.desktop`);
+  assert.equal(pkg.build.linux.executableName, 'souldew-renaissance'); // not the official app's 'souldew'
   assert.equal(pkg.build.linux.category, 'Game');
 });
 

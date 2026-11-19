@@ -2,6 +2,18 @@
 
 `npm run release` takes the release notes from the section of the version being released.
 
+## souldew Renaissance – à venir
+
+- **souldew Renaissance a sa propre identité.** Elle s'installe à côté de souldew officiel sans le remplacer : son propre
+  dossier d'installation, son dossier de données (`souldew Renaissance`), son raccourci et son port local. Les runs de
+  l'une ne sont pas visibles dans l'autre.
+- **La sync passe par le serveur de souldew Renaissance** (`souldew.pkmnrenaissance.com`) au lieu des serveurs publics :
+  le broker qui conserve l'état des runs, le relais qui met les joueurs en relation et un serveur TURN qui relie aussi
+  les joueurs bloqués par leur box. Tout reste chiffré de bout en bout. Une run créée avec souldew Renaissance ne peut
+  être rejointe qu'avec souldew Renaissance.
+- **Les services en ligne de souldew officiel sont coupés** : pas de partage sur le Discord de souldew ni de compteur
+  « playing now ». Les mises à jour viendront des releases de souldew Renaissance.
+
 ## 2.8.3
 
 - **Nothing counts before your first Poké Balls** (thanks to players on Discord). Most Nuzlocke rules only start once

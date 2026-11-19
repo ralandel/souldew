@@ -29,7 +29,7 @@ export function presenceOf(body) {
  * One per local server. `enabled()` reads the setting at every call, so switching it off takes effect at once.
  * fetchImpl / env / now / timers are for the tests.
  */
-export function createPresence({ enabled = () => true, fetchImpl = fetch, env = process.env, version = souldewVersion, now = Date.now, timers = globalThis } = {}) {
+export function createPresence({ enabled = () => true, fetchImpl = fetch, env = process.env, edition, version = souldewVersion, now = Date.now, timers = globalThis } = {}) {
   let sid = null; // the running game's id while the bot knows about it
   let lastKey = '';
   let lastSent = 0;
@@ -37,7 +37,7 @@ export function createPresence({ enabled = () => true, fetchImpl = fetch, env = 
   let every = EVERY_MS;
 
   const post = async (body) => {
-    for (const base of liveBases(env)) {
+    for (const base of liveBases(env, edition)) {
       try {
         const r = await fetchImpl(`${base}/presence`, {
           method: 'POST', redirect: 'error', signal: AbortSignal.timeout(TIMEOUT_MS),

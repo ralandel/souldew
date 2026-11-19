@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseVersion, compareVersions, isNewer, isAllowedUrl, validateFeed, updateAction, digestsMatch, feedUrlFrom, dmgAssetName, winAssetName, assetFor, platformKey, actionFor } from '../shared/update.mjs';
+import { EDITION } from '../shared/edition.mjs';
 import { fetchChecked, nsisInstallDir, installerArgs, launchInstaller, windowsInstallPlan, cleanupWorkDir } from '../electron/update-core.mjs';
 import { sha256File, verifyFile, fetchFeed, downloadFile, bundleFromExe, isTranslocated, stagingDirFor, canReplace, swapBundle, cleanupStaging } from '../electron/update-core.mjs';
 import { changelogSection, buildFeed } from '../scripts/release.mjs';
@@ -466,7 +467,7 @@ test('backward compatible: souldew 2.0.0 accepts and verifies a signed feed with
 });
 
 test('Windows install: only an app installed by the NSIS installer updates itself', () => {
-  const files = new Set(['C:\\Users\\Ana\\AppData\\Local\\Programs\\souldew\\Uninstall souldew.exe']);
+  const files = new Set([`C:\\Users\\Ana\\AppData\\Local\\Programs\\souldew\\Uninstall ${EDITION.name}.exe`]);
   const exists = (p) => files.has(p);
   assert.equal(nsisInstallDir('C:\\Users\\Ana\\AppData\\Local\\Programs\\souldew\\souldew.exe', { exists }), 'C:\\Users\\Ana\\AppData\\Local\\Programs\\souldew');
   assert.equal(nsisInstallDir('D:\\build\\win-unpacked\\souldew.exe', { exists }), null); // unpacked / portable

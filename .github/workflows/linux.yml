@@ -102,14 +102,14 @@ jobs:
           test -f "$appimage" || { echo "::error::missing $appimage"; exit 1; }
           test -f "$deb" || { echo "::error::missing $deb"; exit 1; }
           printf '%s  %s MB\n' "$appimage" "$(( $(stat -c %s "$appimage") / 1048576 ))" "$deb" "$(( $(stat -c %s "$deb") / 1048576 ))"
-          test -x dist/linux-unpacked/souldew
+          test -x dist/linux-unpacked/souldew-renaissance
           test -x dist/linux-unpacked/resources/tools/jre/linux-x64/bin/java || { echo '::error::JRE not bundled'; exit 1; }
           test -f dist/linux-unpacked/resources/app/build/icon.png || { echo '::error::window icon not bundled'; exit 1; }
           dpkg-deb --info "$deb"
-          dpkg-deb --contents "$deb" | grep -E '/opt/souldew/resources/tools/jre/linux-x64/bin/java$'
+          dpkg-deb --contents "$deb" | grep -E '/opt/souldew Renaissance/resources/tools/jre/linux-x64/bin/java$'
 
       - name: Smoke test – unpacked app (incl. one-click melonDS + mGBA AppImages through the app)
-        run: xvfb-run -a node scripts/smoke-app.mjs dist/linux-unpacked/souldew --screenshot smoke-unpacked.png --emulators
+        run: xvfb-run -a node scripts/smoke-app.mjs dist/linux-unpacked/souldew-renaissance --screenshot smoke-unpacked.png --emulators
 
       - name: Smoke test – the AppImage
         run: |
@@ -132,15 +132,15 @@ jobs:
         run: |
           v=$(node -p "require('./package.json').version")
           sudo apt-get install -y "./dist/souldew-$v-linux-amd64.deb"
-          test -x /opt/souldew/souldew
-          desktop=/usr/share/applications/souldew.desktop
+          test -x '/opt/souldew Renaissance/souldew-renaissance'
+          desktop=/usr/share/applications/souldew-renaissance.desktop
           cat "$desktop"
-          grep -q '^StartupWMClass=souldew$' "$desktop" || { echo '::error::StartupWMClass does not match the app id'; exit 1; }
+          grep -q '^StartupWMClass=souldew-renaissance$' "$desktop" || { echo '::error::StartupWMClass does not match the app id'; exit 1; }
           grep -q '^Categories=Game;' "$desktop" || { echo '::error::not listed under Games'; exit 1; }
-          command -v souldew
-          xvfb-run -a node scripts/smoke-app.mjs /opt/souldew/souldew
-          sudo apt-get remove -y souldew
-          if [ -e /opt/souldew/souldew ]; then echo '::error::apt left the app behind'; exit 1; fi
+          command -v souldew-renaissance
+          xvfb-run -a node scripts/smoke-app.mjs '/opt/souldew Renaissance/souldew-renaissance'
+          sudo apt-get remove -y souldew-renaissance
+          if [ -e '/opt/souldew Renaissance/souldew-renaissance' ]; then echo '::error::apt left the app behind'; exit 1; fi
           echo 'install / start / remove: ok'
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

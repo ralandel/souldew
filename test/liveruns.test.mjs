@@ -166,9 +166,14 @@ test('the base URL: the bot’s own domain first, the workers.dev address only a
   assert.equal(LIVE_RUNS_URL, `https://${['api', 'souldew', 'app'].join('.')}`);
   // (the addresses are built here, so that server/lib/liveruns.mjs stays the only file naming them – test/secrets.test.mjs)
   assert.equal(LIVE_RUNS_FALLBACK_URL, `https://${['souldew-discord-bot', 'sweeparena', 'workers', 'dev'].join('.')}`);
-  assert.deepEqual(liveBases({}), [LIVE_RUNS_URL, LIVE_RUNS_FALLBACK_URL]);
-  assert.deepEqual(liveBases({ SOULDEW_LIVE_URL: 'http://evil.example' }), [LIVE_RUNS_URL, LIVE_RUNS_FALLBACK_URL]);
+  const official = { liveRunsUrl: LIVE_RUNS_URL };
+  assert.deepEqual(liveBases({}, official), [LIVE_RUNS_URL, LIVE_RUNS_FALLBACK_URL]);
+  assert.deepEqual(liveBases({ SOULDEW_LIVE_URL: 'http://evil.example' }, official), [LIVE_RUNS_URL, LIVE_RUNS_FALLBACK_URL]);
   assert.deepEqual(liveBases({ SOULDEW_LIVE_URL: 'http://127.0.0.1:5555/' }), ['http://127.0.0.1:5555'], 'a mock bot alone');
+  // a build without a bot (shared/edition.mjs liveRunsUrl: null) sends nothing anywhere; one with its own bot uses only that
+  assert.deepEqual(liveBases({}, { liveRunsUrl: null }), []);
+  assert.deepEqual(liveBases({ SOULDEW_LIVE_URL: 'nonsense' }, { liveRunsUrl: null }), []);
+  assert.deepEqual(liveBases({}, { liveRunsUrl: 'https://bot.example' }), ['https://bot.example']);
 });
 
 test('the fallback: only when the bot’s own domain gives no answer at all – same request, still no redirects', async () => {

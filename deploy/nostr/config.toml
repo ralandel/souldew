@@ -1,0 +1,22 @@
+# /opt/souldew-nostr/config.toml – Nostr relay (nostr-rs-relay) used only for souldew Renaissance's WebRTC signalling.
+# Trystero sends ephemeral events (kinds 20000–29999): relayed live, never stored.
+[info]
+relay_url = "wss://souldew.pkmnrenaissance.com/nostr"
+name = "souldew Renaissance signalling"
+description = "WebRTC signalling for souldew Renaissance – ephemeral events only."
+
+[network]
+address = "0.0.0.0"
+port = 8080
+# nginx passes the player's address (rate limits per IP instead of per nginx)
+remote_ip_header = "x-real-ip"
+
+[options]
+reject_future_seconds = 1800
+
+[limits]
+messages_per_sec = 30
+subscriptions_per_min = 120
+max_event_bytes = 131072
+max_ws_message_bytes = 131072
+max_ws_frame_bytes = 131072

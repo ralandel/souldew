@@ -33,13 +33,14 @@
 //    error replies (denial of service) is always possible on a public broker.
 // Relay only, no Trystero: its room password would be the bare 6-digit code, and the handshake is a few messages.
 //
-// Wire format, <T> = slstudio/invite/v1/<topic id>, rid = the partner's random request id, nothing retained:
+// Wire format, <T> = <edition topicRoot>/invite/v1/<topic id>, rid = the partner's random request id, nothing retained:
 //   req/<rid>    partner → host  JSON { v, key: masked B }               resent until answered
 //   res/<rid>    host → partner  JSON { v, key: masked A } | { v, error }
 //   hello/<rid>  partner → host  sealed { kind: 'hello', name }          resent until the host decided
 //   pack/<rid>   host → partner  sealed { kind: 'pack', ok, pack?, slot?, taken? } | JSON { v, error }
 //   ack/<rid>    partner → host  sealed { kind: 'ack' }    bye/<rid>  sealed { kind: 'bye' } when the partner gives up
 import { BROKERS, seal, open } from './sync.mjs';
+import { EDITION } from '../../shared/edition.mjs';
 
 export const CODE_TTL = 15 * 60000;
 export const KDF_ITERATIONS = 1000000;
@@ -121,7 +122,7 @@ export async function deriveCodeKeys(code, iterations = KDF_ITERATIONS) {
   if (!c) throw new Error('invalid code');
   const base = await crypto.subtle.importKey('raw', enc.encode(c), 'PBKDF2', false, ['deriveBits']);
   const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: enc.encode(SALT), iterations, hash: 'SHA-256' }, base, 384));
-  return { topic: `slstudio/invite/v1/${hex(bits.subarray(0, 16))}`, pad: bits.slice(16, 48) };
+  return { topic: `${EDITION.topicRoot}/invite/v1/${hex(bits.subarray(0, 16))}`, pad: bits.slice(16, 48) };
 }
 
 let supported = null;

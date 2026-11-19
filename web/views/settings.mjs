@@ -13,7 +13,8 @@ import { buttonLabel, comboLabel, hotkeyLabel } from './guide.mjs';
 import { UpdateSection } from './update.mjs';
 import { PLATFORM } from '../lib/platform.mjs';
 import { gpuBackends } from '/shared/gpu.mjs';
-import { LiveRunsSettings } from './liveshare.mjs';
+import { LiveRunsSettings, LIVE_RUNS } from './liveshare.mjs';
+import { EDITION } from '/shared/edition.mjs';
 import { suspendPadNav } from '../lib/padnav.mjs';
 
 const SYSTEMS = [['gb', 'Game Boy'], ['gbc', 'Game Boy Color'], ['gba', 'Game Boy Advance'], ['nds', 'Nintendo DS'], ['3ds', 'Nintendo 3DS']];
@@ -491,9 +492,9 @@ export function SettingsView() {
       <label class="check"><input type="checkbox" checked=${cfg.sounds !== false} onChange=${(e) => save({ sounds: e.target.checked })} /><span>${t('set.soundsAll', 'Sounds on this computer (start-up chime, catches, deaths, badges, pings)')}</span></label>
       <label class="check"><input type="checkbox" checked=${cfg.shareScreen !== false} onChange=${(e) => save({ shareScreen: e.target.checked })} /><span>${t('set.shareScreenAll', 'Share my screen with the other players')}
         <span class="hint">${t('set.shareScreenHint', 'While you play, the others see your game small in a corner. It is only sent while someone is watching.')}</span></span></label>
-      <label class="check"><input type="checkbox" checked=${cfg.presence !== false} onChange=${(e) => save({ presence: e.target.checked })} /><span>${t('set.presence', 'Count me in “playing now” (anonymous)')}
+      ${EDITION.presence && html`<label class="check"><input type="checkbox" checked=${cfg.presence !== false} onChange=${(e) => save({ presence: e.target.checked })} /><span>${t('set.presence', 'Count me in “playing now” (anonymous)')}
         <span class="hint">${t('set.presenceHint', 'Only while a game runs: system, solo/Nuzlocke/SoulLink and app version with a random id, for the player count on the souldew Discord – no name, no game, no IP stored.')}
-          ${' '}<a href=${LINKS.privacy} onClick=${(e) => { e.preventDefault(); e.stopPropagation(); openExternal(currentLang() === 'de' ? LINKS.privacy : LINKS.privacyDocs); }}>${t('set.presenceMore', 'What exactly is sent')}</a></span></span></label>
+          ${' '}<a href=${LINKS.privacy} onClick=${(e) => { e.preventDefault(); e.stopPropagation(); openExternal(currentLang() === 'de' ? LINKS.privacy : LINKS.privacyDocs); }}>${t('set.presenceMore', 'What exactly is sent')}</a></span></span></label>`}
       <${GraphicsSetting} cfg=${cfg} save=${save} />
       <div><button class="btn ghost small" onClick=${() => save({ onboarded: false })}>${t('set.replayOnboarding', 'Show the welcome tour again')}</button></div>
     </section>
@@ -546,10 +547,10 @@ export function SettingsView() {
       }}><${Icon} name="plus" size=${14} />${t('set.addFolder', 'Include a folder')}</button></div>`}
     </section>
 
-    <section class="panel stack" id="set-discord">
+    ${LIVE_RUNS && html`<section class="panel stack" id="set-discord">
       <h2>Discord</h2>
       <${LiveRunsSettings} />
-    </section>
+    </section>`}
 
     <section class="panel stack">
       <h2>${t('set.about', 'About')}</h2>

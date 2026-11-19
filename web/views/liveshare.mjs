@@ -10,6 +10,10 @@ import { normalizeCode } from '/shared/liveruns.mjs';
 import { useLiveRuns, refreshLiveRuns, setLiveRunsState, shareEvent, shareErrorText, endEvent, cardModel } from '../lib/liveshare.mjs';
 import { renderCardPng } from '../lib/livecard.mjs';
 import { spriteUrl } from '../lib/data.mjs';
+import { EDITION } from '/shared/edition.mjs';
+
+/** This build talks to a Discord bot (shared/edition.mjs) – without one, none of these buttons or settings show. */
+export const LIVE_RUNS = !!EDITION.liveRunsUrl;
 
 /** The Discord mark, small (the share buttons). */
 const DiscordGlyph = ({ size = 14 }) => html`<svg viewBox="0 0 16 16" width=${size} height=${size} aria-hidden="true" class="px">
@@ -20,6 +24,7 @@ const DiscordGlyph = ({ size = 14 }) => html`<svg viewBox="0 0 16 16" width=${si
  * Once shared – by this player or a partner (the bot answers 409) – it says so and stays off for that event.
  */
 export function ShareButton({ event, small = false }) {
+  if (!LIVE_RUNS) return null;
   const { doc, manifest, runData, toast, navigate } = useApp();
   const lr = useLiveRuns();
   const [busy, setBusy] = useState(false);
@@ -102,6 +107,7 @@ function useCardPreview(doc, manifest, gen, event, app) {
  * linked (Live runs); otherwise it says how to link it. `compact`: one line for the board's banner (no preview).
  */
 export function HallOfFame({ status, compact = false, onLeave }) {
+  if (!LIVE_RUNS) return null;
   const { doc, manifest, runData, toast, navigate } = useApp();
   const lr = useLiveRuns();
   const event = status?.state === 'won' && manifest ? endEvent(manifest, status) : null;
@@ -168,6 +174,7 @@ export function HallOfFame({ status, compact = false, onLeave }) {
 
 /** Settings › Discord › Live runs: link with the code from /live connect, see the account and today's posts, unlink. */
 export function LiveRunsSettings() {
+  if (!LIVE_RUNS) return null;
   const { toast } = useApp();
   const lr = useLiveRuns();
   const [code, setCode] = useState('');

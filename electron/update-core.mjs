@@ -14,6 +14,7 @@ import { join, dirname, basename, sep, win32, posix } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Readable } from 'node:stream';
 import { validateFeed, isAllowedUrl, digestsMatch, canonicalFeed, MAX_UPDATE_SIZE } from '../shared/update.mjs';
+import { EDITION } from '../shared/edition.mjs';
 
 function fail(code, message) {
   const e = new Error(message);
@@ -340,12 +341,12 @@ export async function stageFromDmg({ dmg, bundle, version, log = () => {} }) {
 
 // ---- Windows: the NSIS installer --------------------------------------------------------------
 // electron-builder's NSIS installer (package.json → build.nsis: one-click, per user, no admin rights) puts
-// "Uninstall souldew.exe" next to souldew.exe. Started with /S --updated it waits for the running app to exit
+// "Uninstall <productName>.exe" next to the app's exe. Started with /S --updated it waits for the running app to exit
 // (and closes it if needed), replaces the program files silently and – with --force-run – starts the new version.
 // Path handling uses path.win32, so this is testable on any OS.
 
 /** Install folder of an app installed by the NSIS installer, or null (unpacked build, portable copy, development). */
-export function nsisInstallDir(exePath, { exists = existsSync, productName = 'souldew' } = {}) {
+export function nsisInstallDir(exePath, { exists = existsSync, productName = EDITION.name } = {}) {
   if (typeof exePath !== 'string' || !win32.isAbsolute(exePath) || !/\.exe$/i.test(exePath)) return null;
   const dir = win32.dirname(exePath);
   return exists(win32.join(dir, `Uninstall ${productName}.exe`)) ? dir : null;

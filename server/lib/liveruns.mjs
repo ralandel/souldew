@@ -11,6 +11,7 @@ import { join, dirname } from 'node:path';
 import { DATA_DIR, DEV, APP_ROOT } from './paths.mjs';
 import { writeFileAtomic, httpError } from './fsutil.mjs';
 import { buildMeta, metaProblem, normalizeCode, pngProblem } from '../../shared/liveruns.mjs';
+import { EDITION } from '../../shared/edition.mjs';
 
 /** The bot's public address (the contract's base URL). SOULDEW_LIVE_URL replaces it – for tests against a mock bot. */
 export const LIVE_RUNS_URL = 'https://api.souldew.app';
@@ -36,10 +37,15 @@ export function liveBase(env = process.env) {
   return LIVE_RUNS_URL;
 }
 
-/** The addresses a request tries, in order: SOULDEW_LIVE_URL alone (a test never reaches the real bot), else the bot's. */
-export function liveBases(env = process.env) {
+/**
+ * The addresses a request tries, in order: SOULDEW_LIVE_URL alone (a test never reaches the real bot); else this build's
+ * bot (shared/edition.mjs → liveRunsUrl) – none at all when the build has none, so nothing is ever sent (presence too).
+ */
+export function liveBases(env = process.env, edition = EDITION) {
   const base = liveBase(env);
-  return base === LIVE_RUNS_URL ? [LIVE_RUNS_URL, LIVE_RUNS_FALLBACK_URL] : [base];
+  if (base !== LIVE_RUNS_URL) return [base];
+  if (!edition.liveRunsUrl) return [];
+  return edition.liveRunsUrl === LIVE_RUNS_URL ? [LIVE_RUNS_URL, LIVE_RUNS_FALLBACK_URL] : [edition.liveRunsUrl];
 }
 
 /** Where the token lives: the data folder (in development the ignored runs/ folder, like config.json). */

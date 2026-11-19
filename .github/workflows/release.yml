@@ -84,7 +84,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false' # unsigned (no certificate) – README explains SmartScreen
         run: npx electron-builder --win nsis --x64 --publish never
       - name: Smoke test
-        run: node scripts/smoke-app.mjs dist/win-unpacked/souldew.exe
+        run: node scripts/smoke-app.mjs "dist/win-unpacked/souldew Renaissance.exe"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows
@@ -125,7 +125,7 @@ jobs:
       - name: Build the AppImage and the .deb
         run: npx electron-builder --linux AppImage deb --x64 --publish never
       - name: Smoke test
-        run: xvfb-run -a node scripts/smoke-app.mjs dist/linux-unpacked/souldew
+        run: xvfb-run -a node scripts/smoke-app.mjs dist/linux-unpacked/souldew-renaissance
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: linux

@@ -87,7 +87,7 @@ jobs:
           if (-not (Test-Path dist/win-unpacked/resources/tools/native/win32-x64/melondsds_libretro.dll)) { throw 'fast player part not bundled' }
 
       - name: Smoke test – unpacked app (incl. one-click melonDS zip + mGBA 7z install through the app)
-        run: node scripts/smoke-app.mjs dist/win-unpacked/souldew.exe --screenshot smoke-unpacked.png --emulators
+        run: node scripts/smoke-app.mjs "dist/win-unpacked/souldew Renaissance.exe" --screenshot smoke-unpacked.png --emulators
 
       - name: Smoke test – install silently, start the installed app, uninstall
         shell: pwsh
@@ -95,13 +95,13 @@ jobs:
           $v = node -p "require('./package.json').version"
           $setup = Resolve-Path "dist/souldew-$v-win-x64-setup.exe"
           Start-Process -FilePath $setup -ArgumentList '/S' -Wait
-          $dir = Join-Path $env:LOCALAPPDATA 'Programs\souldew'
-          foreach ($f in 'souldew.exe', 'Uninstall souldew.exe', 'resources\tools\jre\win32-x64\bin\java.exe') {
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\souldew-renaissance'
+          foreach ($f in 'souldew Renaissance.exe', 'Uninstall souldew Renaissance.exe', 'resources\tools\jre\win32-x64\bin\java.exe') {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "not installed: $f" }
           }
-          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'souldew.lnk'
+          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'souldew Renaissance.lnk'
           if (-not (Test-Path $lnk)) { throw "no start menu shortcut ($lnk)" }
-          node scripts/smoke-app.mjs (Join-Path $dir 'souldew.exe') --screenshot smoke-installed.png --lang de
+          node scripts/smoke-app.mjs (Join-Path $dir 'souldew Renaissance.exe') --screenshot smoke-installed.png --lang de
           if ($LASTEXITCODE -ne 0) { throw 'installed app failed the smoke test' }
 
           # What the in-app updater does on "Restart now": the app quits through its normal path and, in will-quit,
@@ -110,12 +110,12 @@ jobs:
           # while it is shutting down.
           function Wait-Server([int]$seconds) {
             for ($i = 0; $i -lt $seconds; $i++) {
-              try { Invoke-RestMethod http://127.0.0.1:47390/api/status -Headers @{ 'x-soullink' = '1' } -TimeoutSec 2 | Out-Null; return $true } catch { Start-Sleep 1 }
+              try { Invoke-RestMethod http://127.0.0.1:47391/api/status -Headers @{ 'x-soullink' = '1' } -TimeoutSec 2 | Out-Null; return $true } catch { Start-Sleep 1 }
             }
             return $false
           }
           $updProfile = Join-Path $env:RUNNER_TEMP 'update-profile'
-          $app = Start-Process -FilePath (Join-Path $dir 'souldew.exe') -ArgumentList "--user-data-dir=$updProfile" -PassThru
+          $app = Start-Process -FilePath (Join-Path $dir 'souldew Renaissance.exe') -ArgumentList "--user-data-dir=$updProfile" -PassThru
           if (-not (Wait-Server 90)) { throw 'installed app did not start' }
           taskkill /PID $app.Id | Out-Null   # no /F: the window gets a normal close → the app's own quit path
           $installer = Start-Process -FilePath $setup -ArgumentList '/S', '--updated', '--force-run' -PassThru
@@ -123,12 +123,12 @@ jobs:
           if ($installer.ExitCode -ne 0) { throw "update installer exited with $($installer.ExitCode)" }
           if (-not (Wait-Server 90)) { throw 'the updated app was not started again (--force-run)' }
           'update in place: installer replaced the running app and started it again'
-          Get-Process souldew -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Process 'souldew Renaissance' -ErrorAction SilentlyContinue | Stop-Process -Force
           Start-Sleep -Seconds 3
 
-          Start-Process -FilePath (Join-Path $dir 'Uninstall souldew.exe') -ArgumentList '/S' -Wait
+          Start-Process -FilePath (Join-Path $dir 'Uninstall souldew Renaissance.exe') -ArgumentList '/S' -Wait
           Start-Sleep -Seconds 5
-          if (Test-Path (Join-Path $dir 'souldew.exe')) { throw 'uninstaller left the app behind' }
+          if (Test-Path (Join-Path $dir 'souldew Renaissance.exe')) { throw 'uninstaller left the app behind' }
           'install / start / uninstall: ok'
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

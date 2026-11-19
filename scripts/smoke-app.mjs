@@ -3,12 +3,12 @@
 // optionally takes a screenshot (Windows; Linux with ImageMagick's `import`), then quits it. Exit code 0 = everything
 // answered as it should.
 //
-// Usage: node scripts/smoke-app.mjs <path to souldew.exe / the app's binary / the .AppImage> [--screenshot file.png] [--timeout 120]
+// Usage: node scripts/smoke-app.mjs <path to the app's .exe / the app's binary / the .AppImage> [--screenshot file.png] [--timeout 120]
 //        node scripts/smoke-app.mjs --dev [...]   (`npm run app` from this checkout instead of a build – needs tools/jre/<platform>-<arch>)
 //          [--lang de]   (starts past the onboarding, in that language – for a screenshot of the library)
 //          [--emulators] (also installs melonDS and mGBA through the app, as the one-click button does – needs internet)
 // Linux CI has no screen: run it under xvfb-run.
-// The app always tries port 47390 first. While something (e.g. your installed souldew) already listens there, this finds
+// The app always tries its own port (shared/edition.mjs → port) first. While something (e.g. your installed souldew) already listens there, this finds
 // the started app's own port (macOS / Linux) or refuses to run (Windows), so it never talks to an app it didn't start.
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
@@ -16,8 +16,9 @@ import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EDITION } from '../shared/edition.mjs';
 
-const PORT = 47390;
+const PORT = EDITION.port; // the port this build's app tries first (shared/edition.mjs)
 const args = process.argv.slice(2);
 const opt = (name, fallback = null) => {
   const i = args.indexOf(`--${name}`);

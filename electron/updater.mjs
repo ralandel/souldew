@@ -12,6 +12,7 @@ import {
   nsisInstallDir, launchInstaller, windowsInstallPlan, cleanupWorkDir,
   appImageFromEnv, appImageStagedPath, canReplaceAppImage, makeExecutable, swapAppImage, cleanupAppImageStaging, appImageRelaunch,
 } from './update-core.mjs';
+import { EDITION } from '../shared/edition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIRST_CHECK = 20 * 1000;
@@ -49,7 +50,7 @@ export function setupUpdater({ send, trusted = () => false }) {
   const bundle = app.isPackaged && MAC ? bundleFromExe(app.getPath('exe')) : null;
   const installDir = app.isPackaged && WIN ? nsisInstallDir(app.getPath('exe')) : null;
   const appImage = app.isPackaged && LINUX ? appImageFromEnv() : null;
-  const workDir = join(app.getPath('temp'), 'souldew Update');
+  const workDir = join(app.getPath('temp'), `${EDITION.name} Update`); // not the official app's folder
   const repo = typeof cfg.repo === 'string' ? cfg.repo.trim() : '';
   // Ed25519 key the feed must be signed with (see scripts/release.mjs --init-key). An installed app without one
   // refuses every feed (fetchFeed → NO_KEY); only development may check an unsigned feed, and says so out loud.
