@@ -168,8 +168,9 @@ jobs:
   publish:
     name: Publish the GitHub release
     needs: [windows, linux, macos]
-    # runs when Windows and Linux succeeded and macOS either succeeded or was skipped (not built here)
-    if: always() && needs.windows.result == 'success' && needs.linux.result == 'success' && (needs.macos.result == 'success' || needs.macos.result == 'skipped')
+    # runs when Windows and Linux succeeded – with the DMG when macOS was built, without it when macOS failed or was
+    # skipped (souldew Renaissance: a failed macOS build must not hold back the Windows and Linux update)
+    if: always() && needs.windows.result == 'success' && needs.linux.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write # gh release create
@@ -184,7 +185,7 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Publish (DMG + installer + Linux packages + signed feed) or create a draft (without the DMG)
+      - name: Publish (installers + signed feed, the DMG when macOS was built) or a draft without a release key
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.windows.outputs.version }}
@@ -195,19 +196,20 @@ jobs:
           exe="dist/souldew-$VERSION-win-x64-setup.exe"
           appimage="dist/souldew-$VERSION-linux-x86_64.AppImage"
           deb="dist/souldew-$VERSION-linux-amd64.deb"
-          if [ -f "$dmg" ] && [ -n "$RELEASE_KEY" ]; then
+          if [ -n "$RELEASE_KEY" ]; then
             key="$RUNNER_TEMP/release-key.pem"
             (umask 077 && printf '%s\n' "$RELEASE_KEY" > "$key")
-            node scripts/release.mjs --key "$key" --dmg "$dmg" --win-exe "$exe" --appimage "$appimage" --deb "$deb"
+            if [ -f "$dmg" ]; then mac=(--dmg "$dmg"); platforms="macOS + Windows + Linux"
+            else mac=(--no-mac); platforms="Windows + Linux"; echo "::warning::No macOS DMG – this release updates Windows and Linux only"; fi
+            node scripts/release.mjs --key "$key" "${mac[@]}" --win-exe "$exe" --appimage "$appimage" --deb "$deb"
             rm -f "$key"
             out="dist/release-$VERSION"
             # not a draft or pre-release: the apps read releases/latest/download/latest.json
-            gh release create "v$VERSION" "$out/souldew-$VERSION-arm64.dmg" "$out/souldew-$VERSION-win-x64-setup.exe" \
-              "$out/souldew-$VERSION-linux-x86_64.AppImage" "$out/souldew-$VERSION-linux-amd64.deb" "$out/latest.json" \
+            gh release create "v$VERSION" "$out"/souldew-"$VERSION"-* "$out/latest.json" \
               --repo "$GITHUB_REPOSITORY" --title "souldew Renaissance $VERSION" --notes-file "$out/notes.md" --verify-tag
-            echo "Published v$VERSION with macOS + Windows + Linux and a signed latest.json." >> "$GITHUB_STEP_SUMMARY"
+            echo "Published v$VERSION with $platforms and a signed latest.json." >> "$GITHUB_STEP_SUMMARY"
           else
-            [ -f "$dmg" ] && echo "::warning::SLS_RELEASE_KEY is not set – the feed can't be signed, creating a draft instead"
+            echo "::warning::SLS_RELEASE_KEY is not set – the feed can't be signed, creating a draft instead"
             node --input-type=module -e "
               import { readFileSync, writeFileSync } from 'node:fs';
               const { changelogSection } = await import('./scripts/release.mjs');

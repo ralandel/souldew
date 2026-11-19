@@ -537,3 +537,29 @@ test('Windows: cleaning up old downloads never removes the current one and skips
   cleanupWorkDir(dir);
   assert.deepEqual(readdirSync(dir), []);
 });
+
+test('a release without a macOS build: Windows and Linux update, macOS sees nothing (souldew Renaissance)', async () => {
+  const { generateKeyPairSync } = await import('node:crypto');
+  const { signFeed, verifyFeedSignature, publicKeyBase64 } = await import('../electron/update-core.mjs');
+  const win = { sha256: 'b'.repeat(64), size: 2 };
+  const linux = { sha256: 'c'.repeat(64), size: 3 };
+  const f = buildFeed({ version: '2.8.3-r.2', notes: 'n', repo: 'o/r', win, linux, pubDate: '2026-11-19T00:00:00.000Z' });
+  assert.equal(f.url, undefined);
+  assert.equal(f.sha256, undefined);
+  assert.deepEqual(Object.keys(f.assets).sort(), ['linux-x64', 'win32-x64']);
+  const v = validateFeed(f);
+  assert.equal(assetFor(v, 'darwin', 'arm64'), null);
+  assert.equal(actionFor(v, '2.8.3-r.1', { platform: 'darwin', arch: 'arm64' }), 'none');
+  assert.equal(actionFor(v, '2.8.3-r.1', { platform: 'win32', arch: 'x64' }), 'install');
+  assert.equal(actionFor(v, '2.8.3-r.1', { platform: 'linux', arch: 'x64' }), 'install');
+  // signed like any other feed
+  const { privateKey } = generateKeyPairSync('ed25519');
+  assert.ok(verifyFeedSignature(JSON.parse(JSON.stringify(signFeed(f, privateKey))), publicKeyBase64(privateKey)));
+  // still refused: no download at all, or a checksum without its DMG
+  assert.throws(() => validateFeed({ version: '2.8.3-r.2', notes: '' }), /no download/);
+  assert.throws(() => validateFeed({ ...f, sha256: 'a'.repeat(64) }), /without its DMG/);
+  assert.throws(() => buildFeed({ version: '2.8.3-r.2', notes: 'n', repo: 'o/r' }), /no download/);
+  // with the DMG it is the feed as before
+  const full = validateFeed(buildFeed({ version: '2.8.3-r.2', notes: 'n', repo: 'o/r', dmg: { sha256: 'a'.repeat(64), size: 1 }, win, linux }));
+  assert.equal(assetFor(full, 'darwin', 'arm64').name, dmgAssetName('2.8.3-r.2'));
+});

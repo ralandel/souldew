@@ -7,7 +7,8 @@
 //     assets?: { 'win32-x64': { name: 'souldew-2.1.0-win-x64-setup.exe', url: 'https://…', sha256: '<64 hex>', size: 98765432 },
 //                'linux-x64': { name: 'souldew-2.1.0-linux-x86_64.AppImage', url: 'https://…', sha256: '<64 hex>', size: 123456789 } },
 //     sig?: '<base64 Ed25519 signature of canonicalFeed(feed)>' }
-// The top-level url/sha256/size are the macOS DMG – that is all souldew ≤ 2.0 knows. Other platforms live in
+// The top-level url/sha256/size are the macOS DMG – that is all souldew ≤ 2.0 knows. They may be absent (souldew
+// Renaissance: a release whose macOS build failed still updates Windows and Linux) – then `assets` must have something. Other platforms live in
 // `assets` (Windows added in 2.1, Linux after it): older apps ignore unknown fields and unknown `assets` keys, and the
 // signature covers every field, `assets` included, so the same signed latest.json serves all of them
 // (test/update.test.mjs runs the 2.0.0 and 2.1.0 code against such a feed).
@@ -82,19 +83,26 @@ export function validateFeed(feed, { allowLocal = false } = {}) {
   if (!feed || typeof feed !== 'object' || Array.isArray(feed)) throw feedError('Update feed is not a JSON object');
   const { version, notes = '', url, sha256, size, minVersion, page, pubDate } = feed;
   if (!parseVersion(version)) throw feedError(`Update feed has an invalid version: ${String(version).slice(0, 40)}`);
-  if (typeof url !== 'string' || !isAllowedUrl(url, { allowLocal })) throw feedError('Update download must be an https:// URL');
-  if (!/\.dmg$/i.test(new URL(url).pathname)) throw feedError('Update download must be a .dmg file');
-  if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(sha256)) throw feedError('Update feed has no valid sha256');
-  if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_UPDATE_SIZE) throw feedError('Update feed has no valid size');
+  const mac = url !== undefined && url !== null; // the macOS DMG (absent: no macOS build in this release)
+  if (mac) {
+    if (typeof url !== 'string' || !isAllowedUrl(url, { allowLocal })) throw feedError('Update download must be an https:// URL');
+    if (!/\.dmg$/i.test(new URL(url).pathname)) throw feedError('Update download must be a .dmg file');
+    if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(sha256)) throw feedError('Update feed has no valid sha256');
+    if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_UPDATE_SIZE) throw feedError('Update feed has no valid size');
+  } else if ((sha256 !== undefined && sha256 !== null) || (size !== undefined && size !== null)) {
+    throw feedError('Update feed has a sha256 or size without its DMG');
+  }
   if (typeof notes !== 'string' || notes.length > 20000) throw feedError('Update notes are invalid');
   if (minVersion !== undefined && minVersion !== null && !parseVersion(minVersion)) throw feedError('Update feed has an invalid minVersion');
   if (page !== undefined && page !== null && (typeof page !== 'string' || !isAllowedUrl(page, { allowLocal }))) throw feedError('Update page must be an https:// URL');
+  const assets = validateAssets(feed.assets, { allowLocal });
+  if (!mac && !Object.keys(assets).length) throw feedError('Update feed has no download at all');
   return {
-    version, notes, url, sha256: sha256.toLowerCase(), size,
+    version, notes, url: mac ? url : null, sha256: mac ? sha256.toLowerCase() : null, size: mac ? size : null,
     minVersion: minVersion || null,
     page: page || null,
     pubDate: typeof pubDate === 'string' ? pubDate.slice(0, 40) : null,
-    assets: validateAssets(feed.assets, { allowLocal }),
+    assets,
   };
 }
 
@@ -137,6 +145,7 @@ function validateAssets(assets, { allowLocal }) {
 export function assetFor(feed, platform, arch) {
   if (!feed) return null;
   if (platform === 'darwin') {
+    if (!feed.url) return null; // a release without a macOS build
     let name = null;
     try {
       name = decodeURIComponent(new URL(feed.url).pathname.split('/').pop()) || null;

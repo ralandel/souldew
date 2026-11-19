@@ -3,7 +3,7 @@
 // in dist/): hashes the DMG, the Windows installer and the AppImage, writes the update feed latest.json (one feed for
 // all platforms) and prints the `gh release create` command. It does not upload anything itself.
 //
-// Usage: npm run release -- [--notes "text" | --notes-file file] [--repo owner/name] [--dmg path] [--win-exe path | --no-win]
+// Usage: npm run release -- [--notes "text" | --notes-file file] [--repo owner/name] [--dmg path | --no-mac] [--win-exe path | --no-win]
 //                           [--appimage path | --no-linux] [--deb path] [--min-version x.y.z] [--out dir] [--key file]
 // Without --notes/--notes-file the notes come from the "## <version>" section of CHANGELOG.md.
 // Without --win-exe the installer is picked up from dist/souldew-<version>-win-x64-setup.exe when it is there; likewise
@@ -66,14 +66,13 @@ export function loadReleaseKey(keyPath, expectedPublicKey) {
  * dmg / win / linux: { sha256, size } of the files as they will be uploaded (named dmgAssetName / winAssetName /
  * linuxAssetName – the AppImage).
  */
-export function buildFeed({ version, notes, repo, dmg, win = null, linux = null, minVersion = null, pubDate = new Date().toISOString() }) {
+export function buildFeed({ version, notes, repo, dmg = null, win = null, linux = null, minVersion = null, pubDate = new Date().toISOString() }) {
   const base = `https://github.com/${repo}/releases/download/v${version}`;
   const feed = validateFeed({
     version,
     notes,
-    url: `${base}/${dmgAssetName(version)}`,
-    sha256: dmg.sha256,
-    size: dmg.size,
+    // without a DMG (no macOS build this time) the feed only has `assets` – shared/update.mjs validateFeed
+    ...(dmg ? { url: `${base}/${dmgAssetName(version)}`, sha256: dmg.sha256, size: dmg.size } : {}),
     ...(minVersion ? { minVersion } : {}),
     page: `https://github.com/${repo}/releases/tag/v${version}`,
     pubDate,
@@ -86,7 +85,7 @@ export function buildFeed({ version, notes, repo, dmg, win = null, linux = null,
   return Object.fromEntries(Object.entries(feed).filter(([, v]) => v !== null));
 }
 
-const FLAGS = new Set(['init-key', 'no-win', 'no-linux']);
+const FLAGS = new Set(['init-key', 'no-mac', 'no-win', 'no-linux']);
 
 function args(argv) {
   const out = {};
@@ -162,8 +161,13 @@ Apps built from now on only install updates signed with this key.`);
     throw new Error('No GitHub repository set. Put it into package.json → "updates": { "repo": "owner/name" } or pass --repo owner/name.');
   }
   const product = pkg.build?.productName || pkg.name;
-  const dmg = resolve(a.dmg || join(root, 'dist', `${product}-${version}-arm64.dmg`));
-  if (!existsSync(dmg)) throw new Error(`DMG not found: ${dmg}\nRun \`npm run dist\` first (after raising "version" in package.json).`);
+  const dmgDefault = join(root, 'dist', dmgAssetName(version));
+  const dmg = a['no-mac'] ? null : a.dmg ? resolve(a.dmg) : existsSync(dmgDefault) ? dmgDefault : null;
+  if (dmg && !existsSync(dmg)) throw new Error(`DMG not found: ${dmg}\nRun \`npm run dist\` first (after raising "version" in package.json).`);
+  if (!dmg && !a['no-mac']) {
+    console.warn(`Warning: no DMG (${show(dmgDefault)}) – the macOS app won't offer this update.
+  Build it with \`npm run dist\` on a Mac, or pass --dmg path (--no-mac silences this).`);
+  }
   const winDefault = join(root, 'dist', winAssetName(version));
   const winExe = a['no-win'] ? null : a['win-exe'] ? resolve(a['win-exe']) : existsSync(winDefault) ? winDefault : null;
   if (winExe && !existsSync(winExe)) throw new Error(`Windows installer not found: ${winExe}`);
@@ -188,9 +192,11 @@ Apps built from now on only install updates signed with this key.`);
     if (notes == null) throw new Error(`No release notes: add a "## ${version}" section to CHANGELOG.md or pass --notes "…" / --notes-file file.`);
   }
 
+  if (!dmg && !winExe && !appImage) throw new Error('Nothing to release: no DMG, Windows installer or AppImage.');
+
   const out = resolve(a.out || join(root, 'dist', `release-${version}`));
   mkdirSync(out, { recursive: true });
-  const mac = await stage(dmg, out, dmgAssetName(version));
+  const mac = dmg ? await stage(dmg, out, dmgAssetName(version)) : null;
   const win = winExe ? await stage(winExe, out, winAssetName(version)) : null;
   const linux = appImage ? await stage(appImage, out, linuxAssetName(version)) : null;
   const debPkg = deb ? await stage(deb, out, debAssetName(version)) : null;
@@ -204,7 +210,7 @@ Apps built from now on only install updates signed with this key.`);
 
   const feedUrl = feedUrlFrom({ ...pkg.updates, repo });
   const assets = [mac, win, linux, debPkg].filter(Boolean);
-  const platforms = ['macOS', win && 'Windows', linux && 'Linux'].filter(Boolean).join(' + ');
+  const platforms = [mac && 'macOS', win && 'Windows', linux && 'Linux'].filter(Boolean).join(' + ');
   console.log(`
 Update ${version} is ready in ${show(out)}:
 ${assets.map((x) => `  ${x.name}  ${(x.size / 1024 / 1024).toFixed(1)} MB\n  sha256 ${x.sha256}`).join('\n')}
