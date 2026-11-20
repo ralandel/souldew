@@ -8,37 +8,57 @@ import { t, ago } from '../lib/i18n.mjs';
 import { api } from '../lib/api.mjs';
 import { serverErrorText } from '../lib/errors.mjs';
 import { gameById, gameTitle, speciesName, hackById, itemName, moveName } from '../lib/data.mjs';
-import { players as getPlayers, live, othersOf, runMode, missedQuestion, openAreas, markMissed, locationChoices, areaForCatch, genOfRun, profileOf, rules as getRules, logCheat, dupeOf, areaForPlace, encounter, beforeBalls } from '../lib/run.mjs';
+import { players as getPlayers, live, othersOf, runMode, runSection, runStateId, isTogether, missedQuestion, openAreas, markMissed, locationChoices, areaForCatch, genOfRun, profileOf, rules as getRules, logCheat, logWagerPaid, slotsOf, levelCap, pairState, areaName, dupeOf, areaForPlace, encounter, beforeBalls } from '../lib/run.mjs';
 import { findEntry, readLiveParty, readLiveBattle, playerBattle, withBattleHp, confirmFaints, inBattleFlag, LiveTables, expandedEntry } from '/shared/live/parse.mjs';
-import { applyCheat, cheatsFor, cheatBlock, CHEATS, readBalls } from '/shared/live/cheats.mjs';
+import { applyCheat, cheatsFor, cheatBlock, cheatAllowed, bagLayoutKey, CHEATS, readBalls, locateCtrBag } from '/shared/live/cheats.mjs';
+import { CheatMenu, cheatConfirmText, cheatDoneText, cheatFailText } from './cheatmenu.mjs';
 import { DeathReveal, effectiveSpeed } from '../lib/reveal.mjs';
 import { MusicKeyTracker } from '/shared/live/location.mjs';
-import { probeGen67 } from '/shared/live/gen67.mjs';
+import { probeGen67, runningVersion } from '/shared/live/gen67.mjs';
 import { PlayHome } from './playhome.mjs';
 import { PartyGrid } from './party.mjs';
-import { PartnerScreen, useScreenShare } from './partnerscreen.mjs';
-import { StatePanel, SaveAge, useSaveGuard, describeState, stateInfo, slotName, SHOT, MANUAL_SLOTS, AUTO_SLOT } from './savestates.mjs';
-import { RunStrip, LinkedPairs, BattlePanel, RulesDrawer, useBattlePanelPrefs } from './session-info.mjs';
+import { PartnerScreens, PartnerTiles, usePartnerLayout, useScreenShare } from './partnerscreen.mjs';
+import { StatePanel, SaveAge, useSaveGuard, describeState, stateInfo, slotName, SHOT, MANUAL_SLOTS, AUTO_SLOT, otherCoreText } from './savestates.mjs';
+import { RunStrip, LinkedPairs, GroupTrack, BattlePanel, RulesDrawer, useBattlePanelPrefs } from './session-info.mjs';
 import { LocationSign, readHere, nextHere, areaOfHere, musicInfo, loadRomLocations, romSpeciesNow, romDataReady, romWramNow, romMaps3Now, romOwnNow, romDataNow, resetRomData } from './location.mjs';
 import { FeatureCheck, romFeatures } from '/shared/live/features.mjs';
 import { gymCapsFamily } from '/shared/routes.mjs';
 import { shiftEntry } from '/shared/live/romwram.mjs';
 import { RulesTab } from './board.mjs';
+import { ChoicesTab } from './playtogether.mjs';
+import { LaunchStage, insertCover } from './launchstage.mjs';
 import { CartInsert } from './cartinsert.mjs';
+import { launchConfig, launchRightsNow } from '../lib/handheld/look.mjs';
 import { play as playCue } from '../lib/sound.mjs';
 import { addSample, typicalReach, offeredSteps, beyondReach, HELD } from '../lib/reach.mjs';
 import { SlowWatch, slowTips } from '../lib/slowdown.mjs';
+import { FfScaleWatch } from '../lib/ffhint.mjs';
 import { MissedTracker, openQuestions, queueQuestions, dropQuestion } from '../lib/missed.mjs';
 import { gpuBackends } from '/shared/gpu.mjs';
-import { GPU_LABELS } from './settings.mjs';
 import { CTR_LAYOUTS, ctrLayoutAspect } from '/shared/ctrlayout.mjs';
-import { shinyThreshold } from '/shared/shiny.mjs';
+import { SharedWorld, WorldToggle, WORLD_SYSTEMS, worldEnabled, setWorldEnabled, followEnabled, setFollowEnabled } from '../lib/sharedworld.mjs';
+import { rpsFor } from '../lib/worldrps.mjs';
+import { leadOf } from '/shared/worldicons.mjs';
+import { linkAllowed, linkedText, reasonText as linkReason, linkUnavailable, LinkBar, LINK_ASKS } from './linkplay.mjs';
 import { claimPad } from '../lib/padnav.mjs';
+import { dockSide, dockHeight, pictureFor, rightDockWidth, BAR_H, DOCK_W } from '../lib/playlayout.mjs';
+import { Dock, LiveStatus, SlowChip, FfScaleChip, AttentionCard, useAttention, useDockFold, useSize, revealIn } from './playdock.mjs';
+import { TURBO_AUDIO, TURBO_AUDIO_EVENT, readTurboAudio, writeTurboAudio } from './settings/play.mjs';
+import { settingsLink } from '../lib/settingsindex.mjs';
+import { shinyThreshold } from '/shared/shiny.mjs';
 import { ctrUpdateNote } from '../lib/ctrupdate.mjs';
 import { presenceLoop, presenceBody } from '../lib/presence.mjs';
 import { resolveHotkeys, hotkeyOf, keyMatches } from '../lib/controls.mjs';
+import { uiScaleKeyDown, setPlayKeys } from '../lib/uiscale.mjs';
 import { hotkeyHint, comboLabel } from './guide.mjs';
 
+import { WagerPay } from '../lib/wagerpay.mjs';
+import { gameOfEntry, readMoney, moneyText, gameLinked } from '/shared/linkbattle.mjs';
+import { worldTable, readCamera } from '/shared/world.mjs';
+import { raidFor } from '../lib/raid.mjs';
+import { RaidDock, useRaidShown } from './raid.mjs';
+import { useTogether, makeBag, gameWhy, giftsAllowed } from '../lib/together.mjs';
+import { GiftDialog, WatchModal, BattleStrip, PingButton, giftWhyText } from './together.mjs';
 /**
  * What each shortcut of Settings › Controls does (lib/controls.mjs HOTKEYS – one entry each, test/controls.test.mjs
  * checks that none is missing and that the play view acts on no key of its own): `a` = the session's actions.
@@ -77,7 +97,6 @@ const SPEEDS = [1, 2, 3, 4];
 const MAX = Infinity;
 const speedText = (s) => (s === MAX ? t('play.speedMax', 'Max') : `${s}×`);
 // what you hear while fast-forwarding; 'plain' takes the turbo mixer out of the sound path altogether
-const TURBO_AUDIO = ['music', 'mute', 'original', 'plain'];
 
 /** What to play: a run (slot = me) or a single library game. */
 function useTarget() {
@@ -92,7 +111,7 @@ function useTarget() {
     return {
       kind: 'run', key: `run-${manifest.id}-${me}`, system: manifest.game?.system || 'nds', code: manifest.game?.code, title: manifest.game?.title,
       rom: `/api/runs/${manifest.id}/file?inline=1&name=${encodeURIComponent(out.rom)}`, name: out.rom.replace(/\.\w+$/, ''),
-      saveUrl: `/api/runs/${manifest.id}/save/${me}`, stateId: `run-${manifest.id}-${me}`, label: manifest.name, gameId: manifest.game?.id,
+      saveUrl: `/api/runs/${manifest.id}/save/${me}`, stateId: runStateId(manifest, me), label: manifest.name, gameId: manifest.game?.id,
       runId: manifest.id, params: { run: manifest.id },
       // the run's game may call more Pokémon shiny (shared/shiny.mjs) – the live reader counts them as the game does
       shinyOdds: shinyThreshold(manifest.shiny),
@@ -120,7 +139,8 @@ export function PlayView() {
   const running = session?.target;
   const home = route.params.home !== undefined;
   // The running game is drawn by the app shell (GameSession), so it keeps going in every other section.
-  if (running && !home && (!target || target.key === running.key)) return null;
+  // (a link session of this run counts as this run's game: web/lib/linksession.mjs)
+  if (running && !home && (!target || target.key === running.key || (running.link && running.runId && running.runId === target.runId))) return null;
   if (!target || home) return html`<div class="stack-l">${running && html`<${RunningBanner} />`}<${PlayHome} /></div>`;
   if (target.error === 'noRom') {
     return html`<div class="panel empty-state">
@@ -151,28 +171,9 @@ function ctrLayoutLabel(id) {
   }[id] || id;
 }
 
-/** A cheat's texts (shared/live/cheats.mjs CHEATS): its row in the cheats menu, the question, the answers. */
-function cheatText(id) {
-  return id === 'maxRepel' ? {
-    icon: 'repel',
-    label: t('cheat.maxRepel', 'Add 10 Max Repels'),
-    confirm: t('cheat.confirmRepel', 'Add 10 Max Repels to your bag?'),
-    done: (n) => t('cheat.doneRepel', '+{n} Max Repel in your bag|+{n} Max Repels in your bag', { n, count: n }),
-    failed: t('cheat.failedRepel', 'No Max Repels added'),
-    max: t('cheat.maxRepelCap', 'You already carry as many Max Repels as the game allows.'),
-  } : {
-    icon: 'candy',
-    label: t('cheat.rareCandy', 'Add 99 Rare Candies'),
-    confirm: t('cheat.confirm', 'Add 99 Rare Candies to your bag?'),
-    done: (n) => t('cheat.done', '+{n} Rare Candy in your bag|+{n} Rare Candies in your bag', { n, count: n }),
-    failed: t('cheat.failed', 'No Rare Candies added'),
-    max: t('cheat.max', 'You already carry as many Rare Candies as the game allows.'),
-  };
-}
-
 /**
  * The built-in 3DS player stopped (its host crashed or gave up – some graphics drivers can't run it): what happened,
- * and one click to play 3DS games in Azahar instead (Settings › Emulators › Nintendo 3DS), which opens this game
+ * and one click to play 3DS games in Azahar instead (Settings › Games › Emulators › Nintendo 3DS), which opens this game
  * there – or offers to install Azahar first.
  */
 function CtrFailed({ fail, target, onClose }) {
@@ -196,7 +197,7 @@ function CtrFailed({ fail, target, onClose }) {
     <div class="grow stack-s">
       <b>${t('ctr.failedTitle', 'The 3DS game has stopped')}</b>
       ${fail.message && html`<span class="small">${fail.message}</span>`}
-      ${!noAzahar && html`<span class="small muted">${t('ctr.failedHint', 'Some graphics cards and drivers can’t run souldew’s built-in 3DS player yet. Azahar, the free 3DS emulator, plays the same games – with live tracking. You can switch back any time in Settings › Emulators.')}</span>`}
+      ${!noAzahar && html`<span class="small muted">${t('ctr.failedHint', 'Some graphics cards and drivers can’t run souldew’s built-in 3DS player yet. Azahar, the free 3DS emulator, plays the same games – with live tracking. You can switch back any time in Settings › Games.')}</span>`}
     </div>
     <div class="row">
       ${!noAzahar && html`<button class="btn small primary" data-pad-first disabled=${busy} onClick=${toAzahar}>${t('ctr.useAzahar', 'Play 3DS games in Azahar')}</button>`}
@@ -216,9 +217,19 @@ function usePresence(state) {
 }
 
 function StartGame({ target }) {
-  const { startSession } = useApp();
-  useEffect(() => startSession(target), [target.key]);
-  return null;
+  const { startSession, linkPlay, linkSessions } = useApp();
+  // a link session of this run this page dropped out of: rejoin (or leave it) first – the game would start from a save
+  // the link is about to replace (web/lib/linksession.mjs › rejoin)
+  const held = !target.link && linkPlay?.phase === 'rejoinable' && linkSessions?.runId === target.runId;
+  useEffect(() => {
+    if (!held) startSession(target);
+  }, [target.key, held]);
+  if (!held) return null;
+  return html`<div class="panel empty-state stack">
+    <p>${t('linkplay.rejoinFirst', 'Your game is still part of a link with the others. Rejoin it – or leave it – before you play on alone.')}</p>
+    <div class="row"><button class="btn primary" onClick=${() => linkSessions.rejoin()}>${t('linkplay.rejoin', 'Rejoin')}</button>
+      <button class="btn ghost" onClick=${() => linkSessions.leave('left')}>${t('linkplay.dropIt', 'Leave it')}</button></div>
+  </div>`;
 }
 
 /** Shown on the Play overview while a game keeps running in the corner. */
@@ -276,15 +287,25 @@ const GEN = { gb: 1, gbc: 2, gba: 3, nds: 4 };
  * you open another section: `mode` "full" fills the Play page, "mini" floats in the corner.
  */
 export function GameSession({ session, mode }) {
-  const { manifest, doc, me, applySnap, revealDeaths, ballsSeen, toast, docVersion, onlineSlots, navigate, closeSession, link, status, runData } = useApp();
+  const { manifest, doc, me, applySnap, revealDeaths, ballsSeen, toast, docVersion, onlineSlots, navigate, closeSession, link, status, reloadStatus, runData, linkSessions, linkPlay, linkStatus, library, wagerRef, lastMoment } = useApp();
+  const payRef = useRef(null); // link battle wagers into this game (web/lib/wagerpay.mjs) – only the player's own run game
   const target = session.target;
-  // the module slides into the console while the game boots (Settings › animations; never with reduced motion)
-  const [inserting, setInserting] = useState(() => mode === 'full' && status?.config?.bootAnimation !== false
+  // the launch animation (Settings › Play › Launch animation) – what the membership allows at this moment (shared/
+  // handheld.mjs launchRights; a membership that ended keeps the settings and plays what the tier allows now):
+  // - Supporter and souldew+: your handheld in 3D (views/launchstage.mjs) over the screen area while the game boots
+  //   underneath – it never makes the game wait, and it is silent;
+  // - free: the 2D module sliding into the console (views/cartinsert.mjs, never with reduced motion) – it clicks in.
+  // Off (or the general "Play animations" switched off): nothing, the module's click sounds when the game appears.
+  const launchCfg = launchConfig(status?.config);
+  const [three] = useState(() => launchRightsNow().three);
+  const [launching, setLaunching] = useState(() => mode === 'full' && !launchCfg.off && three);
+  const [inserting, setInserting] = useState(() => mode === 'full' && !launchCfg.off && !three
     && !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-  // The emulator stays invisible until the module is home and the core has started: no black canvas or RetroArch
+  // The emulator stays invisible until the core has started (and the module is home): no black canvas or RetroArch
   // menu flashing behind the animation. It loads all the while – only its visibility waits.
   const [screenShown, setScreenShown] = useState(mode !== 'full');
-  const animated = useRef(inserting); // the animation plays the click itself
+  const animated = useRef(launching || inserting); // the 3D launch is silent; the module plays its own click
+  const overlaid = useRef(launching); // the picture comes up under the 3D launch: no fade-in of its own
   const game = gameById(target.gameId);
   const frame = useRef(null);
   const [phase, setPhase] = useState('loading'); // loading | running | error
@@ -304,11 +325,20 @@ export function GameSession({ session, mode }) {
     const late = setTimeout(() => setScreenShown(true), 20000); // the core never started: show what the player says
     return () => clearTimeout(late);
   }, [screenShown, inserting, phase]);
-  const [turboAudio, setTurboAudioState] = useState(() => (TURBO_AUDIO.includes(ls.get('sl-turbo-audio')) ? ls.get('sl-turbo-audio') : 'music'));
+  const [turboAudio, setTurboAudioState] = useState(readTurboAudio);
+  // changed in Settings › Play while this game runs in the corner: it switches at once
+  useEffect(() => {
+    const on = (e) => TURBO_AUDIO.includes(e.detail) && setTurboAudioState(e.detail);
+    addEventListener(TURBO_AUDIO_EVENT, on);
+    return () => removeEventListener(TURBO_AUDIO_EVENT, on);
+  }, []);
   const [soundOpen, setSoundOpen] = useState(false);
   const [cheatOpen, setCheatOpen] = useState(false);
-  const [confirmCheat, setConfirmCheat] = useState(null); // the cheat (CHEATS id) waiting for its yes
+  const raidShownNow = useRaidShown(); // a raid to show in the dock (views/raid.mjs)
+  const [confirmCheat, setConfirmCheat] = useState(null); // the cheat waiting for its yes: { id (CHEATS), amount }
+  const [cheatAmount, setCheatAmount] = useState(10); // how many of an item the cheats menu adds (CHEAT_AMOUNTS)
   const [slow, setSlow] = useState(null); // { reached, tips } – this computer can't hold full speed (lib/slowdown.mjs)
+  const [ffHint, setFfHint] = useState(null); // { target, reached, scale } – the 3DS resolution holds back fast-forward (lib/ffhint.mjs)
   // the cheats this game's bag can take (shared/live/cheats.mjs cheatsFor), comma-joined: a string, so setting the same
   // list again on every reading doesn't render anew
   const [cheatGame, setCheatGame] = useState('');
@@ -349,6 +379,16 @@ export function GameSession({ session, mode }) {
   const [pendingLoad, setPendingLoad] = useState(null); // { slot, bytes } – state load waiting for confirmation
   const [statesOpen, setStatesOpen] = useState(false);
   const closeStates = useCallback(() => setStatesOpen(false), []);
+  // the dock next to the game (views/playdock.mjs, lib/playlayout.mjs): measured play area, folded or not, the
+  // "something happened" card over the game, the partners' tiles and windows
+  const bodyRef = useRef(null);
+  const area = useSize(bodyRef);
+  const barRef = useRef(null);
+  const barSize = useSize(barRef);
+  const dockRef = useRef(null);
+  const [folded, setFolded] = useDockFold();
+  const attn = useAttention();
+  const pl = usePartnerLayout();
   const [statesVer, setStatesVer] = useState(0); // bumped after every save → the open panel reads the list again
   const [sel, setSel] = useState(() => ls.get(`sl-state-sel-${session.target.stateId}`, 1)); // F5 / F8 work on this slot
   const selRef = useRef(sel);
@@ -376,9 +416,9 @@ export function GameSession({ session, mode }) {
   // (3DS: Azahar in the New 3DS mode – states of another core or mode can't be loaded, and a state of the other mode
   // would stop the game)
   // The fast player (playernative.html, server/lib/native.mjs): DS, GBA and Game Boy run in souldew's native host –
-  // melonDS with its JIT, mGBA, Gambatte – at full speed with uncapped fast-forward, unless Settings › "Fast player" is
+  // melonDS with its JIT, mGBA, SameBoy – at full speed with uncapped fast-forward, unless Settings › "Fast player" is
   // off or its part is missing. When it can't start the game, the session switches to the browser emulator by itself.
-  const [nativeOn, setNativeOn] = useState(() => target.system !== '3ds' && status?.config?.nativeCore !== false && !!status?.native?.cores?.[target.system] && !!status?.native?.ids?.[target.system]);
+  const [nativeOn, setNativeOn] = useState(() => !!target.link || (target.system !== '3ds' && status?.config?.nativeCore !== false && !!status?.native?.cores?.[target.system] && !!status?.native?.ids?.[target.system]));
   const core = target.system === '3ds' ? 'azahar-n3ds' : nativeOn ? status.native.ids[target.system] : isDs && /^(IPK|IPG|IRB|IRA|IRE|IRD)/.test(target.code || '') ? 'desmume' : '';
   // What fast-forward really reaches in this game on this computer (lib/reach.mjs), remembered per game and core: the
   // turbo steps it can't reach aren't offered – the highest one then plays as fast as the computer manages.
@@ -550,9 +590,10 @@ export function GameSession({ session, mode }) {
       }
       // a state of another core (or 3DS mode) can't be loaded – as the states panel says (and a 3DS one would stop the game)
       const info = await fetch(`/api/saves/states?id=${encodeURIComponent(target.stateId)}`).then((x) => x.json()).then((l) => l.find((x) => x.slot === slot)?.info).catch(() => null);
-      if (info && (info.core || '') !== (core || '')) {
+      const other = info ? otherCoreText(info.core, core) : null;
+      if (other) {
         armLoad(null);
-        return flash(t('states.otherCore', 'Made with another emulator core – can’t be loaded here'));
+        return flash(other);
       }
       armLoad({ slot, bytes });
     },
@@ -564,6 +605,7 @@ export function GameSession({ session, mode }) {
       // answers nothing – loaded
       Promise.resolve(emu().loadState(p.bytes)).catch(() => false).then((ok) => {
         if (ok === false) return flash(t('play.stateLoadFailed', 'Couldn’t load this state – the game goes on where it was'));
+        payRef.current?.restarted(); // (a wager written since isn't in that state)
         revealNow(); // (a death the game was showing is recorded – loading a state doesn't take it back)
         pickSlot(p.slot);
         flash(MANUAL_SLOTS.includes(p.slot) ? t('play.stateLoaded', 'State {n} loaded', { n: p.slot }) : t('states.loaded', '“{name}” loaded', { name: slotName(p.slot) }));
@@ -606,7 +648,7 @@ export function GameSession({ session, mode }) {
     turboAudio: (m) => {
       if (!TURBO_AUDIO.includes(m)) return;
       setTurboAudioState(m);
-      ls.set('sl-turbo-audio', m);
+      writeTurboAudio(m); // Settings › Play › Turbo audio shows the same value
     },
     layout3ds: (id) => {
       if (!CTR_LAYOUTS.includes(id)) return;
@@ -645,7 +687,7 @@ export function GameSession({ session, mode }) {
     close: () => {
       const full = modeRef.current === 'full';
       // a run's game goes back to its overview (SoulLink / Nuzlocke), free play to the play page
-      closeSession(() => full && navigate(isRun ? runMode(manifest) : 'play'));
+      closeSession(() => full && navigate(isRun ? runSection(manifest) : 'play'));
     },
     expand: () => navigate('play', target.params),
   };
@@ -704,9 +746,22 @@ export function GameSession({ session, mode }) {
       act.current.cancelLoad();
       return true;
     }
+    // ⌘I / Ctrl+I folds or unfolds the dock (views/playdock.mjs); ⌘B / Ctrl+B pressed in the game goes to the sidebar
+    // (app.mjs listens on the page, which doesn't see the game frame's keys)
+    const mod = (k.ctrl || k.meta) && !k.alt && !k.shift;
+    const letter = (k.key || '').toLowerCase();
+    if (mod && k.down && !k.repeat && letter === 'i' && modeRef.current === 'full') {
+      setFolded((f) => !f);
+      return true;
+    }
+    if (mod && k.down && !k.repeat && letter === 'b' && fromGame) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', metaKey: !!k.meta, ctrlKey: !!k.ctrl, cancelable: true }));
+      return true;
+    }
     // every other key: a shortcut of Settings › Controls (lib/controls.mjs HOTKEYS) – exactly its key and modifiers
     const id = hotkeyOf(k, hot);
-    if (!id) return false;
+    // none: from inside the game, the interface size's ⌘+ / ⌘− / ⌘0 (lib/uiscale.mjs – the page doesn't see the frame's keys)
+    if (!id) return !!fromGame && uiScaleKeyDown(k, { fromGame: true });
     // from inside the game always; from the page only while the game is shown big (in the mini player the page's keys
     // belong to the page) – and never Tab there, which keeps moving the focus between controls
     if (!fromGame && (modeRef.current !== 'full' || k.key === 'Tab')) return false;
@@ -729,20 +784,21 @@ export function GameSession({ session, mode }) {
         diag('perf', { type: 'ctrFailed', message: String(e.data.message || '').slice(0, 500), detail: String(e.data.detail || '').slice(0, 1000) });
         setCtrFail({ message: String(e.data.message || ''), code: e.data.code ? String(e.data.code) : null, detail: String(e.data.detail || '') });
       }
-      // the 3DS player stepped down to a safer renderer by itself (Settings › Emulators › 3DS renderer: Automatic)
+      // the 3DS player stepped down to a safer renderer by itself (Settings › About › Troubleshooting › 3DS renderer: Automatic)
       if (e.data?.type === 'emu-renderer' && target.system === '3ds') {
         const labels = { compat: t('set.ctrRendererCompat', 'Vulkan (compatibility)'), software: t('set.ctrRendererSoftware', 'Software') };
         diag('perf', { type: 'ctrRenderer', from: String(e.data.from || ''), to: String(e.data.to || '') });
         toast({ kind: 'warn', title: t('ctr.rendererSwitched', '3DS player: now with {mode}', { mode: labels[e.data.to] || String(e.data.to) }),
-          text: e.data.to === 'software' ? t('ctr.rendererSwitchedSoftware', 'The graphics driver couldn’t run the game with Vulkan, so it runs without the graphics card now – slower, but it runs. souldew remembers this for this graphics card; you can change it in Settings › Emulators.')
-            : t('ctr.rendererSwitchedCompat', 'The game stopped right after starting, so souldew started it again in a more compatible Vulkan mode. souldew remembers this for this graphics card; you can change it in Settings › Emulators.') });
+          text: e.data.to === 'software' ? t('ctr.rendererSwitchedSoftware', 'The graphics driver couldn’t run the game with Vulkan, so it runs without the graphics card now – slower, but it runs. souldew remembers this for this graphics card; you can change it in Settings › About › Troubleshooting.')
+            : t('ctr.rendererSwitchedCompat', 'The game stopped right after starting, so souldew started it again in a more compatible Vulkan mode. souldew remembers this for this graphics card; you can change it in Settings › About › Troubleshooting.'),
+          action: { label: t('play.slowSettings', 'Open Settings'), run: () => navigate('settings', settingsLink('ctr-renderer')) } });
       }
       // the 3DS game runs but has shown nothing but black for a while (lib/ctrplayer.mjs watchBlack): a cut-off copy of the
       // game or a driver that can't draw it – say what helps, and keep it for "Save diagnostics"
       if (e.data?.type === 'emu-black' && target.system === '3ds') {
         diag('perf', { type: 'ctrBlack', seconds: Number(e.data.seconds) || 0, renderer: String(e.data.renderer || ''), title: String(e.data.title || ''), frames: Number(e.data.frames) || 0, liveMemory: !!e.data.liveMemory });
         toast({ kind: 'warn', ttl: 30000, title: t('ctr.blackTitle', 'The 3DS game shows only a black screen'),
-          text: t('ctr.blackText', 'If it stays black, the game file may be incomplete – remove it from the library and add the game again – or your graphics driver can’t draw it: try Settings › Emulators › 3DS renderer › Software. “Save diagnostics” in the sound menu records what souldew sees.') });
+          text: t('ctr.blackText', 'If it stays black, the game file may be incomplete – remove it from the library and add the game again – or your graphics driver can’t draw it: try Settings › About › 3DS renderer › Software. “Save diagnostics” in the sound menu records what souldew sees.') });
       }
       if (e.data?.type === 'emu-key') onKey(e.data, true);
       if (e.data?.type === 'emu-pad') {
@@ -753,22 +809,26 @@ export function GameSession({ session, mode }) {
       // EmulatorJS flushed the battery save by itself (periodic save) – write it to disk now.
       if (e.data?.type === 'emu-saved') window.dispatchEvent(new Event('sl-save-now'));
     };
+    // typing in a field, or answering the prompt over the screen (missed encounter) by keyboard: not the game's keys; a
+    // dialog (unsaved-progress, death alert …) or the rules drawer is open: its keys, not the game's
+    const notGame = (target) => !!target?.closest?.('input,textarea,select,dialog,.rules-drawer,.screen-confirm') || !!rulesRef.current || !!document.querySelector('dialog[open]');
     const down = (e) => {
-      // typing in a field, or answering the prompt over the screen (missed encounter) by keyboard: not the game's keys
-      if (e.target.closest?.('input,textarea,select,dialog,.rules-drawer,.screen-confirm')) return;
-      // a dialog (unsaved-progress, death alert …) or the rules drawer is open: its keys, not the game's
-      if (rulesRef.current || document.querySelector('dialog[open]')) return;
+      if (notGame(e.target)) return;
       if (onKey({ key: e.key, code: e.code, keyCode: e.keyCode, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey, down: true, repeat: e.repeat }, false)) e.preventDefault();
     };
     const up = (e) => onKey({ key: e.key, code: e.code, keyCode: e.keyCode, down: false }, false);
     // the hold key released while the window had no focus (alt-tab, a click into another app): end a held turbo anyway
     const blur = () => turboHeld.current && onKey({ key: 'Tab', code: 'Tab', down: false, blur: true }, false);
+    // the interface size's shortcuts (lib/uiscale.mjs) leave the page's keys to the game's shortcuts while it is shown
+    // big – ⌘+ / ⌘− stay the game speed there, as since 2.8 – the same keys onKey acts on
+    const offUi = setPlayKeys((k) => modeRef.current === 'full' && !notGame(k.target) && !!hotkeyOf(k, hotRef.current));
     addEventListener('message', onMsg);
     addEventListener('keydown', down);
     addEventListener('keyup', up);
     addEventListener('blur', blur);
     const offMenu = window.sls?.on?.('emu', (a) => act.current[a]?.());
     return () => {
+      offUi();
       removeEventListener('message', onMsg);
       removeEventListener('keydown', down);
       removeEventListener('keyup', up);
@@ -802,8 +862,9 @@ export function GameSession({ session, mode }) {
     // All uploads run one after another, so an older body can never land after a newer one.
     // `given` = bytes read synchronously by the caller (e.g. while the frame is being torn down).
     const persist = (given) => {
+      if (target.link?.discard) return chain; // (a link session that fell out of step: its saves don't count)
       chain = chain.then(async () => {
-        if (!loadedOk) return;
+        if (!loadedOk || target.link?.discard) return;
         const bytes = given || readSave();
         if (!bytes) return;
         const h = saveHash(bytes);
@@ -813,6 +874,7 @@ export function GameSession({ session, mode }) {
           if (res.ok) {
             lastSave = h; // otherwise the next round tries again
             guard.saved(h);
+            payRef.current?.saved(); // (a wager written into the game is in its save now)
             // fresh in-game save: re-take "where you left off" so it matches the save on disk again
             if (!given) saveAuto(grabState());
           }
@@ -822,6 +884,9 @@ export function GameSession({ session, mode }) {
       });
       return chain;
     };
+    // a link session that falls out of step waits for the uploads already on their way before the run's save goes back
+    // (web/lib/linksession.mjs beforeRestore) – one landing after the restore would bring the session's save back
+    if (target.link) target.link.settle = () => chain.catch(() => {});
     // "Where you left off": a state next to the battery save. It is only resumed while the save on disk
     // is still the one it was taken with – after an in-game save elsewhere the save wins.
     const autoKey = `sl-auto-${target.stateId}`;
@@ -871,7 +936,7 @@ export function GameSession({ session, mode }) {
     // Page is going away (tab closed, reload, desktop window closed): no time to queue – send now.
     // keepalive bodies are capped at 64 KB, so bigger saves (NDS: 512 KB) are a plain best-effort fetch.
     const onPageHide = () => {
-      if (!loadedOk) return;
+      if (!loadedOk || target.link?.discard) return;
       const bytes = readSave();
       if (!bytes || saveHash(bytes) === lastSave) return;
       try {
@@ -881,12 +946,26 @@ export function GameSession({ session, mode }) {
       }
     };
     const onVisibility = () => document.visibilityState === 'hidden' && persist();
+    // Closed from the UI (lib/lastmoment.mjs): the last battery save and "where you left off" while the player is still
+    // there – the fast player and the 3DS player answer getState through their frame, which the cleanup below is too
+    // late for. The close waits for the state's bytes (returned); their upload goes on after the frame is gone.
+    let lastTaken = false;
+    const offLast = lastMoment?.set(() => {
+      if (stopped || !loadedOk) return null;
+      lastTaken = true;
+      const bytes = !target.link?.discard ? readSave() : null;
+      if (bytes) persist(bytes);
+      const st = grabState();
+      saveAuto(st);
+      return st;
+    });
     window.addEventListener('sl-save-now', flushNow);
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('beforeunload', onPageHide);
     document.addEventListener('visibilitychange', onVisibility);
     let autoTimer = null;
     let songTimer = null;
+    let raidTimer = null;
     let offAudio = null; // the mixer's event feed (diagnostics)
     let inBattle = false; // the live battle reader sees a battle (the turbo mixer's 'battle' song key)
     (async () => {
@@ -946,7 +1025,8 @@ export function GameSession({ session, mode }) {
             // start from the save instead
           }
         }
-        autoTimer = setInterval(() => document.visibilityState === 'visible' && autoWhenQuiet(180000), 120000);
+        // (closed while the state above was loading: the cleanup ran already – no timer it can't clear)
+        if (!stopped) autoTimer = setInterval(() => document.visibilityState === 'visible' && autoWhenQuiet(180000), 120000);
       }
       // battery save → disk every 5 s when it changed
       const saveLoop = async () => {
@@ -993,6 +1073,33 @@ export function GameSession({ session, mode }) {
         }
         e.songKey(key);
       }, 100); // a few bytes: read often, so the turbo music follows a new song within a moment
+      // link battle wagers (web/lib/wagerpay.mjs): this player's own game of the run, alone – the money goes in there
+      const ownRun = isRun && !!doc && !!manifest && target.runId === manifest.id && target.saveUrl === `/api/runs/${manifest.id}/save/${me}`;
+      const pay = ownRun ? new WagerPay({ doc, me, onPaid: (o) => {
+        for (const p of o.pays) if (p.from === me) logWagerPaid(doc, manifest, o.sid, me, p.to, p.amount);
+        diag('wager', { sid: o.sid, delta: o.delta, before: o.before, after: o.after });
+        flash(o.delta > 0 ? t('wager.got', '+{amount} from the link battle', { amount: moneyText(o.delta) }) : t('wager.paid', '{amount} paid for the lost link battle', { amount: moneyText(-o.delta) }), 3500);
+      } }) : null;
+      payRef.current = pay;
+      const gameNow = () => gameOfEntry(liveRef.current?.entry);
+      if (ownRun && wagerRef) wagerRef.current.money = () => (target.link || !emu()?.read ? null : readMoney(gameNow(), (a, n) => emu()?.read(a, n)));
+      let world3 = null; // (Gen 3: the Shared World's reader says when the player stands in the overworld)
+      // raids (web/lib/raid.mjs): this player's own game of the run – its battle's HP into the shared pool and back. A
+      // few bytes three times a second; the writes go in only while the game waits for the player's action.
+      let raidTeam = null; // the live team ([{ hp, maxHp }]) – a raid ends for a player whose team is down
+      let raidFoe = null; // the opponent out now (National Dex number, from the live battle reader) – shown to the partners
+      const raid = ownRun ? raidFor(doc) : null;
+      if (raid) {
+        raidTimer = setInterval(() => {
+          const e = emu();
+          const ent = liveRef.current?.entry;
+          if (stopped || !e?.ready || !ent || e.ramInfo().base < 0) return;
+          const write = (a, b) => (e.writeChecked ? e.writeChecked(a, b) : e.write(a, b));
+          raid.gameTick({ entry: ent, read: e.read, write, team: raidTeam, foe: raidFoe, emu: e, ownGame: ownRun, link: !!target.link })
+            .then((r) => r && (r.begin || r.out || r.fin) && diag('raid', { begin: !!r.begin, out: r.out?.why || null, fin: !!r.fin }))
+            .catch((err) => diag('raid', { error: String(err?.message || err) }));
+        }, 330);
+      }
       // live loop
       let lastLocate = 0;
       let wramEntry = null;
@@ -1014,6 +1121,7 @@ export function GameSession({ session, mode }) {
           if (entry.gen >= 6 && e.update) {
             const u = e.update();
             setCtrUpdate((p) => (p === u ? p : u));
+            state.ctrVersion = runningVersion(u); // (the party is looked for at that update's address first)
           }
           const info = e.ramInfo();
           // Searching the heap is costly – slow down after ~1 min without a hit.
@@ -1050,6 +1158,8 @@ export function GameSession({ session, mode }) {
             const own = romOwnNow();
             const TT = (sp ? T.withSpecies(sp, own) : T).withRom(own).withShinyOdds(target.shinyOdds);
             const res = readLiveParty(ent, e.read, TT, state);
+            // 3DS: the party's address moved to another update's (a copy that stood still, ticket #35)
+            for (const ev of state.g67Log?.splice(0) || []) diag('live', { type: 'ctrPartySwitch', ...ev, runs: state.ctrVersion ?? null });
             // (again when the ROM's data came only on a later try – the server couldn't read the file at first)
             if (romDataReady() && (!fc || fcOwn !== romOwnNow())) {
               fcOwn = romOwnNow();
@@ -1067,7 +1177,7 @@ export function GameSession({ session, mode }) {
             // once (ticket #21: a team that wasn't found any more after reopening the game), and when one turns up later
             if (entry.gen >= 6) {
               if (res?.party?.length) {
-                if (ctrNoTeam.told && !ctrNoTeam.found) diag('live', { type: 'ctrTeamFound', after: Math.round((Date.now() - ctrNoTeam.since) / 1000), version: state.g67 != null ? entry.partyAddrs?.[state.g67]?.version || null : null });
+                if (ctrNoTeam.told && !ctrNoTeam.found) diag('live', { type: 'ctrTeamFound', after: Math.round((Date.now() - ctrNoTeam.since) / 1000), version: state.g67 != null ? entry.partyAddrs?.[state.g67]?.version || null : null, runs: state.ctrVersion ?? null });
                 ctrNoTeam.found = true;
                 ctrNoTeam.since = 0;
               } else if (!e.paused?.()) {
@@ -1075,7 +1185,7 @@ export function GameSession({ session, mode }) {
                 if (!ctrNoTeam.told && Date.now() - ctrNoTeam.since > 60000) {
                   ctrNoTeam.told = true;
                   const rd = romDataNow();
-                  diag('live', { type: 'ctrNoTeam', title: e.title?.() || null, entry: entry.id, ...probeGen67(entry, e.read), places: rd?.data?.ctr?.places?.length ?? null, romHeader: !!rd?.header });
+                  diag('live', { type: 'ctrNoTeam', title: e.title?.() || null, entry: entry.id, ...probeGen67(entry, e.read), runs: state.ctrVersion ?? null, places: rd?.data?.ctr?.places?.length ?? null, romHeader: !!rd?.header });
                 }
               }
             }
@@ -1088,6 +1198,8 @@ export function GameSession({ session, mode }) {
               // (a Pokémon at 0 HP counts once two reads in a row say so, in a battle only one that has been out in it –
               // the tracker files deaths from this party)
               const party = confirmFaints(withBattleHp(res.party, fight, state), state, fight);
+              raidTeam = party.filter((m) => m && !m.isEgg && m.maxHp > 0).map((m) => ({ hp: m.hp, maxHp: m.maxHp }));
+              raidFoe = fight?.kind === 'trainer' ? fight.enemy?.species || null : null;
               // what the player has seen of it: a Pokémon whose fall the game is still showing keeps its HP for now
               const shown = revealer.current.see(party, { speed: effectiveSpeed(e.speed?.() ?? speedRef.current, { paused: !!e.paused?.(), reach: reachRef.current }), gen: entry.gen, battle: fight });
               setMine(shown.party);
@@ -1123,7 +1235,16 @@ export function GameSession({ session, mode }) {
               // the battle goes along: a Pokémon that falls in it gets the opponent as its cause of death; the level caps
               // read from the game go along once its data is known (web/lib/run.mjs files them for the run)
               const romCaps = romDataReady() ? (own?.caps ? { caps: own.caps.caps, leaders: own.caps.leaders, final: own.caps.final } : null) : undefined;
-              if (isRun) snapRef.current?.({ source: 'live', party, boxes: res.boxes || null, game: entry.id, here: hereNow, ...(res.badges !== undefined ? { badges: res.badges } : {}), ...(romCaps !== undefined ? { romCaps } : {}) }, { battle: fight, held: shown.held });
+              // (a game still in a link room after its session ended – it says so itself: nothing of it is the run's)
+              const g0 = isRun && !target.link ? gameOfEntry(ent) : null;
+              const linkedGame = !!g0 && gameLinked(g0, e.read, { inBattle: !!seen });
+              if (isRun) snapRef.current?.({ source: 'live', party, boxes: res.boxes || null, game: entry.id, here: hereNow, ...(res.badges !== undefined ? { badges: res.badges } : {}), ...(romCaps !== undefined ? { romCaps } : {}), ...(linkedGame ? { linkedGame: true } : {}) }, { battle: fight, held: shown.held });
+              const g = pay && gameNow();
+              if (g) {
+                if (ent.gen === 3 && world3?.from !== ent) world3 = { from: ent, t: worldTable(ent) };
+                pay.tick({ game: g, read: e.read, write: e.write, fresh: e.fresh, busyGame: !!fight || !!target.link, cam: ent.gen === 3 && world3?.t ? readCamera(world3.t, e.read) : undefined })
+                  .catch(() => {});
+              }
               // (an ended run takes no snapshots: what is held is still revealed as it comes due)
               if (isRun) revealRef.current?.(shown.held);
               // the first Poké Balls in the bag start the run's rules for this player (outside battles: the bag is
@@ -1131,7 +1252,13 @@ export function GameSession({ session, mode }) {
               const bw = ballsRef.current;
               if (isRun && bw?.waiting && !fight && Date.now() - lastBalls > 3000) {
                 lastBalls = Date.now();
-                if (readBalls(ent, e.read, state) > 0) bw.seen(party.filter((m) => m?.key && m.maxHp > 0 && m.hp === 0).map((m) => m.key));
+                const balls = readBalls(ent, e.read, state);
+                if (balls > 0) bw.seen(party.filter((m) => m?.key && m.maxHp > 0 && m.hp === 0).map((m) => m.key));
+                // a 3DS bag that isn't where souldew knows it: searched for nearby, at most once a minute
+                else if (balls === null && ent.platform === '3ds' && e.watch && Date.now() - (state.ctrBagSearched || 0) > 60000) {
+                  state.ctrBagSearched = Date.now();
+                  locateCtrBag(ent, { read: e.read, watch: e.watch }, state).then((r) => r && diag('live', { type: 'ctrBagSearch', ...r }), () => {});
+                }
               }
             } else if (isRun) {
               // no team in memory (a menu, the title screen after a reset): the held deaths still come when their time is up
@@ -1145,21 +1272,25 @@ export function GameSession({ session, mode }) {
     })();
     return () => {
       stopped = true;
+      offLast?.();
+      if (payRef.current) payRef.current = null;
+      if (wagerRef?.current) wagerRef.current.money = null;
       // the game closes: every death held for the game to show is shown now (recorded already)
       revealer.current.releaseAll();
       revealRef.current?.(null);
       resetRomData(); // (this game's types and species names end with its session)
       clearInterval(autoTimer);
       clearInterval(songTimer);
+      clearInterval(raidTimer);
       offAudio?.();
       window.removeEventListener('sl-save-now', flushNow);
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('beforeunload', onPageHide);
       document.removeEventListener('visibilitychange', onVisibility);
       // final flush: read now (the frame is about to go), upload after whatever is still in flight
-      const bytes = loadedOk ? readSave() : null;
+      const bytes = loadedOk && !target.link?.discard ? readSave() : null;
       if (bytes) persist(bytes);
-      saveAuto(loadedOk ? grabState() : null);
+      if (!lastTaken) saveAuto(loadedOk ? grabState() : null); // (closed another way: the window, a link session's end …)
     };
   }, [phase, target.key]);
 
@@ -1173,7 +1304,7 @@ export function GameSession({ session, mode }) {
   const askRef = useRef(null);
   askRef.current = (q) => {
     // (the game shows places, but where this battle was isn't known: no guess – #80)
-    if (!doc || !manifest || !me || q.placeLost) return false;
+    if (!doc || !manifest || !me || q.placeLost || isTogether(manifest)) return false; // (Play together: no encounters)
     const seen = liveRead.current;
     return missedQuestion(doc, manifest, runData, me, { foe: q.foe, wild: true, from: q.from, newMonAt: missedTr.current.caughtAt(q), boxes: seen.boxes, partySize: seen.party, here: q.here });
   };
@@ -1184,7 +1315,7 @@ export function GameSession({ session, mode }) {
   // why fleeing there "didn't count"
   const dupeRef = useRef(null);
   dupeRef.current = (q) => {
-    if (!doc || !manifest || !me || doc.get('run:status', null) || missedTr.current.caughtAt(q) || !q.foe?.species || beforeBalls(doc, manifest, me)) return false;
+    if (!doc || !manifest || !me || isTogether(manifest) || doc.get('run:status', null) || missedTr.current.caughtAt(q) || !q.foe?.species || beforeBalls(doc, manifest, me)) return false;
     if (!dupeOf(doc, manifest, runData, q.foe.species, me)) return false;
     const at = q.here ? areaForPlace(doc, manifest, genOfRun(manifest, runData), q.here) : null;
     return !at || !encounter(doc, at, me);
@@ -1247,6 +1378,11 @@ export function GameSession({ session, mode }) {
   useEffect(() => {
     if (phase === 'running') emu()?.setFullTurbo?.(fullTurbo);
   }, [phase, fullTurbo]);
+  // Settings › "Whole pixels only" (lib/pixelscale.mjs): the players scale "sharp" otherwise. With the URL, and live.
+  const wholePixels = status?.config?.wholePixels === true;
+  useEffect(() => {
+    if (phase === 'running') emu()?.setWholePixels?.(wholePixels);
+  }, [phase, wholePixels]);
 
   // Settings › Controls and › Controller: the frame reads them when it starts – a change while the game runs (in the
   // corner, with Settings open next to it) is handed over right away. Before, it only applied to the next game start,
@@ -1264,7 +1400,8 @@ export function GameSession({ session, mode }) {
   // runs clearly below full speed for ~10 s, the play view says so and what helps (lib/slowdown.mjs, issue #4: Platinum
   // at half speed with crackling sound on a player's PC – the core itself was too slow there, ~30 ms per frame).
   useEffect(() => {
-    if (phase !== 'running') return undefined;
+    // (a link session's pace is the slowest partner's and stands still while one is missing – not this computer's)
+    if (phase !== 'running' || target.link) return undefined;
     let last = null;
     let skipSlow = 0;
     let skipped = false;
@@ -1344,6 +1481,42 @@ export function GameSession({ session, mode }) {
     return () => clearInterval(id);
   }, [phase, speed, speedGuard]);
 
+  // A 3DS game drawn at 2× or 3× whose fast-forward stays clearly below the speed asked for (support ticket #30: an RTX
+  // 2060 reached 1.1–3.3× of 4× at 3×, an AMD PC 3.99×): the play view says once per app session that the resolution
+  // holds it back and where to lower it (lib/ffhint.mjs) – the resolution itself is never changed. Measured on its own
+  // every 2 s from the host's frame count and the speed the page runs at (held Tab included), not the bar's state.
+  const ffHintOff = status?.config?.ctrFfHintOff === true;
+  useEffect(() => {
+    if (phase !== 'running' || target.system !== '3ds' || ffHintOff) return undefined;
+    const watch = new FfScaleWatch();
+    let last = null;
+    const id = setInterval(() => {
+      const e = emu();
+      const want = e?.speed?.();
+      if (!e?.ready || !e.frames || e.paused?.() || document.hidden || !(want > 1)) {
+        last = null;
+        watch.reset();
+        return;
+      }
+      const now = { f: e.frames(), t: performance.now(), want };
+      if (last && now.t > last.t && last.want === want) {
+        const reached = (now.f - last.f) / ((now.t - last.t) / 1000) / 60;
+        const hit = watch.add({ at: now.t, target: want, reached, scale: e.scale?.() ?? 1 });
+        if (hit) {
+          setFfHint(hit);
+          diag('perf', { type: 'ffScale', ...hit, renderer: e.perf?.()?.renderer ?? null });
+        }
+      }
+      last = now;
+    }, 2000);
+    return () => clearInterval(id);
+  }, [phase, ffHintOff]);
+  const ffHintNever = () => {
+    setFfHint(null);
+    api.post('/api/config', { ctrFfHintOff: true }).then(() => reloadStatus?.()).catch(() => {});
+    focusGame();
+  };
+
   // Diagnostics: the sound card and the pacing once, then every 10 s what the game really did (speed reached, display
   // rate, drop-outs in the sound, the longest gap between frames) – a report about crackling or slow-down then shows why.
   useEffect(() => {
@@ -1381,18 +1554,30 @@ export function GameSession({ session, mode }) {
   }, [phase]);
 
   // The fast player's page: the host opens the ROM itself; the battery save comes from the same place as for player.html
-  const [nativeSrc] = useState(() => `/playernative.html?system=${target.system}&rom=${encodeURIComponent(target.rom)}&key=${encodeURIComponent(target.key)}&name=${encodeURIComponent(target.name)}&save=${encodeURIComponent(target.saveUrl)}${layout === 'lr' ? '&layout=left' : ''}`);
+  // (a link session: the server started the link host already – the page attaches to it, docs/MULTIPLAYER.md)
+  const [nativeSrc] = useState(() => {
+    const q = new URLSearchParams({ system: target.system, rom: target.rom, key: target.soloKey || target.key, name: target.name, save: target.saveUrl });
+    if (layout === 'lr') q.set('layout', 'left');
+    if (wholePixels) q.set('px', 'whole');
+    // (a link session's page also gets the game itself: once the session is over it goes on alone from there)
+    if (target.link) {
+      q.set('link', '1');
+      q.set('session', target.link.id);
+      if (target.link.model) q.set('model', target.link.model);
+    }
+    return `/playernative.html?${q}`;
+  });
   // The frame's URL is fixed for the whole session – changing it would reboot the game.
   const [wasmSrc] = useState(() => {
     // 3DS: souldew's own player page – the game runs in the native host (server/lib/ctr.mjs), its saves live in the
     // host's folder for this game / run slot (target.key)
-    if (target.system === '3ds') return `/player3ds.html?rom=${encodeURIComponent(target.rom)}&key=${encodeURIComponent(target.key)}&name=${encodeURIComponent(target.name)}&layout=${layout3ds}${smooth3ds ? '&smooth=1' : ''}`;
+    if (target.system === '3ds') return `/player3ds.html?rom=${encodeURIComponent(target.rom)}&key=${encodeURIComponent(target.key)}&name=${encodeURIComponent(target.name)}&layout=${layout3ds}${smooth3ds ? '&smooth=1' : ''}${wholePixels ? '&px=whole' : ''}`;
     // EmulatorJS names the ROM (and its browser-side save) after the URL's last segment → make it unique per game.
     const romKey = `${hash(new TextEncoder().encode(target.key)).replace(/\D/g, '')}`;
     const romUrl = `/rom/g${romKey}.${target.system}?src=${encodeURIComponent(target.rom)}`;
     const lay = layout === 'lr' ? '&layout=Left%2FRight&dlayout=left%2Fright' : '';
     const wcore = isDs && /^(IPK|IPG|IRB|IRA|IRE|IRD)/.test(target.code || '') ? 'desmume' : '';
-    return `/player.html?system=${target.system}${wcore ? `&core=${wcore}` : ''}${lay}${fullTurbo ? '' : '&fullturbo=0'}&rom=${encodeURIComponent(romUrl)}&name=${encodeURIComponent(target.name)}&save=${encodeURIComponent(target.saveUrl)}&tap=${encodeURIComponent(t('play.tapToStart', 'Click to start'))}`;
+    return `/player.html?system=${target.system}${wcore ? `&core=${wcore}` : ''}${lay}${fullTurbo ? '' : '&fullturbo=0'}${wholePixels ? '&px=whole' : ''}&rom=${encodeURIComponent(romUrl)}&name=${encodeURIComponent(target.name)}&save=${encodeURIComponent(target.saveUrl)}&tap=${encodeURIComponent(t('play.tapToStart', 'Click to start'))}`;
   });
   const src = nativeOn && target.system !== '3ds' ? nativeSrc : wasmSrc;
   const arn = target.system === '3ds' ? ctrLayoutAspect(layout3ds) : isDs ? (layout === 'lr' ? 512 / 192 : 256 / 384) : target.system === 'gba' ? 3 / 2 : 10 / 9;
@@ -1409,93 +1594,225 @@ export function GameSession({ session, mode }) {
   // Controller navigation (lib/padnav.mjs): the game owns the controller while it fills the page and plays; pausing it
   // or opening anything over it (a menu, a panel, a prompt on the screen) hands it to the app.
   const padRef = useRef(null);
-  // (also the 3DS screen-layout menu and the message that the 3DS player stopped – CtrFailed)
-  padRef.current = { phase, overlay: !!(rulesOpen || statesOpen || soundOpen || cheatOpen || layoutOpen || ctrFail || confirmReset || pendingLoad || confirmCheat || asked) };
+  // (also the 3DS screen-layout menu and the message that the 3DS player stopped – CtrFailed; the gift picker and the
+  // watch panel of playing together)
+  const [giftFor, setGiftFor] = useState(null);
+  const [watchFor, setWatchFor] = useState(null);
+  const partnersShownRef = useRef(false);
+  padRef.current = { phase, overlay: !!(rulesOpen || statesOpen || soundOpen || cheatOpen || layoutOpen || ctrFail || confirmReset || pendingLoad || confirmCheat || asked || giftFor || watchFor) };
   useEffect(() => claimPad(() => ({
     mode: modeRef.current,
     playing: padRef.current.phase !== 'error',
-    paused: !!emu()?.paused?.(),
+    // (Shared World's A menu pauses the game but keeps the controller in the game's page)
+    paused: !!emu()?.paused?.() && !frame.current?.contentWindow?.__world?.menuOpen?.(),
     overlay: padRef.current.overlay,
     focus: focusGame,
   })), []);
   useScreenShare(isRun ? link : null, emu, { system: target.system, enabled: isRun && phase === 'running' && status?.config?.shareScreen !== false });
+
+  // Playing together (docs/MULTIPLAYER.md › 9, lib/together.mjs): my battle and place for the partners, my game's bag for
+  // gifts, where I stood for "come to me" – every game of a SoulLink; and what the partners do, for the picture
+  const tg = useTogether(isRun && !solo ? link : null);
+  const ownGame = isRun && !solo && !!tg && !target.link;
+  const tgBattle = ownGame && battle?.enemy ? battle : null;
+  useEffect(() => {
+    if (!tg) return undefined;
+    tg.setLocal({ battle: ownGame ? tgBattle : null, here: ownGame ? here : null });
+  }, [tg, ownGame, JSON.stringify([tgBattle?.kind, tgBattle?.enemy?.species, tgBattle?.enemy?.hp, tgBattle?.active, here?.id, here?.gen])]);
+  const tgState = useRef(null);
+  tgState.current = { live: liveState.status === 'live', inBattle: !!battle?.enemy, link: !!target.link };
+  useEffect(() => {
+    if (!tg || !ownGame) return undefined;
+    tg.setBag(makeBag(() => {
+      const e = emu();
+      const { entry, state } = liveRef.current;
+      const mem = e?.read ? { read: e.read, write: e.write, ...(entry?.platform === '3ds' && e.watch ? { watch: e.watch } : {}) } : null;
+      const s = tgState.current;
+      return { entry, state, mem, why: gameWhy({ entry, read: mem?.read, live: s.live, inBattle: s.inBattle || (!!entry && !!mem && inBattleFlag(entry, mem.read)), link: s.link }) };
+    }));
+    tg.setPosition(() => worldRef.current?.position?.() || null);
+    return () => {
+      tg.setBag(null);
+      tg.setPosition(null);
+      tg.setLocal({});
+    };
+  }, [tg, ownGame]);
+  /** Watch a partner: their window over the play area (the partner screens' picture, with the battle under it), else a panel. */
+  const watchPartner = (slot) => {
+    if (partnersShownRef.current) pl.pop(slot);
+    else setWatchFor(slot);
+  };
+
+  // Shared World (docs/MULTIPLAYER.md › 9, lib/sharedworld.mjs): the partners walk in this game when they're on the
+  // same map – never in a link session, a solo run or a game without the tables (the player page checks the ROM)
+  const worldOk = isRun && !solo && !target.link && WORLD_SYSTEMS.includes(target.system) && !!link && others.length > 0;
+  const [worldOn, setWorldOnState] = useState(() => worldEnabled(target.runId));
+  const [worldNear, setWorldNear] = useState(0);
+  const [worldSupported, setWorldSupported] = useState(false); // the player page knows this game's memory
+  const [worldOwnFollow, setWorldOwnFollow] = useState(true); // (HeartGold/SoulSilver walk your Pokémon themselves)
+  const worldRef = useRef(null);
+  const setWorldOn = (on) => {
+    setWorldOnState(on);
+    setWorldEnabled(target.runId, on);
+    focusGame();
+  };
+  // the Pokémon following you: the first one of your team that can fight (live tracking), shown here when the
+  // switch is on and to the partners either way (lib/sharedworld.mjs packs it into the world message)
+  const [followOn, setFollowOnState] = useState(followEnabled);
+  const setFollowOn = (on) => {
+    setFollowOnState(on);
+    setFollowEnabled(on);
+    focusGame();
+  };
+  const worldLead = worldOk ? leadOf(myParty) : null;
+  const leadKey = JSON.stringify(worldLead);
+  const linkIdle = !linkPlay || linkPlay.phase === 'idle' || linkPlay.phase === 'ended';
+  const worldPlayers = {};
+  const worldActions = {};
+  if (worldOk && names) {
+    const css = getComputedStyle(document.documentElement);
+    for (const s of [me, ...others]) worldPlayers[s] = { name: names[s]?.name || s.toUpperCase(), color: css.getPropertyValue(`--${s}`).trim() || '#ebe6da' };
+    for (const s of others) {
+      const name = worldPlayers[s].name;
+      // (linked with other players right now: the menu says so instead of offering a trade that would be refused)
+      const away = linkedText(linkSessions, s, names);
+      const noLink = linkUnavailable(manifest?.game);
+      const can = !!linkSessions && !noLink && linkIdle && !away && !!onlineSlots?.has(s) && !!linkStatus?.partners?.[s]?.p2p;
+      const why = noLink === 'hack' ? linkReason('linkHack') : !linkSessions || noLink ? t('linkplay.system', 'Linking isn’t available for this game yet.')
+        : !linkIdle ? t('world.linkBusy', 'A link is already running.')
+          : away || (!linkStatus?.partners?.[s]?.p2p ? t('linkplay.needConnection', 'No connection to {name} yet', { name }) : '');
+      worldActions[s] = { trade: can && linkAllowed(doc, manifest, 'trade'), battle: can && linkAllowed(doc, manifest, 'battle'), why: why || (!linkAllowed(doc, manifest, 'trade') && !linkAllowed(doc, manifest, 'battle') ? t('world.linkOff', 'Trades and battles are off in this run’s rules.') : '') };
+      // (playing together: Give item while the rule allows it – greyed with the reason; Watch while they battle)
+      if (tg && giftsAllowed(doc, manifest)) {
+        // (in a link with other players: the same words as Trade / Battle – their game can't take a gift there)
+        const gw = away ? 'link' : tg.giftWhy(s);
+        Object.assign(worldActions[s], { gift: !gw, giftWhy: away || (gw ? giftWhyText(gw, name) : '') });
+      }
+      if (tg?.battleOf(s)) worldActions[s].watch = true;
+    }
+  }
+  const worldKey = JSON.stringify([worldPlayers, worldActions, worldOn]);
+  useEffect(() => {
+    if (!worldOk) return undefined;
+    const w = new SharedWorld({
+      sync: link, me, frame: () => frame.current, onNear: setWorldNear, onSupported: (ok, o) => (setWorldSupported(ok), setWorldOwnFollow(o?.follow !== false)), rps: rpsFor(link), lead: worldLead, follow: followOn,
+      onAction: async (kind, slot) => {
+        if (kind === 'rps-limit') return void toast({ kind: 'soul', title: t('world.rps', 'Rock-paper-scissors'), text: t('rps.limit', 'Not so fast – try again in a few seconds.') });
+        if (kind.startsWith('rps-')) return;
+        if (kind === 'gift') return void setGiftFor(slot);
+        if (kind === 'watch') return void watchPartnerRef.current?.(slot);
+        try {
+          await linkSessions?.invite(kind, [slot]);
+        } catch (e) {
+          toast({ kind: 'death', title: t('linkplay.title', 'Link'), text: linkReason(e.code, names?.[slot]?.name || slot) });
+        }
+      },
+    });
+    worldRef.current = w;
+    window.__slWorld = w; // (tests: scripts/world-e2e.mjs)
+    return () => {
+      w.stop();
+      if (worldRef.current === w) worldRef.current = null;
+    };
+  }, [worldOk, link, me]);
+  useEffect(() => {
+    worldRef.current?.update({ players: worldPlayers, actions: worldActions, enabled: worldOn, lead: worldLead, follow: followOn });
+  }, [worldKey, worldOk, leadKey, followOn]);
+  const watchPartnerRef = useRef(null);
+  watchPartnerRef.current = watchPartner;
+  // what the partners do, into the picture (lib/togetheroverlay.mjs): who battles, catches, tombstones, "come here"
+  const tgWorld = tg && worldOk ? {
+    battles: Object.fromEntries(others.filter((s) => tg.battleOf(s)).map((s) => [s, true])),
+    pops: tg.popsNow().filter((p) => p.slot !== me).map((p) => ({ slot: p.slot, species: p.species, shiny: p.shiny, form: p.form, age: Date.now() - p.at })),
+    tombs: tg.tombs(),
+    ping: others.map((s) => tg.pingOf(s)).filter((p) => p && p.map !== undefined).sort((a, b) => b.at - a.at)[0] || null,
+  } : null;
+  const tgWorldKey = JSON.stringify(tgWorld && { ...tgWorld, pops: tgWorld.pops.map((p) => `${p.slot}${p.species}`) });
+  useEffect(() => {
+    if (tgWorld) worldRef.current?.setTogether(tgWorld);
+  }, [tgWorldKey, worldOk]);
   const btn = (name, title, onClick, extra = {}) => html`<button class="btn icon" title=${title} aria-label=${title} onClick=${onClick} ...${extra}><${Icon} name=${name} size=${14} /></button>`;
 
-  // Cheats (Rare Candies, Max Repels): written straight into the bag in RAM. In a run only while its rules allow them
-  // (in a SoulLink the host's), and every use goes to the run's log, naming what was added – the partners see it as it
-  // happens.
-  const cheatsAllowed = !isRun || !!(doc && manifest && getRules(doc, manifest).cheats);
-  const cheatIds = cheatGame ? cheatGame.split(',') : [];
+  // Cheats (items into the bag, money – views/cheatmenu.mjs): written straight into the game's memory and read back. In
+  // a run only those its rules allow (in a SoulLink the host's – shared/rules.mjs cheats, cheatSet), and every use goes
+  // to the run's log, naming what was added – the partners see it as it happens.
+  const runRules = isRun && doc && manifest ? getRules(doc, manifest) : null;
+  const cheatIds = cheatGame ? cheatGame.split(',') : []; // this game's (cheatsFor)
+  const allowedHere = (id) => !isRun || (!!runRules && cheatAllowed(runRules, id));
   const cheatWhyOf = (id) => ({
     unsupported: t('cheat.unsupported', 'Not available for this game.'),
     off: t('cheat.off', 'Cheats are off in this run’s rules.'),
+    linked: t('cheat.linked', 'Not during a link session – every player’s game has to stay the same.'),
     waiting: t('cheat.waiting', 'Available once live tracking has found your team.'),
     inBattle: t('cheat.inBattle', 'Not during a battle.'),
-  })[cheatBlock({ supported: cheatIds.includes(id), allowed: cheatsAllowed, live: liveState.status === 'live', inBattle: !!(battle?.enemy || demo) })] || null;
-  // the popover's reason line: the same for every cheat this game has (an unknown bag: none of them)
-  const cheatWhy = cheatWhyOf(cheatIds[0] || 'rareCandy');
-  // one row per cheat this game can take; a game without a known bag still shows them, greyed out with the reason
-  const cheatRows = (cheatIds.length ? cheatIds : Object.keys(CHEATS)).map((id) => ({ id, why: cheatWhyOf(id), ...cheatText(id) }));
+  })[cheatBlock({ supported: cheatIds.includes(id), allowed: allowedHere(id), live: liveState.status === 'live', inBattle: !!(battle?.enemy || demo), linked: !!target.link })] || null;
+  // the menu: this game's cheats that the run allows; the reason line is the same for all of them
+  const cheatShown = cheatIds.filter(allowedHere);
+  const cheatWhy = cheatWhyOf(cheatShown[0] || cheatIds[0] || 'rareCandy');
   const doCheat = async () => {
-    const id = confirmCheat;
+    const pending = confirmCheat;
     setConfirmCheat(null);
+    const id = pending?.id;
     const e = emu();
     const { entry, state } = liveRef.current;
     if (!CHEATS[id] || cheatWhyOf(id) || !e?.write || !entry) return void focusGame();
-    const text = cheatText(id);
     let res;
     try {
       // (the 3DS player answers once its host has written – between two frames)
-      res = await applyCheat(id, entry, { read: e.read, write: e.write }, state);
+      // (a 3DS game's bag that isn't where souldew knows it is searched for nearby: the player reads more memory then)
+      // (the fast player: the host confirms the write, and the read-back reads the core's memory after it – e.fresh)
+      const fast = typeof e.fresh === 'function' && typeof e.writeChecked === 'function';
+      res = await applyCheat(id, entry, { read: e.read, write: fast ? e.writeChecked : e.write, ...(fast ? { fresh: e.fresh } : {}),
+        ...(entry.platform === '3ds' && e.watch ? { watch: e.watch } : {}) }, state, { amount: pending.amount });
     } catch {
       res = { error: 'write' };
     }
-    diag('cheat', { cheat: id, game: entry.id, ...res });
+    // (a 3DS bag that wasn't found: each address tried and why it wasn't the bag, and how the search went)
+    const where = [entry.id, bagLayoutKey(entry), String(pending.amount)].join(' · ');
+    diag('cheat', { cheat: id, amount: pending.amount, game: entry.id, layout: bagLayoutKey(entry), ...(entry.platform === '3ds' ? { version: entry.partyAddrs?.[state?.g67]?.version || null } : {}), ...res });
     if (res.ok) {
-      if (isRun) logCheat(doc, manifest, me, { added: res.added, cheat: id });
-      flash(text.done(res.added), 2500);
+      if (isRun) logCheat(doc, manifest, me, { added: res.added, cheat: id, gen: entry.gen, ...(CHEATS[id].money ? { after: res.after } : {}) });
+      flash(cheatDoneText(id, res), 2500);
     } else {
-      toast({ kind: 'death', title: text.failed, text: {
-        // (a 3DS game keeps its bag at one address per update: not there means an update souldew doesn't know)
-        notFound: entry.gen >= 6 ? t('cheat.notFoundVersion', 'Your bag wasn’t found where this version of the game keeps it – souldew may not know this game update yet.')
-          : t('cheat.notFound', 'Your bag wasn’t found in the game’s memory just now. Try again outside of menus and battles.'),
-        changed: t('cheat.changed', 'The game changed your bag just then – try again.'),
-        full: t('cheat.full', 'The bag pocket is full – make room and try again.'),
-        max: text.max,
-      }[res.error] || t('cheat.writeFailed', 'The game’s memory couldn’t be changed.') });
+      const f = cheatFailText(id, res, { gen: entry.gen, where });
+      toast({ kind: 'death', title: f.title, text: f.text });
     }
     focusGame();
   };
 
-  // the battle helper: left of the game (default) or on the right above the team, folded in or not – the player's choice
-  const panelSide = panelPrefs.side === 'right' ? 'right' : 'left';
   const gameGen = liveGen || GEN[target.system] || null;
-  const battlePanel = html`<${BattlePanel} battle=${battle} mine=${myParty} gen=${gameGen} game=${liveGame} isRun=${isRun}
-    side=${panelSide} collapsed=${panelPrefs.collapsed} onPrefs=${setPanelPrefs} hitsOpen=${panelPrefs.hits} noMoves=${features?.moves === 'no'} />`;
-  const hasLeft = !!(isRun || here || (battle?.enemy && panelSide === 'left'));
-  return html`<div class=${`session ${mode} ${fs && mode === 'full' ? 'is-fs' : ''} ${isDs ? 'ds' : ''}`} data-v=${docVersion}>
-    <div class="mini-head">
-      <${Led} on=${phase === 'running' && !paused} color="green" /><span class="grow ellipsis">${target.label}</span>
-      ${btn('close', t('play.close', 'Close game'), actions.close)}
-    </div>
-    <div class="session-top">
-      <b class="ellipsis">${target.label}</b>
-      ${phase === 'running' && html`<${SaveAge} savedAt=${guard.savedAt} hasSave=${guard.hasSave} dirty=${guard.dirty} />`}
-      <span class="spacer"></span>
-      ${isRun && html`<button class="btn small ghost" onClick=${() => navigate('soullink', { run: target.runId })}><${Icon} name="link" size=${14} />${t('play.board', 'Board')}</button>`}
-      <button class="btn small ghost" onClick=${actions.close}><${Icon} name="close" size=${14} />${t('play.close', 'Close game')}</button>
-    </div>
-    <div class=${`session-body ${hasLeft ? 'has-left' : ''}`}>
-      ${hasLeft && html`<aside class="session-left">
-        <${LocationSign} here=${here} live=${liveState.status === 'live'} isRun=${isRun} game=${liveRef.current?.entry} />
-        ${isRun && names && html`<${RunStrip} mine=${myParty} onRules=${() => setRulesOpen(true)} />`}
-        ${panelSide === 'left' && battlePanel}
-      </aside>`}
-      <div class="session-stage">
-        <div class="session-screen" onClick=${focusGame}>
+  const full = mode === 'full';
+  const slots = isRun && manifest ? slotsOf(manifest) : [];
+  // the partners' games – tiles in the dock, or windows over the play area – not with the game in the corner (it floats
+  // over other pages there; the board shows the partners), and not in a solo run
+  const partnersShown = !!(isRun && names && !solo && full);
+  partnersShownRef.current = partnersShown;
+  // (a partner in a battle: the strip under their picture – live tracking's view of it)
+  const tgBelow = tg ? (slot, where) => html`<${BattleStrip} slot=${slot} variant=${where} />` : null;
+  // The dock (views/playdock.mjs): right of a tall picture, under a wide one – the side where the picture comes out
+  // bigger (lib/playlayout.mjs), decided anew whenever the play area or the game's layout changes.
+  const dockH = dockHeight(Math.max(1, slots.length));
+  const side = dockSide(area, arn, { dockH });
+  const pic = full && area ? pictureFor(area, arn, side, { dockH, folded }) : null;
+  // next to a tall picture with room to spare the dock widens and the partners' games get a column of their own – sized
+  // with the dock open, so it never changes while you play (a battle, folding)
+  const open = full && area ? pictureFor(area, arn, side, { dockH }) : null;
+  const dockW = side === 'right' && partnersShown && open ? rightDockWidth(area, Math.max(open.w, barSize?.w || 0)) : DOCK_W;
+  const wide = dockW >= DOCK_W + 220;
+  // folding a dock that gives the picture nothing (it is limited the other way) leaves everything where it was
+  const keep = folded && pic && open && pic.w === open.w && pic.h === open.h;
+  const hereArea = isRun && here && doc && manifest ? areaOfHere(doc, manifest, genOfRun(manifest, runData), here) : null;
+  // the level cap against your strongest Pokémon (as RunStrip shows it) – for the strip's dot and the attention card
+  const capNow = (() => {
+    if (!isRun || !doc || !manifest || doc.get('run:status', null) || !getRules(doc, manifest).levelCaps) return null;
+    const { cap, boss } = levelCap(doc, manifest, me);
+    const top = Math.max(0, ...myParty.filter((m) => m && !m.isEgg).map((m) => m.level || 0));
+    return cap && top ? { cap, boss, top, state: top > cap ? 'over' : top >= cap ? 'at' : top >= cap - 2 ? 'near' : 'ok' } : null;
+  })();
+  const screenEl = html`<div class="session-screen" onClick=${focusGame}>
           <div class="console-screen" style=${`--arn:${arn}`}>
             <iframe ref=${frame} src=${src} title=${t('play.screenTitle', 'Game screen')} allow="autoplay; fullscreen; gamepad"
-              class=${screenShown ? 'ci-shown' : 'ci-wait'} onLoad=${focusGame}></iframe>
+              class=${screenShown ? (overlaid.current ? 'ci-under' : 'ci-shown') : 'ci-wait'} onLoad=${focusGame}></iframe>
             ${osd && html`<div class="osd">${osd}</div>`}
             ${pendingLoad && html`<div class="screen-confirm" role="alertdialog" aria-live="assertive">
               <span class="grow">${pendingLoad.slot <= 4 ? (hotRef.current[`load${pendingLoad.slot}`]?.length
@@ -1508,19 +1825,22 @@ export function GameSession({ session, mode }) {
             ${asked && html`<${MissedPrompt} key=${asked.id} missed=${asked.foe} here=${asked.here} onDone=${(no) => { setQuestions((qs) => (no ? dropQuestion(qs, asked, { areaOf: (q) => areaRef.current(q) }) : qs.filter((q) => q !== asked))); focusGame(); }} />`}
             ${confirmReset && html`<div class="screen-confirm" role="alertdialog" aria-live="assertive">
               <span class="grow">${t('play.resetConfirm', 'Reset the game? Unsaved progress is lost.')}</span>
-              <button class="btn small primary" onClick=${() => { setConfirmReset(false); emu()?.restart(); revealNow(); focusGame(); }}>${t('play.resetYes', 'Reset')}</button>
+              <button class="btn small primary" onClick=${() => { setConfirmReset(false); emu()?.restart(); revealNow(); payRef.current?.restarted(); focusGame(); }}>${t('play.resetYes', 'Reset')}</button>
               <button class="btn small ghost" data-pad-back onClick=${() => { setConfirmReset(false); focusGame(); }}>${t('common.cancel', 'Cancel')}</button>
             </div>`}
             ${confirmCheat && !confirmReset && !pendingLoad && html`<div class="screen-confirm" role="alertdialog" aria-live="assertive">
-              <span class="grow">${cheatText(confirmCheat).confirm} ${isRun && !solo ? t('cheat.confirmRun', 'Everyone in the run sees it in the log.') : isRun ? t('cheat.confirmSolo', 'It goes into the run’s log.') : ''}</span>
+              <span class="grow">${cheatConfirmText(confirmCheat)} ${isRun && !solo ? t('cheat.confirmRun', 'Everyone in the run sees it in the log.') : isRun ? t('cheat.confirmSolo', 'It goes into the run’s log.') : ''}</span>
               <button class="btn small primary" onClick=${doCheat}>${t('cheat.add', 'Add')}</button>
               <button class="btn small ghost" data-pad-back onClick=${() => { setConfirmCheat(null); focusGame(); }}>${t('common.cancel', 'Cancel')}</button>
             </div>`}
             ${ctrFail && html`<${CtrFailed} fail=${ctrFail} target=${target} onClose=${actions.close} />`}
           </div>
-        </div>
-        <div class="session-bar" role="toolbar" aria-label=${t('play.controls', 'Game controls')}>
-          ${btn(paused ? 'resume' : 'pause', t('keys.pause', 'Pause / resume') + hint('pause'), actions.pause, { 'data-pad-first': '' })}
+          ${launching && html`<${LaunchStage} cfg=${launchCfg} system=${target.system} dsLayout=${layout} ctrLayout=${layout3ds} frame=${frame}
+            ready=${phase !== 'loading'} cover=${insertCover(library, target, manifest)} cartColor=${game?.color} title=${target.label}
+            onDone=${() => { setLaunching(false); focusGame(); }} />`}
+        </div>`;
+  const barEl = html`<div class="session-bar" ref=${barRef} role="toolbar" aria-label=${t('play.controls', 'Game controls')}>
+${!target.link && html`          ${btn(paused ? 'resume' : 'pause', t('keys.pause', 'Pause / resume') + hint('pause'), actions.pause, { 'data-pad-first': '' })}
           ${btn('reset', t('keys.reset', 'Reset the game (asks first)') + hint('reset'), actions.reset)}
           <span class="sep"></span>
           <button class="btn icon" title=${t('play.slower', 'Slower') + hint('slower')} aria-label=${t('play.slower', 'Slower')} onClick=${actions.slower}><span aria-hidden="true">–</span></button>
@@ -1531,7 +1851,7 @@ export function GameSession({ session, mode }) {
           ${btn('save', t('states.quicksave', 'Quick save to slot {n}', { n: sel }) + hint('quicksave'), () => actions.quicksave())}
           <button class=${`btn small ghost states-btn ${statesOpen ? 'on' : ''}`} aria-expanded=${statesOpen} aria-haspopup="dialog"
             title=${t('states.openHint', 'All save states – load, overwrite, delete')} onClick=${() => setStatesOpen(!statesOpen)}>
-            <${Icon} name="load" size=${14} />${t('states.title', 'Save states')}<span class="px slot-no" aria-hidden="true">${sel}</span></button>
+            <${Icon} name="load" size=${14} />${t('states.title', 'Save states')}<span class="px slot-no" aria-hidden="true">${sel}</span></button>`}
           <span class="spacer"></span>
           ${target.system === '3ds' && html`<span class="layout-wrap">
             ${btn(layout3ds === 'lr' || layout3ds === 'large' ? 'layoutLr' : 'layoutTb', t('play.layout3ds', 'Screen layout'), () => setLayoutOpen(!layoutOpen), { 'aria-expanded': layoutOpen, 'aria-haspopup': 'dialog' })}
@@ -1541,21 +1861,19 @@ export function GameSession({ session, mode }) {
                 onClick=${() => { actions.layout3ds(id); setLayoutOpen(false); focusGame(); }}>${ctrLayoutLabel(id)}</button>`)}
               <span class="tiny faint">${layout3ds === 'top' ? t('play.layout3dsNoTouch', 'The touch screen is hidden in this layout – switch back to tap it.') : t('play.layout3dsHint', 'Click the bottom screen to touch it, wherever it is. Switches right away, without restarting the game.')}</span>
               <label class="row nowrap small"><input type="checkbox" checked=${smooth3ds} onChange=${(e) => actions.smooth3ds(e.target.checked)} />${t('play.smooth3ds', 'Smooth picture')}</label>
-              <span class="tiny faint">${t('play.ctrScaleNow', 'Resolution: {n} – Settings › Emulators › 3DS resolution (applies to the next start).', { n: (status?.config?.ctrScale || 1) > 1 ? `${status.config.ctrScale}×` : t('set.ctrScale1', '1× (native)') })}</span>
+              <span class="tiny faint">${t('play.ctrScaleNow', 'Resolution: {n} – Settings › Play › 3DS resolution (applies to the next start).', { n: (status?.config?.ctrScale || 1) > 1 ? `${status.config.ctrScale}×` : t('set.ctrScale1', '1× (native)') })}</span>
             </div>`}
           </span>`}
           ${isDs && btn(layout === 'lr' ? 'layoutTb' : 'layoutLr', layout === 'lr' ? t('play.layoutTb', 'Screens on top of each other') : t('play.layoutLr', 'Screens side by side'), actions.layout)}
           ${btn('camera', t('keys.screenshot', 'Screenshot') + hint('screenshot'), actions.screenshot)}
           <span class="cheat-wrap">
             ${btn('candy', t('cheat.title', 'Cheats'), () => setCheatOpen(!cheatOpen), { 'aria-expanded': cheatOpen, 'aria-haspopup': 'dialog' })}
-            ${cheatOpen && html`<div class="cheat-pop" role="dialog" aria-label=${t('cheat.title', 'Cheats')}>
-              <b class="small">${t('cheat.title', 'Cheats')}</b>
-              ${cheatRows.map((c) => html`<button class="btn small" key=${c.id} disabled=${!!c.why} onClick=${() => { setCheatOpen(false); setConfirmCheat(c.id); }}>
-                <${Icon} name=${c.icon} size=${14} />${c.label}</button>`)}
-              <span class="tiny faint">${cheatWhy || (isRun && !solo ? t('cheat.hintRun', 'Everyone in the run sees it in the log. Save in the game to keep them.')
-                : isRun ? t('cheat.hintSolo', 'It goes into the run’s log. Save in the game to keep them.') : t('cheat.hintGame', 'Save in the game to keep them.'))}</span>
-              ${isRun && cheatIds.length > 0 && !cheatsAllowed && html`<button class="btn small ghost" onClick=${() => { setCheatOpen(false); setRulesOpen(true); }}>${t('cheat.openRules', 'Open the rules')}</button>`}
-            </div>`}
+            ${cheatOpen && html`<${CheatMenu} ids=${cheatShown} why=${cheatWhy} amount=${cheatAmount} onAmount=${setCheatAmount}
+              hint=${isRun && !solo ? t('cheat.hintRun', 'Everyone in the run sees it in the log. Save in the game to keep them.')
+                : isRun ? t('cheat.hintSolo', 'It goes into the run’s log. Save in the game to keep them.') : t('cheat.hintGame', 'Save in the game to keep them.')}
+              ruleNote=${cheatShown.length > 0 && cheatShown.length < cheatIds.length}
+              onPick=${(c) => { setCheatOpen(false); setConfirmCheat(c); }}
+              onRules=${isRun && cheatIds.length > 0 && !cheatShown.length ? () => { setCheatOpen(false); setRulesOpen(true); } : null} />`}
           </span>
           <span class="sound-wrap">
             ${btn(muted || volume === 0 ? 'mute' : 'sound', t('play.volume', 'Volume'), () => setSoundOpen(!soundOpen), { 'aria-expanded': soundOpen })}
@@ -1568,7 +1886,7 @@ export function GameSession({ session, mode }) {
               <span class="mono tiny vol">${muted ? t('play.mutedShort', 'off') : `${Math.round(volume * 100)} %`}</span>
               ${btn(muted ? 'sound' : 'mute', muted ? t('play.unmute', 'Sound on') : t('play.mute', 'Mute') + hint('mute'), actions.mute)}
               </div>
-              <label class="turbo-audio" title=${t('play.turboAudioHint', 'What you hear while fast-forwarding. “Music continues” keeps the music at its normal speed and pitch – sound effects stay silent. “Sped-up original” plays the game’s own sound, faster and higher.')}>
+              <label class="turbo-audio" title=${t('play.turboAudioHint', 'What you hear while fast-forwarding. “Music continues” keeps the music at its normal speed and pitch – sound effects stay silent. Where souldew has no music of its own yet (a song not yet heard at normal speed), you hear the sped-up original. “Sped-up original” plays the game’s own sound, faster and higher.')}>
                 <span class="tiny">${t('play.turboAudio', 'Turbo audio')}</span>
                 <select value=${turboAudio} onChange=${(e) => actions.turboAudio(e.target.value)}>
                   <option value="music">${t('play.turboAudioMusic', 'Music continues')}</option>
@@ -1577,77 +1895,167 @@ export function GameSession({ session, mode }) {
                   <option value="plain" title=${t('play.turboAudioPlainHint', 'The emulator’s sound only – no recording, no mixer. Try it if the sound crackles.')}>${t('play.turboAudioPlain', 'Plain (no extra processing)')}</option>
                 </select>
               </label>
+              <a class="btn small ghost diag-btn" href=${`#/settings?${new URLSearchParams(settingsLink('turbo-audio'))}`} onClick=${() => setSoundOpen(false)}>${t('play.moreSound', 'More sound settings')}</a>
               <button class="btn small ghost diag-btn" title=${t('play.diagHint', 'Saves what souldew recorded about the music and live tracking this session – attach the file to a bug report. No ROM, save or invite data.')}
                 onClick=${() => saveDiagnostics({ turboAudio, speed: speed === MAX ? 'max' : speed, reach, steps: steps.map((x) => (x === MAX ? 'max' : x)), volume, perf: emu()?.perf?.() ?? null, audioGraph: emu()?.audioGraph?.() ?? null, pad: emu()?.padInfo?.() ?? null })}><${Icon} name="save" size=${14} />${t('play.diag', 'Save diagnostics')}</button>
             </div>`}
           </span>
           ${btn(fs ? 'shrink' : 'full', (fs ? t('play.exitFullscreen', 'Leave fullscreen') : t('keys.fullscreen', 'Fullscreen game')) + hint('fullscreen'), actions.fullscreen)}
-        </div>
-        ${slow && mode === 'full' && html`<${SlowNotice} slow=${slow} isDs=${isDs} native=${nativeOn} onClose=${() => { setSlow(null); focusGame(); }} />`}
-        ${statesOpen && mode === 'full' && html`<${StatePanel} id=${target.stateId} core=${core} gen=${gameGen} version=${statesVer} selected=${sel}
+        </div>`;
+  // ---- "something happened" (views/playdock.mjs useAttention): a card over the top of the game that leaves by itself –
+  // a group died, a catch (yours, or the one that completes a group), the level cap reached, and a battle starting while
+  // the dock is folded (its helper is in there). "Show" unfolds the dock at that place.
+  const attnShow = attn.show;
+  useEffect(() => {
+    if (!doc || !manifest || !isRun || mode !== 'full') return undefined;
+    const seen = new Set();
+    return doc.subscribe((keys, remote, info) => {
+      const age = (at) => Date.now() - at - (remote ? info?.offset || 0 : 0);
+      const pn = getPlayers(doc, manifest);
+      const all = slotsOf(manifest);
+      const mon = (e) => (e?.nickname || speciesName(e?.species));
+      for (const k of keys) {
+        if (k.startsWith('pair:')) {
+          const p = doc.get(k);
+          const area = k.slice(5);
+          const id = `${k}:${p?.diedAt}`;
+          if (p?.state !== 'dead' || !p.diedAt || age(p.diedAt) > 60000 || seen.has(id)) continue;
+          seen.add(id);
+          const st = pairState(doc, area, all);
+          attnShow({ kind: 'death', section: 'team', area, title: all.length === 1 ? t('attn.deathSolo', '{mon} died', { mon: mon(st.encs[me]) })
+            : t('attn.death', '{area}: the link is broken', { area: areaName(doc, manifest, area) }),
+          text: all.map((sl) => st.encs[sl]?.species && `${pn[sl]?.name || sl}: ${mon(st.encs[sl])}`).filter(Boolean).join(' · ') });
+        } else if (k.startsWith('enc:')) {
+          const cut = k.lastIndexOf(':');
+          const area = k.slice(4, cut);
+          const slot = k.slice(cut + 1);
+          const e = doc.get(k);
+          const id = `${k}:${e?.at}`;
+          if (e?.outcome !== 'caught' || !e.at || age(e.at) > 60000 || seen.has(id)) continue;
+          seen.add(id);
+          const st = pairState(doc, area, all);
+          const where = areaName(doc, manifest, area);
+          if (all.length > 1 && st.state === 'linked') {
+            attnShow({ kind: 'catch', section: 'team', area, title: t('attn.linked', '{area}: everyone caught – linked', { area: where }),
+              text: all.map((sl) => `${pn[sl]?.name || sl}: ${mon(st.encs[sl])}`).join(' · ') });
+          } else if (slot === me) {
+            const missing = all.filter((sl) => !st.encs[sl]).map((sl) => pn[sl]?.name || sl);
+            attnShow({ kind: 'catch', section: 'team', area, title: t('attn.caught', 'Caught {mon} – {area}', { mon: mon(e), area: where }),
+              text: missing.length ? t('attn.waitingFor', 'Waiting for {names}', { names: missing.join(', ') }) : '' });
+          }
+        }
+      }
+    });
+  }, [doc, manifest, isRun, mode, me]);
+  // the level cap: once when your strongest Pokémon reaches it, once when one goes over (not for the state at the start)
+  const capSeen = useRef(undefined);
+  const capKey = capNow && (capNow.state === 'at' || capNow.state === 'over') ? `${capNow.cap}:${capNow.state}` : null;
+  useEffect(() => {
+    const first = capSeen.current === undefined;
+    const prev = capSeen.current;
+    capSeen.current = capKey;
+    if (first || !capKey || capKey === prev || mode !== 'full') return;
+    attnShow(capNow.state === 'over'
+      ? { kind: 'cap', section: 'place', title: t('attn.capOver', 'Over the level cap: Lv {lv} > {cap}', { lv: capNow.top, cap: capNow.cap }), text: t('attn.capOverText', 'Box or swap before the next boss.') }
+      : { kind: 'cap', section: 'place', title: t('attn.capAt', 'Level cap reached: Lv {cap}', { cap: capNow.cap }), text: capNow.boss?.name ? t('attn.capNext', 'Next: {boss}', { boss: capNow.boss.name }) : '' });
+  }, [capKey]);
+  // a battle starts while the dock is folded: its helper is one click away
+  const battleKey = battle?.enemy ? `${battle.kind}:${battle.enemy.species}:${battle.enemy.level}` : null;
+  const battleSeen = useRef(null);
+  useEffect(() => {
+    const prev = battleSeen.current;
+    battleSeen.current = battleKey;
+    if (!battleKey || prev || !folded || mode !== 'full') return;
+    const f = battle.enemy;
+    attnShow({ kind: 'battle', section: 'battle', title: battle.kind === 'trainer' ? t('attn.trainer', 'Trainer battle: {mon} Lv {lv}', { mon: speciesName(f.species), lv: f.level })
+      : t('attn.wild', 'Wild {mon} Lv {lv}', { mon: speciesName(f.species), lv: f.level }), text: t('attn.battleHelp', 'The battle helper is ready in the panel.') });
+  }, [battleKey]);
+
+  // ---- the dock's parts ------------------------------------------------------------------------------------------------
+  const head = html`<div class="dock-title"><b class="ellipsis" title=${target.label}>${target.label}</b>
+      ${phase === 'running' && html`<${SaveAge} savedAt=${guard.savedAt} hasSave=${guard.hasSave} dirty=${guard.dirty} />`}</div>
+    ${isRun && html`<button class="btn small ghost" onClick=${() => navigate('soullink', { run: target.runId })}><${Icon} name="link" size=${14} />${t('play.board', 'Board')}</button>`}
+    <button class="btn icon ghost" title=${t('play.close', 'Close game')} aria-label=${t('play.close', 'Close game')} onClick=${actions.close}><${Icon} name="close" size=${14} /></button>`;
+  const placeEl = html`
+    ${slow && html`<${SlowChip} slow=${slow} isDs=${isDs} native=${nativeOn} onClose=${() => { setSlow(null); focusGame(); }} />`}
+    ${ffHint && html`<${FfScaleChip} hint=${ffHint} onClose=${() => { setFfHint(null); focusGame(); }} onNever=${ffHintNever} />`}
+    <${LocationSign} here=${here} live=${liveState.status === 'live'} isRun=${isRun} game=${liveRef.current?.entry} />
+    ${isRun && names && html`<${RunStrip} mine=${myParty} onRules=${() => setRulesOpen(true)} />`}`;
+  const battleEl = battle?.enemy && html`<${BattlePanel} battle=${battle} mine=${myParty} gen=${gameGen} game=${liveGame} isRun=${isRun}
+    collapsed=${panelPrefs.collapsed} onPrefs=${setPanelPrefs} hitsOpen=${panelPrefs.hits} noMoves=${features?.moves === 'no'} />`;
+  const groups = isRun && names && !solo && !isTogether(manifest);
+  const teamEl = html`
+    <${LiveStatus} status=${liveState.status} phase=${phase} names=${names} me=${me} others=${others}
+      extra=${html`${worldOk && worldSupported && html`<${WorldToggle} on=${worldOn} onChange=${setWorldOn} live=${worldNear} follow=${followOn} onFollow=${worldOwnFollow ? setFollowOn : null} />`}
+        ${ownGame && html`<${PingButton} />`}`} />
+    ${liveState.status === 'unsupported' && html`<span class="small muted">${isRun
+      ? t('play.liveUnsupportedRun', 'This ROM isn’t in the memory table (other language or a hack with a changed layout). The run still works – enter catches by hand.')
+      : t('play.liveNoneSolo', 'Live tracking reads Pokémon games – this one plays without it.')}</span>`}
+    ${liveState.status === 'hack' && html`<span class="small muted">${isRun
+      ? t('play.liveHackRun', 'This ROM hack runs on an expanded engine (new Pokémon numbers and a different memory layout) that souldew can’t read reliably yet – so it shows nothing rather than wrong Pokémon. The run still works: enter catches by hand.')
+      : t('play.liveHackSolo', 'This ROM hack runs on an expanded engine (new Pokémon numbers and a different memory layout) that souldew can’t read reliably yet – so it shows nothing rather than wrong Pokémon.')}</span>`}
+    ${ctrUpdateNote(ctrUpdate, liveState.status === 'live') && html`<span class="small muted">${ctrUpdateNote(ctrUpdate, liveState.status === 'live')}</span>`}
+    ${ballsNote && html`<p class="tiny muted balls-note" role="note">${solo ? t('play.ballsNoteSolo', 'Before your first Poké Balls nothing counts.')
+      : t('play.ballsNote', 'Before your first Poké Balls nothing counts for you – only a partner’s loss still takes your linked Pokémon along.')}</p>`}
+    ${groups && side === 'bottom'
+      ? html`<${GroupTrack} mine=${myParty} gen=${gameGen} here=${hereArea} />`
+      : isRun && names
+        ? html`<${LinkedPairs} mine=${myParty} gen=${gameGen} compact=${!!battle?.enemy} />`
+        : liveState.status !== 'unsupported' && liveState.status !== 'hack' && html`<${PartyGrid} party=${myParty} gen=${gameGen} compact layout=${side === 'bottom' ? 'row' : 'grid'}
+          accent="var(--p1)" label=${t('play.yourTeam', 'Your team')} noItems=${features?.items === 'no'} />`}`;
+  // the link session (trades and battles, views/linkplay.mjs): its bar lives in the dock while the game is big – first on
+  // the right, next to the place at the bottom; the folded strip shows its dot (and a question waits over the game)
+  const linkOn = !!(linkPlay && linkSessions && linkPlay.phase !== 'idle');
+  const raidShown = isRun && !solo ? raidShownNow : null;
+  const linkAsks = linkOn && LINK_ASKS.includes(linkPlay.phase);
+  const linkSec = linkOn && { id: 'link', label: t('linkplay.title', 'Link'), icon: 'link', node: html`<${LinkBar} inline />`, dot: linkAsks ? 'warn' : 'live' };
+  // a raid (views/raid.mjs): first in the dock while there is one to show – the invite, the pool, the result
+  const raidSec = raidShown && { id: 'raid', label: t('raid.title', 'Raid'), icon: 'bolt', node: html`<${RaidDock} species=${battle?.kind === 'trainer' ? battle.enemy?.species : null} gen=${gameGen} />`, dot: raidShown.asks ? 'warn' : 'live' };
+  const placeSec = { id: 'place', label: t('dock.place', 'Place and rules'), icon: 'map', node: placeEl,
+    dot: capNow?.state === 'over' ? 'bad' : capNow?.state === 'at' || capNow?.state === 'near' || slow || ffHint ? 'warn' : '' };
+  const sections = [
+    raidSec,
+    ...(side === 'bottom' ? [placeSec, linkSec] : [linkSec, placeSec]),
+    battleEl && { id: 'battle', label: t('battle.title', 'Battle'), icon: 'bolt', node: battleEl, dot: 'live' },
+    { id: 'team', label: groups ? t('pairs.titleGroup', 'Linked groups') : t('play.yourTeam', 'Your team'), icon: groups ? 'link' : 'ball',
+      node: html`<div class="screen dock-screen">${teamEl}</div>` },
+    partnersShown && { id: 'partners', label: t('ps.screens', 'Partner screens'), icon: 'eye',
+      node: html`<${PartnerTiles} link=${link} system=${target.system} side=${side} pl=${pl} below=${tgBelow}
+        box=${wide ? { w: dockW - DOCK_W - 12, h: (area?.h || 600) - 40 } : { w: DOCK_W, h: 380 }} />` },
+  ].filter(Boolean);
+  const who = partnersShown ? others.map((s) => ({ slot: s, name: names[s]?.name || s.toUpperCase(), on: !!onlineSlots?.has(s) })) : [];
+  const showAttn = (item) => {
+    setFolded(false);
+    requestAnimationFrame(() => requestAnimationFrame(() => revealIn(dockRef.current, item.section, item.area)));
+  };
+  // the stage is as wide as the picture (or the game bar, when that is wider), the dock right next to it
+  const stageW = pic ? Math.max(pic.w, barSize?.w || 0) : 0;
+  const sizes = pic ? `--pic-w:${pic.w}px;--pic-h:${pic.h}px;--stage-w:${stageW}px;--dock-w:${dockW}px;--dock-h:${dockH}px;--bar-h:${BAR_H}px` : '';
+  return html`<div class=${`session ${mode} ${full ? `dock-${side} ${folded ? 'dock-folded' : ''} ${keep ? 'dock-keep' : ''} ${pic ? 'sized' : ''}` : ''} ${fs && full ? 'is-fs' : ''} ${isDs ? 'ds' : ''}`} data-v=${docVersion} style=${sizes}>
+    <div class="mini-head">
+      <${Led} on=${phase === 'running' && !paused} color="green" /><span class="grow ellipsis">${target.label}</span>
+      ${btn('close', t('play.close', 'Close game'), actions.close)}
+    </div>
+    <div class="session-body" ref=${bodyRef}>
+      <div class="session-stage">
+        ${screenEl}
+        ${barEl}
+        ${statesOpen && full && html`<${StatePanel} id=${target.stateId} core=${core} gen=${gameGen} version=${statesVer} selected=${sel}
           onClose=${closeStates} onSave=${(n) => actions.quicksave(n)} onLoad=${(n) => { setStatesOpen(false); actions.quickload(n); }} />`}
+        ${full && folded && linkAsks && html`<${LinkBar} stage />`}
+        ${full && folded && !linkAsks && raidShown && (raidShown.asks || raidShown.over || raidShown.phase === 'countdown') && html`<${RaidDock} stage species=${battle?.enemy?.species} gen=${gameGen} />`}
+        ${full && html`<${AttentionCard} attn=${attn} onShow=${showAttn} />`}
       </div>
-      <aside class="session-side">
-        ${panelSide === 'right' && battlePanel}
-        <section class="screen stack" style="gap:8px">
-          <div class="row"><${Led} on=${liveState.status === 'live'} color="green" blink=${liveState.status === 'searching' && phase === 'running'} />
-            <b class="px">${names ? names[me].name : t('play.liveOn', 'Live tracking')}</b>
-            <span class="tiny faint grow">${liveState.status === 'live' ? (names ? t('play.liveOn', 'Live tracking') : t('board.liveNow', 'live')) : liveState.status === 'unsupported' ? t('play.liveUnsupported', 'No live data for this game') : liveState.status === 'hack' ? t('play.liveHack', 'Not supported for this hack yet') : t('play.liveSearching', 'Looking for your team …')}</span>
-            ${isRun && names && others.map((s) => {
-              const on = !!onlineSlots?.has(s);
-              const seen = live(doc, s);
-              return html`<${Led} on=${on} color="green" /><b class="px">${names[s]?.name || s.toUpperCase()}</b>${others.length === 1
-                && html`<span class="tiny faint">${on ? t('board.liveNow', 'live') : seen ? ago(seen.at) : t('board.offline', 'offline')}</span>`}`;
-            })}</div>
-          ${liveState.status === 'unsupported' && html`<span class="small muted">${isRun
-            ? t('play.liveUnsupportedRun', 'This ROM isn’t in the memory table (other language or a hack with a changed layout). The run still works – enter catches by hand.')
-            : t('play.liveNoneSolo', 'Live tracking reads Pokémon games – this one plays without it.')}</span>`}
-          ${liveState.status === 'hack' && html`<span class="small muted">${isRun
-            ? t('play.liveHackRun', 'This ROM hack runs on an expanded engine (new Pokémon numbers and a different memory layout) that souldew can’t read reliably yet – so it shows nothing rather than wrong Pokémon. The run still works: enter catches by hand.')
-            : t('play.liveHackSolo', 'This ROM hack runs on an expanded engine (new Pokémon numbers and a different memory layout) that souldew can’t read reliably yet – so it shows nothing rather than wrong Pokémon.')}</span>`}
-          ${ctrUpdateNote(ctrUpdate, liveState.status === 'live') && html`<span class="small muted">${ctrUpdateNote(ctrUpdate, liveState.status === 'live')}</span>`}
-          ${ballsNote && html`<p class="tiny muted balls-note" role="note">${solo ? t('play.ballsNoteSolo', 'Before your first Poké Balls nothing counts.')
-            : t('play.ballsNote', 'Before your first Poké Balls nothing counts for you – only a partner’s loss still takes your linked Pokémon along.')}</p>`}
-          ${isRun && names
-            ? html`<${LinkedPairs} mine=${myParty} gen=${gameGen} compact=${!!battle?.enemy} />`
-            : liveState.status !== 'unsupported' && liveState.status !== 'hack' && html`<${PartyGrid} party=${myParty} gen=${gameGen} compact accent="var(--p1)" label=${t('play.yourTeam', 'Your team')} noItems=${features?.items === 'no'} />`}
-        </section>
-        ${isRun && names && !solo && mode === 'full' && html`<div class="side-partner"><${PartnerScreen} link=${link} system=${target.system} /></div>`}
-      </aside>
+      ${full && html`<${Dock} side=${side} folded=${folded} onFold=${setFolded} head=${head} sections=${sections} who=${who} dockRef=${dockRef} wide=${wide} />`}
+      ${partnersShown && html`<${PartnerScreens} link=${link} system=${target.system} pl=${pl} below=${tgBelow} />`}
+      ${giftFor && html`<${GiftDialog} slot=${giftFor} onClose=${() => { setGiftFor(null); focusGame(); }} />`}
+      ${watchFor && html`<${WatchModal} slot=${watchFor} onClose=${() => { setWatchFor(null); focusGame(); }} />`}
     </div>
     ${inserting && html`<${CartInsert} target=${target} color=${game?.color} sound=${status?.config?.sounds !== false}
-      onDone=${() => setInserting(false)} />`}
-    <${RulesDrawer} open=${rulesOpen && mode === 'full'} onClose=${() => { setRulesOpen(false); focusGame(); }} RulesTab=${RulesTab} />
+      onDone=${() => { setInserting(false); focusGame(); }} />`}
+    <${RulesDrawer} open=${rulesOpen && full} onClose=${() => { setRulesOpen(false); focusGame(); }} RulesTab=${isRun && isTogether(manifest) ? ChoicesTab : RulesTab} />
     ${mode === 'mini' && html`<button class="mini-open" onClick=${(e) => { e.currentTarget.blur(); actions.expand(); }} aria-label=${t('play.backToGameNamed', 'Back to the game: {name}', { name: target.label })}>
       <span class="mini-open-label"><${Icon} name="play" size=${14} />${t('play.backToGame', 'Back to the game')}</span></button>`}
-  </div>`;
-}
-
-/**
- * The game runs clearly below full speed at 1× on this computer (lib/slowdown.mjs): how fast it really runs, why it
- * stutters and crackles, and what helps – the melonDS app for DS games, another graphics backend, power settings.
- */
-function SlowNotice({ slow, isDs, native, onClose }) {
-  const { navigate, status } = useApp();
-  const backend = GPU_LABELS()[status?.config?.gpuBackend || 'auto'] || status?.config?.gpuBackend;
-  const melon = status?.emulators?.melonds;
-  const tip = {
-    native: t('play.slowNative', 'Turn on the fast player (Settings › Emulators): it runs this game with the real emulator directly on your computer – far faster, and live sync stays.'),
-    external: melon?.installed
-      ? t('play.slowExternalReady', 'Play with the melonDS app (installed): it runs DS games at full speed on much weaker computers. Pick it under Settings › Emulators – your run syncs on every in-game save.')
-      : t('play.slowExternal', 'Play with the melonDS app: it runs DS games at full speed on much weaker computers. Settings › Emulators installs it with one click – your run syncs on every in-game save.'),
-    graphics: t('play.slowGraphics', 'Try another graphics backend in Settings › General (now: {backend}) – on some PCs the emulator only runs smoothly with one of them.', { backend }),
-    power: t('play.slowPower', 'On a laptop: plug it in and choose the best-performance power mode. Close other programs that keep the computer busy.'),
-  };
-  const pct = Math.round((slow.reached || 0) * 100);
-  return html`<div class="note slow-note" role="status">
-    <div class="row nowrap slow-head"><${Icon} name="signal" size=${16} /><b class="grow">${t('play.slowTitle', 'This computer runs the game at only about {pct} % of its speed', { pct })}</b>
-      <button class="btn icon ghost" title=${t('common.close', 'Close')} aria-label=${t('common.close', 'Close')} onClick=${onClose}><${Icon} name="close" size=${14} /></button></div>
-    <span class="small">${native ? t('play.slowWhyNative', 'That’s why it stutters and the sound crackles. The game already runs in the fast player – here your computer is the limit, not a setting.') : isDs ? t('play.slowWhyDs', 'That’s why it stutters and the sound crackles. The built-in emulator runs the whole DS on one processor core and can’t go faster here – your computer is the limit, not a setting.')
-      : t('play.slowWhy', 'That’s why it stutters and the sound crackles. The built-in emulator runs the console on one processor core and can’t go faster here.')}</span>
-    <ul class="small slow-tips">${slow.tips.map((k) => html`<li>${tip[k]}</li>`)}</ul>
-    <div class="row">${(slow.tips.includes('external') || slow.tips.includes('graphics') || slow.tips.includes('native')) && html`<button class="btn small" onClick=${() => navigate('settings')}><${Icon} name="gear" size=${14} />${t('play.slowSettings', 'Open Settings')}</button>`}
-      <button class="btn small ghost" onClick=${onClose}>${t('play.slowOk', 'Got it')}</button></div>
   </div>`;
 }
 

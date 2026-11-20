@@ -6,6 +6,7 @@
 //   SOULDEW_TEST_ROMS=/folder/with/roms node --test test/romdata.test.mjs
 // (any .gb/.gbc/.gba/.nds in the folder, retail dumps, hacks and randomized games alike; never commit ROMs). Without
 // the variable those tests are skipped. scripts/rom-matrix.mjs runs the whole matrix incl. the built-in emulator.
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -24,7 +25,7 @@ const idx3 = json('gen3_index_to_dex.json');
 const dexNames = json('pokeapi.json').names.en;
 const vanilla3 = [];
 for (const [k, v] of Object.entries(idx3.map)) vanilla3[Number(k)] = v;
-const SHARED = new URL('shared', ROOT).pathname;
+const SHARED = fileURLToPath(new URL('shared', ROOT));
 
 const code3 = Object.fromEntries(Object.entries(cs3.table).filter(([, v]) => v.length === 1).map(([k, v]) => [v, parseInt(k, 16)]));
 const enc3 = (s) => [...s].map((c) => code3[c]);

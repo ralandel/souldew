@@ -3,6 +3,7 @@
 import { html, useState, useEffect } from '/vendor/htm-preact.mjs';
 import { t } from '../lib/i18n.mjs';
 import { Modal, Led, openExternal, useApp } from '../lib/ui.mjs';
+import { skipUpdatedToast } from '../lib/whatsnew.mjs';
 import { Icon } from '../lib/icons.mjs';
 import { PLATFORM, shortcut } from '../lib/platform.mjs';
 import { parseNotes, inlineNotes } from '/shared/notes.mjs';
@@ -130,7 +131,7 @@ function ManualModal({ s, open, onClose }) {
 
 /** Sidebar card. Only in the desktop app, only while there is something to say. */
 export function UpdateBanner() {
-  const { toast, session } = useApp();
+  const { toast, session, status } = useApp();
   const s = useUpdate();
   const [hidden, setHidden] = useState(dismissed);
   const [notes, setNotes] = useState(false);
@@ -152,6 +153,8 @@ export function UpdateBanner() {
     }
     if (updatedToastShown) return;
     if (s.updatedFrom || (last && last !== s.current)) updatedToastShown = true;
+    // the update to 3.0: the "What's new" cards say it (views/whatsnew.mjs) – no toast on top of them
+    if (updatedToastShown && skipUpdatedToast(status?.config)) return;
     if (updatedToastShown) toast({ kind: 'ok', title: t('upd.updatedTitle', 'Updated'), text: t('upd.updated', 'souldew is now on version {version}.', { version: s.current }) });
   }, [s?.current]);
   useEffect(() => {

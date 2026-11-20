@@ -1,41 +1,61 @@
 # souldew website
 
-The project page for GitHub Pages – static HTML, CSS and vanilla JS, no build step, no frameworks, no external
-requests except one call to the GitHub API for the latest release. Concept: **the link cable** – two players,
-one run. A dark stage, one bright LCD section, the pixel type and player colours from the README graphics
-(`build/readme/art.html`), and exactly one pinned moment: Ember and Chomp hang on a link cable that snaps when Ember
-faints (`#link`, scroll-driven on desktop, plays by itself on phones and with reduced motion).
+The project page for GitHub Pages – static HTML, CSS and vanilla JS, no build step, no frameworks.
 
-Address: **https://souldew.app/** (English) and **/de/** (German).
+- **Home** (`index.html`, `de/index.html`): the souldew site as it was for 2.8 (“the link cable”, `assets/css/site.css`,
+  `assets/js/site.js`) plus one short band near the top that leads to the 3.0 page (`.v3`, styles at the end of
+  `site.css`), a “3.0” link in the nav and the privacy / code-signing links in the footer and under the downloads.
+- **souldew 3.0** (`3/index.html`, `de/3/index.html` – https://souldew.app/3/ and /de/3/): its own page, own styles and
+  script (`assets/css/site30.css`, `assets/js/site30.js`). Two handhelds lit like the 3.0 film, turned inward and cut by the viewport
+  around the headline; trade and battle as a built, animated sequence of souldew's interface; Shared World; a raid's
+  shared pool with hit chips; friends; souldew+ – the 3D launch scrubbed frame by frame (plays once on phones, one still
+  with reduced motion), “Your handheld” as a carousel of every skin with stickers, banners, frames, themes, tiers,
+  the thank-you wall. The hero handhelds drift with a gentle parallax (off with reduced motion).
+
+Names on the page are neutral (Sam, Tim, Lena, Kim, Robin, Noor, Finn, Lou) – never a real person's.
 
 ## What's where
 
 | Path | Contents |
 |---|---|
-| `index.html`, `de/index.html` | The landing page in English and German. Identical markup, only the text differs – **change both** when content changes (German paths are prefixed with `../`). |
-| `impressum.html`, `datenschutz.html` | Legal notice and privacy policy (German). |
-| `404.html` | Served by GitHub Pages for unknown paths (absolute links to `/souldew/`). |
-| `assets/css/site.css` | All styles: tokens, type scale, hero, the pinned link cable, LCD code section, annotated board with zoom lenses, feature index, stream scene, responsive rules, reduced motion, legal pages. |
-| `assets/js/site.js` | Progressive enhancement: OS-aware download buttons + latest release (GitHub API), the link-cable story, the feature index, the word-by-word statement, the pixel-art route scene, the LCD scan reveal. Strings for both languages are at the top. |
-| `assets/img/icons.svg` | Pixel icon sprite, generated from `web/lib/icons.mjs` (each icon is a 16×16 `#` bitmap) plus `star`, `code`, `arrow`, `menu`, `spark` and the chain mark. |
-| `assets/img/shots/` | App screenshots from `build/readme/shots/` – 2880×1800 originals and 1440×900 versions (`cwebp -resize 1440 0`) for `srcset`; the 2880 ones also feed the zoom lenses and the demo sprites. |
-| `assets/img/overlays/` | The real OBS overlays from `build/readme/overlays/` (transparent WebP). |
-| `assets/img/og-image.png` | Social preview (1280×640) – a copy of `docs/media/social-preview.png`. |
-| `assets/fonts/` | Self-hosted fonts (Pixelify Sans and IBM Plex under the SIL OFL, texts included; Pixel Digits is made by this project). |
-| `robots.txt`, `sitemap.xml`, `.nojekyll` | For search engines / GitHub Pages. |
+| `index.html`, `de/index.html` | Home (2.8 site + the 3.0 band). Change both when content changes. |
+| `3/index.html`, `de/3/index.html` | The 3.0 page. The German one is the English one with the texts swapped – change both. |
+| `privacy.html` | Privacy policy in English (website + app, incl. account, souldew+, thank-you wall). `REVIEW(owner)` comments need the owner's check. |
+| `code-signing.html`, `de/code-signing.html` | The code signing policy SignPath Foundation asks for (Windows builds only). |
+| `impressum.html`, `datenschutz.html` | Legal notice and privacy policy (German, binding). |
+| `assets/img/30/hero2/` | The two hero handhelds (`l|r-1400|720.webp`), rendered from the app's scene with the trailer's light rig; also used by the home band. |
+| `assets/img/30/unfold/{1400,760}/` | The 3D launch (DS, Golden Wheat) as 53 frames, transparent – the scrub uses 2…52. |
+| `assets/img/30/hh/` | The skin carousel: a picture of every skin (no stickers, `-1400/-760/-thumb`) and each sticker cut out (difference-matted), positioned in % in the HTML. |
+| `assets/img/30/ui/` | Crops of souldew's real interface (friends, Shared World game view). |
+| `assets/img/30/looks/`, `themes/` | souldew+ public preview media: banners, nameplates, frames, the 16 colour themes. |
+| `assets/img/og-30.png`, `og-30-de.png` | Social previews of the 3.0 page (1200×630); the home keeps `og-image.png`. |
 
-Deployment: `.github/workflows/pages.yml` uploads this folder on every push to `main` that touches `site/**`
-(or by hand via *Run workflow*).
+Deployment: `.github/workflows/pages.yml` uploads this folder on every push to `main` that touches `site/**`.
+**The 3.0 site lives on `feat/30-site` and must not reach `main` before the 3.0 launch.**
+
+## The thank-you wall
+
+`site.js` asks `GET https://accounts.souldew.app/v1/thanks` once the section is near (no cookies, no referrer, 6 s
+timeout) and expects `{ updated, total, counts: { coffee, supporter, plus, legend }, people: [{ name, tier, since, avatar? }] }`.
+Names are set as text; an avatar is shown only when its URL starts with `https://accounts.souldew.app/`. When the
+request fails (not deployed, offline, CORS) the static text stays – nothing waits for it. The endpoint must answer with
+`Access-Control-Allow-Origin: https://souldew.app`.
 
 ## Before going live
 
-1. `impressum.html` and `datenschutz.html` carry the operator's details (taken from kapischka.de/impressum). Keep them
-   in sync if those change, and update the date in the privacy policy when its content changes. Not legal advice.
-2. Repository **Settings › Pages › Build and deployment › Source: "GitHub Actions"**. After that the workflow publishes
-   the site; the first run can also be started from the Actions tab.
-3. If the address ever changes (custom domain, other repository name), update the absolute URLs: `canonical`,
-   `hreflang`, `og:url`, `og:image`, `twitter:image` in both `index.html` files, `sitemap.xml`, `robots.txt` and the
-   `/souldew/` paths in `404.html`.
+1. `impressum.html`, `datenschutz.html` and `privacy.html` carry the operator's details. Resolve the `REVIEW(owner)`
+   comments and update the dates when their content changes. Not legal advice.
+2. Repository **Settings › Pages › Build and deployment › Source: "GitHub Actions"**.
+3. If the address ever changes, update the absolute URLs: `canonical`, `hreflang`, `og:url`, `og:image`,
+   `twitter:image` in both `index.html` files and the other pages, `sitemap.xml`, `robots.txt` and `404.html`.
+
+## Regenerating the pictures
+
+The 3D renders come from the app itself: `~/souldew-promo/trailer30/tools/hh-studio.mjs` (hidden Electron window,
+scratch data folder, dev souldew+ pack) plus site shots (`site`, `site2` with the trailer's light rig) for the hero,
+the unfold, the skins and the stickers – the screens show the app's placeholder picture with its roof drawn the right way up;
+the sticker layers are separated by difference matting against two skins. The UI crops come from the screenshots that
+`scripts/whatsnew-media.mjs` uses. Never commit the screenshots or a pack.
 
 ## How the download buttons work
 
@@ -61,9 +81,8 @@ the icon sprite (`<use href="assets/img/icons.svg#…">`) needs a server in some
 
 ## Content notes
 
-- Everything on the page is taken from the README and `docs/STREAMING.md` – keep it in sync when features change
-  (e.g. the Windows details once 2.1 ships, the supported-games table, the FAQ).
-- The screenshots show demo runs (`Robin & Kim`, `Johto Trio`, `Kim's Nuzlocke`). Pokémon sprites appear only inside
-  those screenshots/overlays (the demo crops them from `shots/board.webp`); no box art or official artwork is used.
-- The privacy policy mentions the GitHub API call and the `sessionStorage` cache. If you add anything that contacts a
+- Every claim on the page is taken from `CHANGELOG.md` (## 3.0.0), the README and the app's own souldew+ texts – keep
+  it in sync when features change. Save import/export is marked as a `TODO(3.0)` in the “also new” list.
+- The screenshots show demo runs and test names (`Robin & Kim`, `Sam`, `Tim`, `Lena`). No box art or official artwork.
+- The privacy policies mention the GitHub API call, the `sessionStorage` cache and the thank-you wall request. If you add anything that contacts a
   third party (analytics, embeds, web fonts from a CDN …), update `datenschutz.html` first.

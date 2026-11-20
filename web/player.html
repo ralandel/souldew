@@ -472,6 +472,28 @@
     }
     return { x, y, w, h };
   }
+  // Pixels at any size (lib/pixelscale.mjs): RetroArch draws into a buffer of the canvas's own size in device pixels,
+  // with hard edges – at an uneven factor some game pixels come out a screen pixel wider than others. The box shrinks
+  // to a whole multiple of the game's picture when that costs little (sharp: up to SHARP_LOSS of the area, "Whole
+  // pixels only" – ?px=whole, setWholePixels – up to the usual ~15 %); the frame's black shows around it. No transform
+  // and no faked pixel ratio: the pointer (DS touch) stays exactly where RetroArch measures it.
+  const SHARP_LOSS = 0.06;
+  let wholePixels = q.get('px') === 'whole';
+  let pxScale = null;
+  import('/lib/pixelscale.mjs').then((m) => { pxScale = m; fit(); }, () => {});
+  const PICTURE = { gba: { w: 240, h: 160 }, gbc: { w: 160, h: 144 }, gb: { w: 160, h: 144 } };
+  function fit() {
+    const box = document.getElementById('game');
+    if (!pxScale || !box) return;
+    const src = system === 'nds' ? (sideBySide ? { w: 512, h: 192 } : { w: 256, h: 384 }) : PICTURE[system];
+    if (!src) return;
+    const s = pxScale.sharpScale(src, { w: innerWidth, h: innerHeight }, window.devicePixelRatio || 1, { whole: true, maxLoss: wholePixels ? pxScale.WHOLE_MAX_LOSS : SHARP_LOSS });
+    // (inline: EmulatorJS sets the element's classes itself)
+    Object.assign(box.style, s.whole
+      ? { inset: 'auto', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: `${s.w}px`, height: `${s.h}px` }
+      : { inset: '', left: '', top: '', transform: '', width: '', height: '' });
+  }
+  addEventListener('resize', fit);
   // WebGL canvases without preserveDrawingBuffer read back empty outside the frame that drew them.
   // A rAF callback queued from outside a frame runs after EmulatorJS' own one in the same frame, so the
   // buffer is still intact there. If that still reads black we fall back to RetroArch's own screenshot
@@ -1315,8 +1337,16 @@
         skip1x = String(v); // the page's choice for 1× – fast-forward picks its own (applySkip)
         return applySkip();
       }
-      if (/screens?_layout$/.test(k)) sideBySide = /left/i.test(v);
+      if (/screens?_layout$/.test(k)) {
+        sideBySide = /left/i.test(v);
+        fit();
+      }
       E().menuOptionChanged(k, v);
+    },
+    /** Settings › "Whole pixels only" switched while playing. */
+    setWholePixels(on) {
+      wholePixels = !!on;
+      fit();
     },
     fullscreen: () => document.documentElement.requestFullscreen?.(),
   };
@@ -1529,5 +1559,6 @@
     });
 })();
 </script>
+<script type="module" src="/lib/browserworld.mjs"></script>
 </body>
 </html>

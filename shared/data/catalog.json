@@ -2019,6 +2019,46 @@
    ]
   },
   {
+   "id": "quetzal",
+   "name": "Pokémon Quetzal",
+   "author": "TohmaRH",
+   "baseGameId": "pokemon-emerald",
+   "baseCrc32": "1F1C08FB",
+   "system": "gba",
+   "patchFormat": null,
+   "latestVersion": "Alpha 9v1",
+   "descriptionEn": "An Emerald hack with Pokémon from every generation and some of its own. You pick where to start – Kanto, Johto or Hoenn – and its own options at the start turn on a randomizer, Nuzlocke rules and harder battles.",
+   "descriptionDe": "Ein Smaragd-Hack mit Pokémon aus allen Generationen und eigenen dazu. Du wählst, wo du startest – Kanto, Johto oder Hoenn –, und eigene Optionen beim Start schalten einen Randomizer, Nuzlocke-Regeln und schwerere Kämpfe ein.",
+   "features": [
+    "All Gens 1–9",
+    "Its own Pokémon",
+    "Start in Kanto, Johto or Hoenn",
+    "Built-in randomizer",
+    "Built-in Nuzlocke mode",
+    "Wild Pokémon in the overworld"
+   ],
+   "difficulty": "casual",
+   "nuzlockeFriendly": true,
+   "uprCompatible": "no",
+   "uprNote": "32 MB pokeemerald-based ROM; UPR ZX refuses it (checked: 'ROM is not supported'). The hack has a randomizer of its own in its new-game options.",
+   "color": "#2F7D5B",
+   "live": "partial",
+   "liveNote": "quetzal",
+   "notes": "Recognised by its header (title 'PKM QUETZAL' with Emerald's code BPEE – romTitle/romCode), so every version is, not only the checked one. Checked in souldew 3.0 with a pre-patched English Alpha 9v1 ROM (CRC32 E655684C): team, place, battles and catches read live (a new game: Sprigatito from Oak, the rival's Squirtle, a Pidgey caught on Route 1).",
+   "uncertain": true,
+   "uncertainFields": [
+    "patchFormat",
+    "latestVersion",
+    "difficulty"
+   ],
+   "romCrc32": [
+    "E655684C"
+   ],
+   "romTitle": "PKM QUETZAL",
+   "romCode": "BPEE",
+   "ownRandomizer": true
+  },
+  {
    "id": "light-platinum",
    "name": "Pokémon Light Platinum",
    "author": "Wesley FG",

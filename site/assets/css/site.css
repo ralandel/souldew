@@ -419,3 +419,34 @@ em { font-style: normal; }
 .lost p { color: var(--muted); max-width: 40ch; }
 .dl-group { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 .t2 { color: var(--p2); }
+
+/* ---------- 1b · souldew 3.0: one band, two handhelds cut by the right edge, a way to the 3.0 page ---------- */
+.nav-links .nav-new { color: var(--ink); }
+.nav-links .nav-new::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 2px; background: var(--p2); }
+.v3 { position: relative; overflow: hidden; padding: clamp(80px, 13vh, 150px) 0; background: radial-gradient(40% 70% at 78% 60%, #8cb0ff14, transparent 70%), radial-gradient(30% 50% at 95% 70%, #ff8fdc12, transparent 70%), #0d0c11; box-shadow: inset 0 1px 0 var(--line), inset 0 -1px 0 var(--line); }
+.v3-pic { position: absolute; inset: 0; pointer-events: none; }
+/* one 3D render of the pair (both lean back; the front one's soft shadow on the other is in the render) */
+.v3-pair { position: absolute; right: calc(min(54vw, 860px) * -.08); bottom: 6%; width: min(54vw, 860px); height: auto; }
+.v3-pic::after { content: ''; position: absolute; inset: auto 0 0; height: 28%; background: linear-gradient(to top, rgba(13, 12, 17, .9), rgba(13, 12, 17, 0)); }
+.v3-in { position: relative; z-index: 1; }
+.v3-in > * { max-width: min(560px, 50vw); }
+.v3 .display-2 { font-size: clamp(36px, 4.6vw, 66px); }
+.v3-mark { display: flex; align-items: baseline; gap: 10px; margin-bottom: 20px; font: 700 20px/1 var(--pixel); }
+.v3-mark i { font-style: normal; color: var(--p1); }
+.v3-mark em { font-style: normal; color: var(--p2); }
+.v3-mark small { padding: 4px 8px 5px; border-radius: 6px; font-size: 13px; color: var(--stage); background: var(--ink); }
+.v3-dim { color: var(--muted); }
+.v3 .sec-lead { margin-top: 22px; }
+.v3-btn { margin-top: 32px; }
+.v3-btn .ic { transform: rotate(0deg); }
+@media (max-width: 900px) {
+  .v3 { padding-top: 0; }
+  .v3-in > * { max-width: 600px; }
+  .v3-pic { position: relative; height: 46vw; margin-bottom: 8px; }
+  .v3-pair { width: 104vw; right: -10vw; bottom: 0; }
+}
+@media (max-width: 1180px) { .nav-links .nav-new { display: none; } }
+@media (max-width: 1180px) and (min-width: 901px) { .v3-pair { width: 46vw; right: -4vw; } }
+.v3-in > h2 { max-width: min(700px, 52vw); }
+:lang(de) .v3 .display-2 { font-size: clamp(32px, 3.9vw, 56px); }
+@media (max-width: 900px) { .v3-in > h2 { max-width: 600px; } }

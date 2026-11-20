@@ -174,15 +174,23 @@ test('3DS fast-forward sound: the ratio still follows a lasting change of speed 
 
 test('both native hosts use the shared fast-forward sound – the fast player’s host no longer drops whole frames or jumps its ratio', () => {
   const host = (f) => readFileSync(new URL(`../native/${f}`, import.meta.url), 'utf8');
-  for (const f of ['ctr-host/ctrhost.c', 'retro-host/retrohost.c']) {
-    const c = host(f);
-    assert.ok(c.includes('#include "ffsound.h"'), `${f} includes ffsound.h`);
-    assert.ok(/ff_reset\(turbo \?/.test(c) && c.includes('ff_frame(t - last_audio, sample_rate)'), `${f} resets it at each switch and feeds it every fast-forwarded frame`);
-    assert.ok(c.includes('ffrate'), `${f} announces the ratio at the switch`);
-  }
-  // (until 2.8.1 retrohost.c averaged each frame down by the speed measured every 0.25 s and left out whole frames of
-  // sound once it came out ahead of real time)
-  assert.ok(!/speed_up_audio|ff_budget/.test(host('retro-host/retrohost.c')), 'no frame-dropping speed-up left in retrohost.c');
+  const ctr = host('ctr-host/ctrhost.c');
+  assert.ok(ctr.includes('#include "ffsound.h"'), 'ctrhost.c includes ffsound.h');
+  assert.ok(/ff_reset\(turbo \?/.test(ctr) && ctr.includes('ff_frame(t - last_audio, sample_rate)'), 'ctrhost.c resets it at each switch and feeds it every fast-forwarded frame');
+  assert.ok(ctr.includes('ffrate'), 'ctrhost.c announces the ratio at the switch');
+  // 3.0: the fast player's host and the souldew engine (the link host) send their sound through native/common/ffaudio.c,
+  // which is ffsound.h
+  const common = host('common/ffaudio.c');
+  assert.ok(common.includes('#include "../ctr-host/ffsound.h"'), 'common/ffaudio.c includes ffsound.h');
+  assert.ok(/ff_reset\(turbo \?/.test(common) && common.includes('ff_frame(now - fa->last, fa->rate)'), 'common/ffaudio.c resets it at each switch and feeds it every fast-forwarded frame');
+  assert.ok(common.includes('ffrate'), 'common/ffaudio.c announces the ratio at the switch');
+  assert.ok(host('retro-host/retrohost.c').includes('ffa_frame(&ffa, audio_buf, audio_n / 2, turbo, speed, t)'), 'retrohost.c sends every frame through it');
+  assert.ok(host('link-host/avout.c').includes('ffa_frame(&ffa, snd, have, turbo, asked, now)'), 'the link host too');
+  assert.ok(host('retro-host/retrohost.c').includes('ffa_idle('), 'retrohost.c: a pause is no time the sound owes');
+  assert.ok(host('link-host/linkhost.c').includes('avout_idle('), 'linkhost.c: a pause is no time the sound owes');
+  // (until 2.8.1 retrohost.c – and 3.0's ffaudio.c until the merge of 2.8.3 – averaged each frame down by the speed
+  // measured every 0.25 s and left out whole frames of sound once it came out ahead of real time)
+  for (const f of ['retro-host/retrohost.c', 'common/ffaudio.c']) assert.ok(!/speed_up|ff_budget|budget/.test(host(f)), `no frame-dropping speed-up left in ${f}`);
   const page = readFileSync(new URL('../web/lib/nativeplayer.mjs', import.meta.url), 'utf8');
   assert.ok(/e\.event === 'ffrate'[\s\S]{0,160}type: 'rate', ratio: e\.k, exact: true, inband: true/.test(page), 'the fast player hands the host’s ratio to the mixer, in band');
 });
@@ -195,9 +203,10 @@ test('fast-forward sound at "Max" (a PC that reaches ~9×): the ratio comes down
 });
 
 test('fast player (retrohost.c, melonDS): its shallower queue keeps the pitch steady too, and the sped-up sound close to the picture', { skip: !cc && 'no C compiler' }, () => {
-  const retro = readFileSync(new URL('../native/retro-host/retrohost.c', import.meta.url), 'utf8');
-  const target = /#define FF_TARGET ([\d.]+)\s*\n#include "ffsound.h"/.exec(retro)?.[1];
-  assert.ok(target && +target <= 0.3, `retrohost.c keeps at most 0.3 s in the queue (${target})`);
+  // (3.0: the fast player's host and the souldew engine take it from native/common/ffaudio.c)
+  const retro = readFileSync(new URL('../native/common/ffaudio.c', import.meta.url), 'utf8');
+  const target = /#define FF_TARGET ([\d.]+)\s*\n#include "\.\.\/ctr-host\/ffsound.h"/.exec(retro)?.[1];
+  assert.ok(target && +target <= 0.3, `common/ffaudio.c keeps at most 0.3 s in the queue (${target})`);
   const pre = `#define FF_TARGET ${target}\n`;
   // a DS player: "the audio gets desynced when fast-forwarding". Until 2.8.1 the ratio jumped every quarter second to the
   // measured speed (here: 670 cents per half second, 1160 at the 95th percentile) and 3 % of the frames' sound was left out

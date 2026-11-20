@@ -32,6 +32,16 @@ export function hostGuard(doc, runId) {
 }
 
 /**
+ * RunDoc.outranks for a SoulLink: once the host's key is known, a `rules` entry signed for its timestamp beats an
+ * unsigned one whatever the timestamps – the guard still checks the signature before it is taken. Without it, a
+ * partner's unsigned entry with a later timestamp (a clock ahead of the host's, the same millisecond, an entry the
+ * host's doc refused and so never moved its clock past) kept the host's signed rules out on that computer.
+ */
+export function hostOutranks(doc) {
+  return (key, a, b) => key === 'rules' && !!doc.hostKey && !!a && !!b && signedFor(a.v, a.t) && !signedFor(b.v, b.t);
+}
+
+/**
  * The host writes the rules `next` (the whole set, unsigned): signed by this computer's server for a timestamp newer
  * than anything in the doc, then written at it. Resolves to the stored value; throws when this computer isn't the host's.
  */
@@ -75,6 +85,7 @@ export function setupHostRules(doc, manifest, { me, reload = () => {} } = {}) {
   doc.hostKey = !solo && isHostKey(manifest.hostKey) ? manifest.hostKey : null;
   if (solo) return () => {};
   doc.guard = hostGuard(doc, manifest.id);
+  doc.outranks = hostOutranks(doc);
   if (canEditRules(manifest)) {
     const entry = doc.entries.rules;
     const own = doc.hostKey && entry && signedFor(entry.v, entry.t)

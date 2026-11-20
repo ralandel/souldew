@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { SyncLink, PARTNER_TTL } from '../web/lib/sync.mjs';
+import { SyncLink, PARTNER_TTL, videoBitrate } from '../web/lib/sync.mjs';
 
 // Three brokers, as a build may list (shared/edition.mjs): the redundancy logic is tested whatever this build ships with.
 const BROKERS = ['wss://broker-a.example:8084/mqtt', 'wss://broker-b.example:8884/mqtt', 'wss://broker-c.example:8081/mqtt'];
@@ -797,6 +797,88 @@ test('partner screen over P2P: video to every watcher\'s peer, taken away from o
   stopA();
   await until(() => c.share.streamPeers.size === 1 && c.trysteroRoom.sent.length === 1, 6000, 'removed for p1');
   assert.equal(stream.track.enabled, true, 'p2 still watches');
+});
+
+test('partner screens all at once over P2P: one viewer gets every partner\'s video on its own, per slot', async () => {
+  const net = fakeNet();
+  const tr = fakeTrystero();
+  const slots = ['p1', 'p2', 'p3', 'p4'];
+  const [a, b, c, d] = slots.map((s) => mkLink(net, s, mkDoc(s), { slots, trystero: tr.importer }));
+  await Promise.all([a, b, c, d].map((l) => l.start()));
+  await until(() => [a, b, c, d].every((l) => l.status.p2p === 'connected' && l.peers.size === 3 && [...l.peers.values()].every(Boolean)), 4000, 'mesh');
+  await until(() => [a, b, c, d].every((l) => seesAll(l) && Object.values(l.status.partners).every((p) => p.p2p)), 8000, 'direct to all');
+  const streams = {};
+  for (const l of [b, c, d]) {
+    streams[l.slot] = fakeStream(`game-${l.slot}`);
+    l.startScreenShare({ system: 'gba', isActive: () => true, getStream: () => streams[l.slot], getSnapshot: async () => null });
+  }
+  // p1 shows all three partner windows at once
+  const views = { p2: [], p3: [], p4: [] };
+  const stops = Object.fromEntries(Object.keys(views).map((s) => [s, a.watchPartnerScreen((v) => views[s].push(v), s)]));
+  await until(() => Object.entries(views).every(([s, vs]) => vs.some((v) => v.mode === 'stream' && v.stream === streams[s])), 6000, 'three videos');
+  for (const [s, vs] of Object.entries(views)) assert.ok(vs.every((v) => v.slot === s && (!v.stream || v.stream === streams[s])), `${s}: only its own video`);
+  assert.deepEqual(Object.keys(a.peerStreams).sort(), ['p2', 'p3', 'p4']);
+  for (const l of [b, c, d]) {
+    assert.deepEqual(l._watching(), ['p1']);
+    assert.equal(l.trysteroRoom.sent.length, 1, `${l.slot}: video to p1's peer only`);
+  }
+  // hiding one window stops that partner's video (nobody else watches p3: its track is switched off, which sends
+  // next to nothing) – the other two keep running
+  stops.p3();
+  await until(() => c.share.mode === null && streams.p3.track.enabled === false, 6000, 'p3 stops sending');
+  assert.equal(b.share.streamPeers.size, 1);
+  assert.equal(d.share.streamPeers.size, 1);
+  assert.equal(streams.p2.track.enabled, true);
+  assert.equal(streams.p4.track.enabled, true);
+});
+
+test('partner screens all at once, one partner on the relay only: videos from the direct ones, stills from that one', async () => {
+  const net = fakeNet();
+  const tr = fakeTrystero();
+  const slots = ['p1', 'p2', 'p3'];
+  const a = mkLink(net, 'p1', mkDoc('p1'), { slots, trystero: tr.importer });
+  const b = mkLink(net, 'p2', mkDoc('p2'), { slots, trystero: tr.importer });
+  const c = mkLink(net, 'p3', mkDoc('p3'), { slots }); // no direct link possible
+  await Promise.all([a, b, c].map((l) => l.start()));
+  await until(() => [a, b, c].every(seesAll) && a.status.partners.p2?.p2p, 8000, 'presences, p1–p2 direct');
+  const stream = fakeStream('game-p2');
+  b.startScreenShare({ system: 'gba', isActive: () => true, getStream: () => stream, getSnapshot: async () => null });
+  let shots = 0;
+  c.startScreenShare({ system: 'nds', isActive: () => true, getSnapshot: async () => (shots++, new Blob([jpeg(3000, 7)], { type: 'image/jpeg' })) });
+  const v2 = [];
+  const v3 = [];
+  a.watchPartnerScreen((v) => v2.push(v), 'p2');
+  a.watchPartnerScreen((v) => v3.push(v), 'p3');
+  await until(() => v2.some((v) => v.mode === 'stream' && v.stream === stream) && v3.some((v) => v.mode === 'image' && v.blob), 6000, 'video + stills');
+  assert.ok(v3.every((v) => !v.stream), 'nothing but stills from p3');
+  assert.ok(shots > 0);
+  assert.equal(b.share.mode, 'stream', 'p2 keeps its video');
+});
+
+test('video bitrate per watcher: full for one or two, shared beyond, never below the floor', () => {
+  assert.equal(videoBitrate(1), 400000);
+  assert.equal(videoBitrate(2), 400000);
+  assert.equal(videoBitrate(3), 300000);
+  assert.equal(videoBitrate(10), 250000);
+  assert.equal(videoBitrate(0), 400000);
+  // the senders' encodings follow the number of watchers' peers
+  const link = new SyncLink({ room: 'r', secret: 's', slot: 'p1', doc: mkDoc('p1') });
+  const track = fakeStream('x').track;
+  const encodings = {};
+  const pcs = Object.fromEntries(['peerA', 'peerB', 'peerC'].map((id) => {
+    encodings[id] = [{}];
+    const sender = { track, getParameters: () => ({ encodings: encodings[id] }), setParameters: async () => {} };
+    return [id, { getSenders: () => [sender] }];
+  }));
+  link.trysteroRoom = { getPeers: () => pcs };
+  const s = { stream: { getVideoTracks: () => [track] }, streamPeers: new Set(['peerA', 'peerB']), limited: new Set() };
+  link._limitBitrate(s);
+  assert.equal(encodings.peerA[0].maxBitrate, 400000);
+  assert.equal(encodings.peerA[0].scaleResolutionDownBy, 2, '768 px canvas → 384 px video');
+  s.streamPeers.add('peerC');
+  link._limitBitrate(s);
+  assert.deepEqual(['peerA', 'peerB', 'peerC'].map((id) => encodings[id][0].maxBitrate), [300000, 300000, 300000], 'a third watcher: all three set again');
+  link.stop();
 });
 
 test('rejoining P2P resumes the signalling relays Trystero paused on "offline" (else they stay dead until a reload)', async () => {

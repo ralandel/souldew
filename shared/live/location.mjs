@@ -34,6 +34,20 @@ export function mapEntryFor(maps, entry) {
   return m && entry?.wram ? shiftEntry(m, entry.wram) : m;
 }
 
+// The link rooms (trades and battles between players, docs/MULTIPLAYER.md) aren't places of the region: the tables
+// would name them after whatever their map shares a number with (Gen 1 "Pokémon League", Gen 3 "Ferry"). A reading
+// in one gives { id: 'link:<room>', link: '<room>' } – the sign says "Trade Center" / "Colosseum" / "Cable Club" /
+// "Union Room", and no area of the run counts it.
+const linkRoom = (room, map) => ({ id: `link:${room}`, link: room, map });
+const GEN1_LINK = { 239: 'trade', 240: 'colosseum' }; // pokered TRADE_CENTER $EF, COLOSSEUM $F0 (Yellow the same)
+const GEN2_LINK = { '20.2': 'trade', '20.3': 'colosseum', '20.4': 'timecapsule' }; // the CableClub map group (G/S/C)
+// Gen 4: the Union Room and the two Colosseums of the Pokémon Center's wireless club (2 and 4 players – pret's
+// MAP_DIRECT2 / MAP_DIRECT4). Platinum's and Diamond/Pearl's Union Room measured in the link host; the rest from
+// pret's map constants (pokeplatinum map_headers 332/333/466, pokediamond maps.h 332/333/466, pokeheartgold maps.h MAP_UNION 2,
+// MAP_DIRECT2 4, MAP_DIRECT4 5 – in HG/SS they sit at the start of the list, where the region tables have no place).
+const GEN4_COLOSSEUM = { 332: 'colosseum', 333: 'colosseum' };
+const GEN4_LINK = { pt: { 466: 'union', ...GEN4_COLOSSEUM }, dp: { 466: 'union', ...GEN4_COLOSSEUM }, hgss: { 2: 'union', 4: 'colosseum', 5: 'colosseum' } };
+
 // Game Boy (Gen 1/2): the game keeps a copy of the current map's header in WRAM – Gen 1 the 10 bytes LoadMapHeader
 // copies to wCurMapHeader (tileset, size, blocks/text/script pointers, connections; pokered home/overworld.asm), Gen 2
 // the 17 bytes of wMapPartial + wMapAttributes (pokecrystal home/map.asm CopyMapPartial / CopyMapAttributes). Those
@@ -145,16 +159,25 @@ function gbHeaderCopy(read, idx, fixed, st) {
   return hit;
 }
 
+/** The link room a header copy names (one of `rooms`' maps: the copy's only map, or the game's own map number among them), or null. */
+function linkMapOf(c, rooms) {
+  const map = c.maps.length === 1 ? c.maps[0] : c.maps.includes(c.cur) ? c.cur : null;
+  return map != null && Object.hasOwn(rooms, String(map)) ? map : null;
+}
+
 function readGen1(m, read, maps, entry, ctx = {}) {
   const table = maps.tables?.gen1?.[m.table];
   const idx = ctx.gbMaps?.gen === 1 ? gbIndex(ctx.gbMaps) : null;
   if (idx) {
     const c = gbHeaderCopy(read, idx, m.headerAddr ? hex(m.headerAddr) : hex(m.curMapAddr) + GEN1_CUR_MAP, ctx.state || null);
+    const room = c && linkMapOf(c, GEN1_LINK);
+    if (room != null) return linkRoom(GEN1_LINK[room], room);
     return c ? gbPlace(1, c.maps, table, c.cur) : null;
   }
   // without the ROM's headers: wCurMap – once a map's header has been loaded (height and width are never 0)
   const b = read(hex(m.curMapAddr), GEN1_CUR_MAP + 3);
   if (!ok(b, GEN1_CUR_MAP + 3) || !b[GEN1_CUR_MAP + 1] || !b[GEN1_CUR_MAP + 2]) return null;
+  if (GEN1_LINK[b[0]]) return linkRoom(GEN1_LINK[b[0]], b[0]);
   const id = table?.[String(b[0])];
   return Number.isInteger(id) ? { id, map: b[0] } : null;
 }
@@ -164,6 +187,8 @@ function readGen2(m, read, maps, entry, ctx = {}) {
   const idx = ctx.gbMaps?.gen === 2 ? gbIndex(ctx.gbMaps) : null;
   if (idx && m.headerAddr) {
     const c = gbHeaderCopy(read, idx, hex(m.headerAddr), ctx.state || null);
+    const room = c && linkMapOf(c, GEN2_LINK);
+    if (room != null) return linkRoom(GEN2_LINK[room], room);
     return c ? gbPlace(2, c.maps, table, null) : null;
   }
   // without the ROM's headers: wMapGroup/wMapNumber (zeroed WRAM is map 0.0, which no table has)
@@ -171,6 +196,7 @@ function readGen2(m, read, maps, entry, ctx = {}) {
   const n = read(hex(m.mapNumberAddr), 1);
   if (!ok(g, 1) || !ok(n, 1)) return null;
   const key = `${g[0]}.${n[0]}`;
+  if (GEN2_LINK[key]) return linkRoom(GEN2_LINK[key], key);
   const id = table?.[key];
   // landmark 0 = LANDMARK_SPECIAL (Pokémon Center 2F, trade/colosseum rooms): no place to show
   return Number.isInteger(id) && id > 0 ? { id, map: key } : null;
@@ -205,6 +231,9 @@ function readGen3(m, read, maps, entry, ctx = {}) {
   const rom = (p) => p >= 0x08000000 && p < 0x0a000000;
   if (!rom(layout) || !rom(events)) return null;
   const sec = b[0x14];
+  // Ruby/Sapphire/Emerald's link rooms (Trade Center, Colosseums, Record Corner) share MAPSEC 0x57 with the S.S. Tidal
+  // – told apart by their music (0x1A6), measured in the link host
+  if (sec === 0x57 && u16le(b, 0x10) === 0x1a6) return linkRoom('cableclub', sec);
   // gMapHeader is a copy of the current map's header in the ROM (romloc.mjs gen3MapHeaders): with the ROM's headers
   // at hand, a copy whose events and section aren't one of its maps' – another language's RAM, a hack's – is no place
   const idx = ctx.rom?.gen === 3 ? gen3Index(ctx.rom) : null;
@@ -283,6 +312,7 @@ function readGen4(m, read, maps, entry, ctx = {}) {
   const b = read(save + (m?.mapIdOffset ? hex(m.mapIdOffset) : GEN4_ENGINE[fam].mapIdOffset), 4);
   if (!ok(b, 4)) return null;
   const mapId = u32le(b, 0);
+  if (GEN4_LINK[fam]?.[mapId]) return linkRoom(GEN4_LINK[fam][mapId], mapId);
   const list = ctx.rom?.gen === 4 ? ctx.rom.mapLoc : maps.tables?.gen4?.[m?.table];
   if (!Array.isArray(list) || mapId >= list.length) return null;
   const id = list[mapId];
@@ -309,6 +339,15 @@ function readGen4(m, read, maps, entry, ctx = {}) {
 //    2/White 2's pointer doesn't apply: in Black/White *(0x02000024) moves with the emulator (0x0221B2F0 in melonDS,
 //    0x0221B5F0 in DeSmuME, the zone at the same address in both).
 const GEN5_MAIN_PTR = 0x02000024;
+// Gen 5: the Union Room behind the left counter of the Pokémon Center's upper floor (zone 422) and the Colosseum a
+// battle from it takes both players to (150 "Battles for two"; 151 its twin, the room "Battles for four" goes to) – the
+// three zones the ROM's zone → place table gives no place (0). Measured in Black in the link host (two consoles: the
+// copy below read 422 in the Union Room, 150 in the battle's room); read the same way in a running White and Black 2
+// (19 Nov 2026, recorded sessions with Black). White 2's zones 150, 151 and 422 have the same maps and scripts, but
+// White 2 wasn't run in a link room yet: no sign there until it is (gen5Link's `code`).
+const GEN5_ROOMS = { 150: 'colosseum', 151: 'colosseum', 422: 'union' };
+const GEN5_LINK = { bw: GEN5_ROOMS, b2w2: GEN5_ROOMS };
+const gen5Link = (fam, zones, code = '') => (zones && GEN5_LINK[fam]?.[zones[0]] && !/^IRD/i.test(code) ? linkRoom(GEN5_LINK[fam][zones[0]], zones[0]) : null);
 const BW_HEADER = 48;
 const BW_HEADER_AT = [0x0225929c, 0x022592bc]; // Black US, White US
 // The search for the copy: every BW_SCAN_MS, after BW_SCAN_SLOW_AFTER searches without a hit only every BW_SCAN_SLOW_MS
@@ -453,6 +492,8 @@ function readGen5(m, read, maps, entry, ctx = {}) {
   const rom = ctx.rom;
   if (rom?.gen !== 5 || gen5Family(rom) !== 'bw') return null;
   const zones = bwZones(read, rom, ctx);
+  const link = gen5Link('bw', zones);
+  if (link) return link;
   // the zone itself first, else its parent zone (a building without a name of its own)
   for (const zone of zones || []) {
     const id = Number.isInteger(zone) && zone < rom.mapLoc.length ? rom.mapLoc[zone] : null;
@@ -562,7 +603,10 @@ function b2w2CopyZones(read, rom, ctx) {
 
 /** Black 2/White 2: the place from the copy of the current zone's header – the zone's, else its parent's. */
 function readB2W2(read, rom, ctx) {
-  for (const zone of b2w2CopyZones(read, rom, ctx) || []) {
+  const zones = b2w2CopyZones(read, rom, ctx);
+  const link = gen5Link('b2w2', zones, rom.code);
+  if (link) return link;
+  for (const zone of zones || []) {
     const id = Number.isInteger(zone) && zone < rom.mapLoc.length ? rom.mapLoc[zone] : null;
     if (Number.isInteger(id) && id > 0 && rom.names[id]) return { id, map: zone };
   }
@@ -586,11 +630,15 @@ function readGen3x(m, read, maps, entry, ctx = {}) {
   const t = ctx.rom?.maps3;
   if (!t?.mapsec) return null;
   const st = ctx.state || {};
+  // a hack that put fields of its own in front of SaveBlock1's position (Pokémon Quetzal: 0x470 bytes – addresses.json
+  // `saveBlock1Pos`), and whose gSaveBlock1Ptr the entry names (measured – tried first)
+  const at = entry?.saveBlock1Pos ? hex(entry.saveBlock1Pos) : 0;
+  const own = entry?.saveBlockPtrs?.sb1 ? hex(entry.saveBlockPtrs.sb1) : 0;
   const tryPtr = (a) => {
     const p = read(a, 4);
     const sb1 = ok(p, 4) ? u32le(p, 0) : 0;
-    if (sb1 < 0x02000000 || sb1 >= 0x02040000) return null;
-    const b = read(sb1, 6);
+    if (sb1 < 0x02000000 || sb1 + at >= 0x02040000) return null;
+    const b = read(sb1 + at, 6);
     if (!ok(b, 6)) return null;
     // a SaveBlock1 still empty (title screen, intro: no save loaded yet) reads as map 0.0 at 0,0 – Petalburg City
     if (b.every((v) => v === 0)) return { empty: true };
@@ -604,7 +652,7 @@ function readGen3x(m, read, maps, entry, ctx = {}) {
     if (r?.empty) return null;
     if (r) return r.id < 0xd5 ? r : null;
   }
-  for (const a of t.iwram || []) {
+  for (const a of own ? [own, ...(t.iwram || []).filter((x) => x !== own)] : t.iwram || []) {
     const r = tryPtr(a);
     if (r?.empty) return null; // (no place yet – and no other address is tried and remembered meanwhile)
     if (r) {

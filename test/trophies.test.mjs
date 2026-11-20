@@ -443,7 +443,7 @@ test('syncTrophies: back-fills quietly on the first start, then unlocks live; ke
   assert.deepEqual(syncTrophies({ moments: [{ type: 'hp1', species: 16, runId: 'eeee0001' }] }).fresh, [], 'reported once');
 
   // the slot this computer plays decides whose catches count
-  writeRun(pair('eeee0002', { imported: true }), docOf({ 'enc:r1:p1': caught(25, T0), 'enc:r1:p2': caught(133, T0) }));
+  writeRun(pair('eeee0002', { imported: true, outputs: { p2: { rom: 'p2.nds' } } }), docOf({ 'enc:r1:p1': caught(25, T0), 'enc:r1:p2': caught(133, T0) }));
   let r = syncTrophies({});
   assert.equal(r.dex[133]?.caught, 1, 'an imported invite plays p2 by default');
   assert.ok(!r.dex[25]?.caught);
@@ -490,6 +490,51 @@ test('syncTrophies: digests of an older version are made again; a deleted run ge
   assert.equal(gen('ffff0202'), 5, 'the deleted run: from its game id');
   assert.equal(r.runs.find((x) => x.id === 'ffff0202').archived, true);
   rmSync(join(DATA, 'runs', 'ffff0201'), { recursive: true });
+});
+
+test('runStarted: a run made here, or an invite once this computer built its game – not an invite only opened', () => {
+  assert.equal(T.runStarted(pair('abcd0001')), true, 'created here (only written by a build)');
+  assert.equal(T.runStarted(pair('abcd0002', { imported: true })), false, 'invite opened');
+  assert.equal(T.runStarted(pair('abcd0003', { imported: true, outputs: {} })), false);
+  assert.equal(T.runStarted(pair('abcd0004', { imported: true, outputs: { p2: { rom: 'p2.nds' } } })), true, 'joined: the seat\'s game is built');
+  assert.equal(T.runStarted(null), false);
+});
+
+test('syncTrophies: an invite opened (and declined) unlocks nothing – joining it unlocks Press Start and Linked Souls once', () => {
+  // a clean slate that isn't a first start (no back-fill): no runs, an empty trophy file
+  rmSync(join(DATA, 'runs'), { recursive: true, force: true });
+  writeFileSync(TROPHY_PATH, JSON.stringify(T.migrate({ schema: T.SCHEMA, createdAt: Date.now() })));
+  const unlocked = (r) => r.achievements.filter((a) => a.ok).map((a) => a.id);
+  // a 3-player randomized invite with the host's catches already in the synced doc, and a live moment of its open doc
+  const invite = pair('abab0001', { imported: true, outputs: {}, randomizer: { enabled: true }, players: { p1: { name: 'Lou' }, p2: { name: 'Robin' }, p3: { name: 'Tim' } } });
+  writeRun(invite, docOf({ 'enc:r1:p1': caught(25, Date.now()), 'enc:r1:p2': caught(133, Date.now()), 'feed:c1': feedCatch('p2', 'r1', 133, Date.now()) }));
+  let r = syncTrophies({ slots: { abab0001: 'p2' }, moments: [{ type: 'hp1', species: 133, runId: 'abab0001' }] });
+  assert.deepEqual(r.fresh, [], 'nothing from the preview');
+  assert.deepEqual(unlocked(r), []);
+  assert.equal(r.runs.length, 0, 'not one of this computer\'s runs');
+  assert.ok(!r.dex[133]?.caught, 'the doc\'s catches don\'t fill the Pokédex');
+  // declined: the invite run is deleted – it doesn't come back as a deleted (archived) run either
+  rmSync(join(DATA, 'runs', 'abab0001'), { recursive: true });
+  r = syncTrophies({});
+  assert.deepEqual(unlocked(r), []);
+  assert.equal(r.runs.length, 0);
+  // a digest an older version made of an unbuilt invite is dropped
+  writeRun(invite, docOf({}));
+  const st = JSON.parse(readFileSync(TROPHY_PATH, 'utf8'));
+  st.runs.abab0001 = { sig: 'old', digest: T.digestRun(invite, {}, 'p2') };
+  writeFileSync(TROPHY_PATH, JSON.stringify(st));
+  r = syncTrophies({});
+  assert.deepEqual(unlocked(r), []);
+  assert.ok(!JSON.parse(readFileSync(TROPHY_PATH, 'utf8')).runs.abab0001);
+
+  // joined: the game for the seat is built
+  writeRun({ ...invite, outputs: { p2: { rom: 'p2.nds' } } }, docOf({}));
+  r = syncTrophies({});
+  for (const id of ['firstRun', 'firstLink', 'groupLink', 'randoStart']) assert.ok(r.fresh.includes(id), id);
+  assert.deepEqual(syncTrophies({}).fresh, [], 'once');
+  // the moment the preview sent wasn't kept for later either
+  assert.ok(!unlocked(syncTrophies({})).includes('oneHp'));
+  rmSync(join(DATA, 'runs', 'abab0001'), { recursive: true });
 });
 
 test('rules: the classic memes – Miltank, Garchomp, Selfdestruct, Abra, roamers, Gyarados, Feebas, Helix, Bird Jesus, too much water', () => {

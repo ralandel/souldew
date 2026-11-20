@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { decryptPK6, encryptPK6, pk6Mon, slotBytes, partyFromRegion, readGen67, readGen67Battle, SLOT_STRIDE, STATS_OFFSET, BOX_SIZE, PARTY_BYTES } from '../shared/live/gen67.mjs';
+import { decryptPK6, encryptPK6, pk6Mon, slotBytes, partyFromRegion, readGen67, readGen67Battle, runningVersion, SLOT_STRIDE, STATS_OFFSET, BOX_SIZE, PARTY_BYTES } from '../shared/live/gen67.mjs';
 import { findEntry, regionsFor, readLiveParty, regionReader, readLiveBattle } from '../shared/live/parse.mjs';
 import { areaLabel } from '../shared/overlay.mjs';
 
@@ -330,4 +330,81 @@ test('the place sign (Gen 7): the zone in the player\'s position, both game pair
   assert.equal(usum.zoneAddr, '0x33F6D74A');
   assert.equal(sm.zoneAddr, '0x34183CC6');
   assert.ok(regionsFor(usum).some((r) => r.name === 'zone' && r.addr === 0x33f6d74a && r.len === 2));
+});
+
+// ticket #35 (Pokémon X, 2.8.3): the team stopped changing in the sidebar – the first address that held a party was
+// kept for the session, whatever happened at the other update's address afterwards
+test('runningVersion: the update souldew started the 3DS game with → the version whose address is read first', () => {
+  assert.equal(runningVersion(undefined), null); // a player that doesn't say (Azahar over RPC)
+  assert.equal(runningVersion(null), '1.0'); // no update installed
+  assert.equal(runningVersion({ installed: false, why: 'randomized', gameVersion: '1.5' }), '1.0');
+  assert.equal(runningVersion({ installed: true, gameVersion: '1.5', tracking: 'known' }), '1.5');
+  assert.equal(runningVersion({ installed: true, gameVersion: null, tracking: 'older' }), null);
+});
+
+test('readGen67 (#35): 1.5 holds the live party, 1.0 a copy that stands still – the installed update and the changes decide', () => {
+  const xy = addresses.games.find((g) => g.id === 'xy');
+  const ghost = ramParty([mon({ ec: 1, pid: 11, species: 650, nick: 'Chespin', level: 9 })]);
+  const lv = (level, more = []) => ramParty([mon({ ec: 1, pid: 11, species: 650, nick: 'Chespin', level }), ...more]);
+  const combee = mon({ ec: 5, pid: 55, species: 415, nick: 'Combee', level: 4, gender: 0 });
+  // the update is known (souldew installed 1.5): its address wins although 1.0 also holds a party that passes
+  const s1 = { ctrVersion: runningVersion({ installed: true, gameVersion: '1.5' }) };
+  const r1 = readGen67(xy, memory({ 0x08ce1cf8: lv(12), 0x08ce1ce8: ghost }), s1);
+  assert.equal(r1.version, '1.5');
+  assert.equal(r1.party[0].level, 12);
+  // locked on 1.0 before the update was known: moves to 1.5 once it is, and says so
+  const s2 = {};
+  assert.equal(readGen67(xy, memory({ 0x08ce1ce8: ghost }), s2).version, '1.0');
+  s2.ctrVersion = '1.5';
+  assert.equal(readGen67(xy, memory({ 0x08ce1cf8: lv(12), 0x08ce1ce8: ghost }), s2).version, '1.5');
+  assert.deepEqual(s2.g67Log, [{ from: '1.0', to: '1.5', why: 'update' }]);
+  // nothing known (no update info) and locked on the copy: the live party levels up and catches a Combee while the
+  // copy stands still – after two such changes the lock moves, the level and the Combee show
+  const s3 = {};
+  const mem = { 0x08ce1ce8: ghost, 0x08ce1cf8: lv(9) };
+  s3.g67 = 1; // (as the 2.8.3 reader left it)
+  assert.equal(readGen67(xy, memory(mem), s3).party[0].level, 9);
+  mem[0x08ce1cf8] = lv(10);
+  assert.equal(readGen67(xy, memory(mem), s3).version, '1.0'); // one change elsewhere: not yet
+  mem[0x08ce1cf8] = lv(10, [combee]);
+  const r3 = readGen67(xy, memory(mem), s3);
+  assert.equal(r3.version, '1.5');
+  assert.deepEqual(r3.party.map((m) => [m.nickname, m.level]), [['Chespin', 10], ['Combee', 4]]);
+  assert.deepEqual(s3.g67Log, [{ from: '1.0', to: '1.5', why: 'stale' }]);
+  // and stays there: the copy never takes it back, the update preference neither
+  s3.ctrVersion = '1.0';
+  assert.equal(readGen67(xy, memory(mem), s3).version, '1.5');
+});
+
+test('readGen67 (#35): the lock holds through a moment without a party, moves after a few polls; two live copies never flap', () => {
+  const oras = addresses.games.find((g) => g.id === 'oras');
+  const team = (level) => ramParty([mon({ ec: 7, pid: 77, species: 252, nick: 'Treecko', level })]);
+  const A = 0x08cf727c; // 1.0
+  const B = 0x08cfb26c; // 1.4
+  // locked on 1.0; one poll where it is being rewritten (no party) while 1.4 holds one: nothing read, the lock stays
+  const s = {};
+  const mem = { [A]: team(5) };
+  assert.equal(readGen67(oras, memory(mem), s).version, '1.0');
+  mem[A] = new Uint8Array(PARTY_BYTES).fill(0x3c);
+  mem[B] = team(5);
+  assert.equal(readGen67(oras, memory(mem), s), null);
+  mem[A] = team(6);
+  assert.equal(readGen67(oras, memory(mem), s).version, '1.0');
+  assert.equal(s.g67Log, undefined);
+  // 1.0 holds no party for good: the third poll moves the lock (the checksum fails there)
+  mem[A] = new Uint8Array(PARTY_BYTES).fill(0x3c);
+  assert.equal(readGen67(oras, memory(mem), s), null);
+  assert.equal(readGen67(oras, memory(mem), s), null);
+  assert.equal(readGen67(oras, memory(mem), s).version, '1.4');
+  assert.deepEqual(s.g67Log, [{ from: '1.0', to: '1.4', why: 'invalid' }]);
+  // two copies that both follow the game: the lock stays where it is
+  const t = {};
+  const both = { [A]: team(5), [B]: team(5) };
+  readGen67(oras, memory(both), t);
+  for (let lv = 6; lv < 10; lv++) {
+    both[A] = team(lv);
+    both[B] = team(lv);
+    assert.equal(readGen67(oras, memory(both), t).version, '1.4');
+  }
+  assert.equal(t.g67Log, undefined);
 });

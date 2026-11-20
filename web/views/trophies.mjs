@@ -30,7 +30,7 @@ const ACH_ICON = {
 const CAT_ICON = { journey: 'map', collection: 'ball', skill: 'bolt', soullink: 'link', randomizer: 'dice', fun: 'heart' };
 
 /** The rarity-coloured tile of an achievement. */
-function AchIcon({ a, size = 22 }) {
+export function AchIcon({ a, size = 22 }) {
   const shown = a.ok || !a.hidden;
   return html`<span class=${`ach-icon r-${a.rarity} ${a.ok ? 'got' : ''}`} aria-hidden="true">
     <${Icon} name=${shown ? ACH_ICON[a.id] || CAT_ICON[a.cat] : 'lock'} size=${size} /></span>`;

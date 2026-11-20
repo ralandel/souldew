@@ -256,7 +256,8 @@ export function removeIntroSave(id) {
  */
 export function applyIntroSave(runId, slot, { savePath }) {
   const m = readManifest(runId);
-  if (!m?.outputs?.[slot]) return null;
+  // (Play together plays the library game's own save – shared/playtogether.mjs: never replaced by an intro save)
+  if (!m?.outputs?.[slot] || m.mode === 'together') return null;
   const meta = introFor(introKeyFor(m));
   if (!meta) return null;
   const dir = join(INTRO_DIR, meta.id);

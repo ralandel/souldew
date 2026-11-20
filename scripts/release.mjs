@@ -21,6 +21,7 @@ import { generateKeyPairSync, createPrivateKey } from 'node:crypto';
 import { parseVersion, validateFeed, feedUrlFrom, dmgAssetName, winAssetName, linuxAssetName, debAssetName } from '../shared/update.mjs';
 import { sha256File, signFeed, publicKeyBase64, verifyFeedSignature } from '../electron/update-core.mjs';
 import { unwrapNotes } from '../shared/notes.mjs';
+import { pinnedKeyProblems } from './check-pinned-keys.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -130,6 +131,9 @@ async function stage(src, out, name) {
 async function main() {
   const a = args(process.argv.slice(2));
   const keyPath = keyPathFrom(a);
+  // souldew+ release gate: never publish a build whose pinned pack / entitlement keys are placeholders
+  const unpinned = a['init-key'] ? [] : pinnedKeyProblems();
+  if (unpinned.length) throw new Error(`souldew+ keys are not pinned:\n  ${unpinned.join('\n  ')}`);
   if (a['init-key']) {
     const r = initKey({ keyPath, pkgPath: join(root, 'package.json') });
     console.log(`Release key created: ${r.keyPath} (only you can read it)

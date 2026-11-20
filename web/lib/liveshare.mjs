@@ -438,7 +438,7 @@ export function shareErrorText(r) {
       const min = Math.max(1, Math.ceil((r.retryAfter || 60) / 60));
       return t('live.eRate', 'Too many posts – try again in {n} min.', { n: min });
     }
-    case 'token': return t('live.eToken', 'The Discord link has ended – connect again in Settings › Discord.');
+    case 'token': return t('live.eToken', 'The Discord link has ended – connect again in Settings › Online.');
     case 'blocked': return t('live.eBlocked', 'This Discord account can no longer post live runs.');
     case 'not-member': return t('live.eNotMember', 'Your Discord account is no longer on the souldew server – join it again to post.');
     case 'duplicate': return t('live.already', 'Already shared – by you or a partner.');

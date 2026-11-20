@@ -3,9 +3,10 @@
 const KEY = 'sl-theme';
 export const THEME_IDS = ['classic', 'contrast', 'deutan', 'tritan'];
 
-/** Windows: the title bar buttons (drawn by Windows over the page) take the colours of the page's top edge. */
-function syncTitleBar() {
-  if (window.sls?.platform !== 'win32' || !window.sls.setTitleBarColors) return;
+/** Windows: the title bar buttons (drawn by Windows over the page) take the colours of the page's top edge (also after a
+ * souldew+ skin changed them – web/lib/cosmetics/skins.mjs). */
+export function syncTitleBar() {
+  if (globalThis.window?.sls?.platform !== 'win32' || !window.sls.setTitleBarColors) return;
   const css = getComputedStyle(document.documentElement);
   const pick = (name, fallback) => (/^#[0-9a-f]{6}$/i.test(css.getPropertyValue(name).trim()) ? css.getPropertyValue(name).trim() : fallback);
   window.sls.setTitleBarColors({ color: pick('--bg-top', '#1c1b21'), symbolColor: pick('--ink', '#ebe6da') });

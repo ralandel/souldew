@@ -10,6 +10,7 @@ import { api } from '../lib/api.mjs';
 import { slotsOf, players as getPlayers } from '../lib/run.mjs';
 import { CodeHost, joinWithCode, normalizeCode, normalizeConfirm, formatCode, inviteCodeSupported, suggestSlot } from '../lib/invitecode.mjs';
 import { isStreamer } from '../lib/streamer.mjs';
+import { accountState } from '../lib/account.mjs';
 import { TMS_FOLLOW_MOVES } from '/shared/randomizer-options.mjs';
 
 // One code per run, kept outside the component: closing the invite dialog doesn't kill a code somebody may
@@ -75,7 +76,9 @@ const mmss = (ms) => {
 export function PackVersionNote({ manifest }) {
   const version = manifest?.pack?.minVersion;
   if (!version) return null;
-  return html`<p class="warning info">${manifest.randomizer?.enabled !== false && manifest.randomizer?.values?.[TMS_FOLLOW_MOVES] === true
+  return html`<p class="warning info">${manifest.mode === 'together'
+    ? t('invite.needsVersionTogether', 'Play together is new in souldew {version}: everyone needs {version} or newer. A friend on an older version is told to update when they open the invite.', { version })
+    : manifest.randomizer?.enabled !== false && manifest.randomizer?.values?.[TMS_FOLLOW_MOVES] === true
     ? t('invite.needsVersionTms', 'In this run TM compatibility follows the new TM moves: everyone needs souldew {version} or newer to join. Older versions can’t open the invite.', { version })
     : manifest.shiny
     ? t('invite.needsVersionShiny', 'This run changes the shiny rate: everyone needs souldew {version} or newer to join. Older versions can’t open the invite.', { version })
@@ -211,11 +214,13 @@ const joinErrors = () => ({
  * Joining player: name + 6-digit code → onPack(run pack, { slot, taken, name }) once the host allowed it. slot: the
  * player the host suggests (first free one, or the one with this name) – null if unknown; taken: slots that
  * have somebody already. Both are hints for the "I am …" choice, which stays the joining player's.
+ * A friend's invite (souldew account, lib/friendinvite.mjs) comes with its code: `invite` = { code, from, run } – the
+ * code field is left out and joining starts right away when the name is known.
  */
-export function JoinCode({ onPack }) {
+export function JoinCode({ onPack, invite = null }) {
   const { status } = useApp();
-  const [name, setName] = useState(status?.config?.playerName || '');
-  const [code, setCode] = useState('');
+  const [name, setName] = useState(status?.config?.playerName || (invite ? accountState().me?.name || '' : ''));
+  const [code, setCode] = useState(invite?.code || '');
   const [phase, setPhase] = useState(null); // null | deriving | connecting | searching | waiting
   const [confirm, setConfirm] = useState(null); // 4 digits the host has to type in to allow us
   const [err, setErr] = useState(null);
@@ -262,21 +267,27 @@ export function JoinCode({ onPack }) {
       if (e.code !== 'cancelled') setErr(e.code || 'error');
     });
   };
+  // a friend's invite: straight in when we know what to call this player
+  useEffect(() => {
+    if (invite?.code && name.trim()) go();
+  }, [invite?.code]);
   const busy = !!phase;
   return html`<div class="stack">
+    ${invite && html`<p class="note">${t('code.friendInvite', '{name} invited you to {run}.', { name: invite.from?.name || t('code.someone', 'Someone'), run: [invite.run?.name, invite.run?.game].filter(Boolean).join(' · ') })}</p>`}
     <div class="grid-2">
       <label class="field"><span>${t('code.yourName', 'Your name')}</span>
         <input type="text" value=${name} maxLength="20" disabled=${busy} onInput=${(e) => setName(e.target.value)} /></label>
-      <label class="field"><span>${t('code.label', 'Invite code')}</span>
+      ${!invite && html`<label class="field"><span>${t('code.label', 'Invite code')}</span>
         <input type="text" class="invite-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" value=${code} disabled=${busy}
           onInput=${(e) => { const d = e.target.value.replace(/\D/g, '').slice(0, 6); setCode(d.length > 3 ? `${d.slice(0, 3)} ${d.slice(3)}` : d); }}
-          onKeyDown=${(e) => e.key === 'Enter' && !busy && go()} /></label>
+          onKeyDown=${(e) => e.key === 'Enter' && !busy && go()} /></label>`}
     </div>
     ${err && html`<p class="warning error" role="alert">${joinErrors()[err] || t('code.errOther', 'Joining with the code didn’t work.')}</p>`}
     ${busy ? html`<div class="row nowrap"><${Led} on blink /><span class="small grow">${phase === 'waiting' ? t('code.waitAllow', 'Found! Waiting for the host to let you in …')
         : phase === 'searching' ? t('code.searching', 'Looking for the host …') : t('code.connecting', 'Connecting …')}</span>
         <button class="btn small ghost" onClick=${() => job.current?.cancel()}>${t('common.cancel', 'Cancel')}</button></div>
-      ${phase === 'waiting' && confirm && html`<p role="status"><span class="small">${t('code.confirmTellHost', 'Tell the host these 4 digits – they type them in to let you in:')}</span> <b class="confirm-code">${confirm}</b></p>`}`
-      : html`<div><button class="btn primary big" disabled=${!normalizeCode(code)} onClick=${go}><${Icon} name="link" size=${16} />${t('code.join', 'Join with code')}</button></div>`}
+      ${phase === 'waiting' && confirm && !invite && html`<p role="status"><span class="small">${t('code.confirmTellHost', 'Tell the host these 4 digits – they type them in to let you in:')}</span> <b class="confirm-code">${confirm}</b></p>`}
+      ${phase === 'waiting' && invite && html`<p class="small muted" role="status">${t('code.friendWait', '{name} gets a message in souldew and lets you in with one click.', { name: invite.from?.name || t('code.someone', 'Someone') })}</p>`}`
+      : html`<div><button class="btn primary big" disabled=${!normalizeCode(code) || (invite && !name.trim())} onClick=${go}><${Icon} name="link" size=${16} />${invite ? t('code.joinFriend', 'Join') : t('code.join', 'Join with code')}</button></div>`}
   </div>`;
 }

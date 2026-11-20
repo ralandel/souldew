@@ -53,9 +53,29 @@ export function cspFor(html, { connect = syncSources() } = {}) {
   return Object.entries(directives).map(([k, v]) => `${k} ${v.join(' ')}`).join('; ');
 }
 
+/**
+ * The sandboxed iframe that runs souldew+ pack code (web/cosmetics-sandbox.html, web/lib/cosmetics/sandbox.mjs): its
+ * one script, a data: module worker importing the public engine modules – and nothing else. No network
+ * (connect-src 'none'), no images, styles, fonts, frames or forms.
+ */
+export const SANDBOX_CSP = [
+  "default-src 'none'", "script-src 'self'", "worker-src 'self' data:", "connect-src 'none'", "img-src 'none'", "style-src 'none'",
+  "font-src 'none'", "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'self'",
+].join('; ');
+
 const cache = new Map(); // path → { mtimeMs, size, header }
-/** Extra response headers for a file the static handler serves: the CSP for .html pages, {} otherwise. */
+/**
+ * Extra response headers for a file the static handler serves: the CSP for .html pages; CORS for the public cosmetics
+ * engine modules (the sandboxed iframe's worker has an opaque origin and imports them cross-origin – public code, no
+ * credentials); {} otherwise.
+ */
 export function pageHeaders(path) {
+  const p = String(path).replace(/\\/g, '/');
+  if (/\/web\/lib\/cosmetics\/.+\.mjs$/.test(p)) return { 'Access-Control-Allow-Origin': '*', 'Cross-Origin-Resource-Policy': 'cross-origin' };
+  if (/\/web\/cosmetics-sandbox\.html$/.test(p)) {
+    return { 'Content-Security-Policy': SANDBOX_CSP, 'Cross-Origin-Embedder-Policy': 'require-corp', 'Cross-Origin-Resource-Policy': 'same-origin', 'Cache-Control': 'no-store' };
+  }
+  if (/\/web\/lib\/cosmetics\/sandbox-frame\.js$/.test(p)) return { 'Cross-Origin-Resource-Policy': 'cross-origin' };
   if (!/\.html?$/i.test(path)) return {};
   try {
     const st = statSync(path);

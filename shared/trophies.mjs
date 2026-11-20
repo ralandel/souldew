@@ -69,6 +69,18 @@ const time = (x) => {
 };
 
 /**
+ * Has this computer really started the run? A run created here exists only once it's built. An invite (imported)
+ * counts once this computer built its game for it, i.e. the player joined and has a seat. Opening an invite (or
+ * leaving it unbuilt, declined) starts nothing: no "Press Start", "Linked Souls" or any other trophy from a preview.
+ */
+export function runStarted(manifest) {
+  if (!manifest || typeof manifest !== 'object') return false;
+  if (!manifest.imported) return true;
+  const out = manifest.outputs;
+  return !!out && typeof out === 'object' && Object.keys(out).length > 0;
+}
+
+/**
  * Reduce one run to what the trophies need. `entries`: the run doc ({ key: { v, t, by } }), `slot`: the player on
  * this computer, `opts.areaName(key, doc)`: optional name lookup for areas without one in the doc (curated routes).
  */
@@ -88,7 +100,8 @@ export function digestRun(manifest, entries, slot, opts = {}) {
   const evolved = [];
   const badgeTimes = [];
   let cheats = 0; // Rare Candies used (Candy Crush)
-  let cheatUses = 0; // any cheat at all – Rare Candies, Max Repels … (Honest Work)
+  let cheatUses = 0; // any cheat at all – Rare Candies, Max Repels, Poké Balls, money … (Honest Work)
+  let masterBallAt = null; // the first Master Ball from the cheats (Route 1 Legend: no catch from then on counts)
   for (const [k, f] of Object.entries(doc)) {
     if (!k.startsWith('feed:') || !f || typeof f !== 'object') continue;
     const at = num(f.at);
@@ -109,6 +122,7 @@ export function digestRun(manifest, entries, slot, opts = {}) {
       // (a rule change is logged as type 'cheat' too, without `cheat`)
       cheatUses++;
       if (f.cheat === 'rareCandy') cheats += Math.max(0, Number(f.count) || 0);
+      if (f.cheat === 'masterBall') masterBallAt = Math.min(masterBallAt ?? Infinity, at ?? 0);
     }
   }
   const firstSpecies = firstOf[me] || {};
@@ -182,7 +196,12 @@ export function digestRun(manifest, entries, slot, opts = {}) {
   const rules = doc.rules && typeof doc.rules === 'object' ? doc.rules : {};
   const bosses = Object.entries(doc).filter(([k, v]) => k.startsWith('boss:') && v).map(([k, v]) => ({ key: k.slice(5), at: num(v.at) }));
   const game = manifest?.game || {};
-  const badges = Math.max(lives[me]?.badges || 0, ...Object.keys(badgeAt).map(Number), 0);
+  // a battery save imported into this player's game (server/app.mjs afterSaveChange – run.json `saveImports`): what that
+  // save brought along isn't the run's. Its badges count only as earned while tracked (the play view takes the save's
+  // badge count as where the player stands – web/lib/run.mjs importBaseline), and the run's win earns nothing.
+  const imports = Array.isArray(manifest?.saveImports?.[me]) ? manifest.saveImports[me].filter((x) => x && Number.isFinite(x.at)) : [];
+  const imported = imports.length > 0;
+  const badges = imported ? Object.keys(badgeAt).length : Math.max(lives[me]?.badges || 0, ...Object.keys(badgeAt).map(Number), 0);
   return {
     id: str(manifest?.id, 16), name: str(manifest?.name, 80), mode, players: slots.length, me, names,
     gameId: str(game.id || manifest?.base?.gameId, 60) || null, gen: opts.gen || num(game.generation) || { gb: 1, gbc: 2, gba: 3, nds: 4, '3ds': 6 }[game.system] || null,
@@ -195,7 +214,8 @@ export function digestRun(manifest, entries, slot, opts = {}) {
       // SoulLink's default type clause is 'global', a solo Nuzlocke's 'off' (shared/rules.mjs)
       typeClause: str(rules.typeClause, 10) || (mode === 'soullink' ? 'global' : 'off') },
     capBreaks: Object.keys(doc).filter((k) => k.startsWith(`capbreak:${me}:`)).length,
-    badges, badgeAt, bosses, catches, missed, partners, deaths, evolutions, cheats, cheatUses, lives,
+    badges, badgeAt, bosses, catches, missed, partners, deaths, evolutions, cheats, cheatUses, masterBallAt, lives,
+    ...(imported ? { imported: true, importedAt: Math.min(...imports.map((x) => x.at)) } : {}),
   };
 }
 
@@ -220,7 +240,9 @@ export function buildDex(digests, seen = {}) {
     const run = { runId: d.id, runName: d.name, mode: d.mode };
     for (const c of d.catches) {
       // the species it was caught as, and every species it evolved into
-      const line = [...new Set([c.first, ...d.evolutions.filter((x) => x.area && x.area === c.area).map((x) => x.to), c.species].filter(species))];
+      // (a run with an imported save: only what was seen caught and evolving – the species it has now may be one it
+      // became elsewhere, in the save that was brought in)
+      const line = [...new Set([c.first, ...d.evolutions.filter((x) => x.area && x.area === c.area).map((x) => x.to), ...(d.imported ? [] : [c.species])].filter(species))];
       for (const id of line) {
         const e = entry(id);
         const own = id === c.first;
@@ -273,7 +295,10 @@ const firstBy = (list, fn) => {
   const hits = list.filter(fn).sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity));
   return hits[0] || null;
 };
-const won = (d) => d.status?.state === 'won';
+// (a run whose save was imported can't be won for the trophies: the save may have come finished – digestRun)
+const won = (d) => d.status?.state === 'won' && !d.imported;
+/** A catch's level as the trophies take it: none from a run with an imported save (it may have been raised elsewhere). */
+const fairLevel = (x) => (x.run?.imported ? 0 : x.level || 0);
 const failed = (d) => d.status?.state === 'failed';
 const myDeaths = (d) => d.catches.filter((c) => c.dead);
 const topLevel = (party) => Math.max(0, ...(party || []).map((m) => m.level || 0));
@@ -345,7 +370,7 @@ export const ACHIEVEMENTS = [
     const gens = PLAYABLE_GENS.map((g) => nth(c.digests.filter((d) => d.gen === g).map((d) => d.createdAt), 1) ?? (c.digests.some((d) => d.gen === g) ? 0 : null));
     return count(gens.filter((x) => x !== null).length, gens.map((x) => x || null), PLAYABLE_GENS.length);
   } },
-  { id: 'level100', cat: 'journey', rarity: 'epic', check: (c) => flag(firstBy(c.catches, (x) => (x.level || 0) >= 100) && { at: null }) },
+  { id: 'level100', cat: 'journey', rarity: 'epic', check: (c) => flag(firstBy(c.catches, (x) => fairLevel(x) >= 100) && { at: null }) },
   { id: 'firstEvolution', cat: 'journey', rarity: 'common', check: (c) => { const ev = c.digests.flatMap((d) => d.evolutions); return count(ev.length, ev.map((x) => x.at), 1); } },
   { id: 'evolutions25', cat: 'journey', rarity: 'uncommon', target: 25, check: (c) => { const ev = c.digests.flatMap((d) => d.evolutions); return count(ev.length, ev.map((x) => x.at), 25); } },
   { id: 'hardcoreWin', cat: 'journey', rarity: 'legendary', check: (c) => flag(firstBy(c.digests.filter((d) => won(d) && d.mode === 'nuzlocke' && d.rules.hardcore).map((d) => d.status), () => true)) },
@@ -402,7 +427,7 @@ export const ACHIEVEMENTS = [
   { id: 'underdog', cat: 'skill', rarity: 'rare', check: (c) => { const u = c.momentsOf('badge').filter((m) => m.cap && m.top && m.top < m.cap); return count(u.length, u.map((m) => m.at), 1); } },
   { id: 'underdog3', cat: 'skill', rarity: 'epic', target: 3, check: (c) => { const u = c.momentsOf('badge').filter((m) => m.cap && m.top && m.top < m.cap); return count(u.length, u.map((m) => m.at), 3); } },
   { id: 'oneHp', cat: 'skill', rarity: 'rare', check: (c) => { const h = c.momentsOf('hp1'); return count(h.length, h.map((m) => m.at), 1); } },
-  { id: 'veteran', cat: 'skill', rarity: 'rare', check: (c) => flag(firstBy(c.catches, (x) => x.metLevel !== null && ((x.dead ? x.deathLevel ?? x.level : x.level) || 0) - x.metLevel >= 40) && { at: null }) },
+  { id: 'veteran', cat: 'skill', rarity: 'rare', check: (c) => flag(firstBy(c.catches, (x) => !x.run?.imported && x.metLevel !== null && ((x.dead ? x.deathLevel ?? x.level : x.level) || 0) - x.metLevel >= 40) && { at: null }) },
   { id: 'starterSurvives', cat: 'skill', rarity: 'rare', check: (c) => flag(firstBy(c.digests.filter((d) => won(d) && d.catches.some((x) => x.area === 'starter' && !x.dead)).map((d) => d.status), () => true)) },
   { id: 'monotype', cat: 'skill', rarity: 'epic', check: (c) => {
     // a type clause forbids two of a type in the team – a monotype team there would break the rules
@@ -437,7 +462,9 @@ export const ACHIEVEMENTS = [
   { id: 'randoStart', cat: 'randomizer', rarity: 'common', check: (c) => { const r = c.digests.filter((d) => d.randomized); return count(r.length, r.map((d) => d.createdAt), 1); } },
   { id: 'rando10', cat: 'randomizer', rarity: 'rare', target: 10, check: (c) => { const r = c.digests.filter((d) => d.randomized); return count(r.length, r.map((d) => d.createdAt), 10); } },
   { id: 'randoWin', cat: 'randomizer', rarity: 'epic', check: (c) => flag(firstBy(c.digests.filter((d) => won(d) && d.randomized).map((d) => d.status), () => true)) },
-  { id: 'randoLegend', cat: 'randomizer', rarity: 'epic', check: (c) => flag(firstBy(c.catches.filter((x) => x.run.randomized && isLegendary(x.first) && (x.metLevel ?? x.level ?? 99) <= 15), () => true)) },
+  // (a Master Ball from the cheats catches anything: no catch from the first one on counts – one without a time neither)
+  { id: 'randoLegend', cat: 'randomizer', rarity: 'epic', check: (c) => flag(firstBy(c.catches.filter((x) => x.run.randomized && isLegendary(x.first) && (x.metLevel ?? x.level ?? 99) <= 15
+    && (x.run.masterBallAt == null || (x.at != null && x.at < x.run.masterBallAt))), () => true)) },
   { id: 'randoDex', cat: 'randomizer', rarity: 'rare', target: 100, check: (c) => {
     const first = {};
     for (const x of c.catches) if (x.run.randomized && (!(x.first in first) || (x.at && x.at < first[x.first]))) first[x.first] = x.at;

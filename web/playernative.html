@@ -10,11 +10,20 @@
   /* the game's picture, sharp pixels, scaled to the frame by lib/nativeplayer.mjs */
   #screen { display: block; image-rendering: pixelated; touch-action: none; cursor: default; }
   #wait { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font: 600 14px/1.4 system-ui, sans-serif; color: #ebe6da; background: #000; }
+  /* "Linking…": over the last picture while the game goes into a link session (or back) – no restart, no black screen */
+  #linking { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    border-radius: 999px; font: 600 13px/1.2 system-ui, sans-serif; color: #ebe6da; background: rgba(12, 12, 14, .78); pointer-events: none; opacity: 0;
+    transition: opacity .15s; }
+  #linking.on { opacity: 1; }
+  #linking i { width: 8px; height: 8px; border-radius: 50%; background: #8fd18f; animation: lk 0.9s ease-in-out infinite alternate; }
+  @keyframes lk { from { opacity: .25; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #linking i { animation: none; } #linking { transition: none; } }
 </style>
 </head>
 <body>
 <canvas id="screen" width="256" height="384"></canvas>
 <div id="wait">…</div>
+<div id="linking" role="status" aria-live="polite"><i></i><span></span></div>
 <script type="module" src="/lib/nativeplayer.mjs"></script>
 </body>
 </html>

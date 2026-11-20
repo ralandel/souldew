@@ -6,13 +6,26 @@ import { loadData, RunData, speciesName } from './lib/data.mjs';
 import { SyncLink, PARTNER_TTL } from './lib/sync.mjs';
 import { setLang, guessLang, t, onLangChange } from './lib/i18n.mjs';
 import { applyTheme, applyStoredTheme } from './lib/theme.mjs';
+import { applySkin, refreshPack, setPackAccessProvider, devPackAccess } from './lib/cosmetics/index.mjs';
+import { initFavourites } from './lib/favourites.mjs';
+import { initHandheld, prewarm as prewarmHandheld } from './lib/handheld/look.mjs';
 import { detectLayout, resolveHotkeys, accelerator } from './lib/controls.mjs';
-import { applySnapshot, snapshotFromSave, players as getPlayers, areaName, feedText, othersOf, slotsOf, runMode, checks, loadLocationTables, genOfRun, wipedSlot, failRun, lives as getLives, livesFor, settleLives, revealHeld, startRules, HELD_PREFIX } from './lib/run.mjs';
+import { applySnapshot, applyTogether, isTogether, runSection, runStateId, togetherGames, announceGame, snapshotFromSave, players as getPlayers, areaName, feedText, othersOf, slotsOf, runMode, checks, loadLocationTables, genOfRun, wipedSlot, failRun, logLinkTrade, logLinkBattle, rules as getRules, lives as getLives, livesFor, settleLives, revealHeld, startRules, HELD_PREFIX } from './lib/run.mjs';
+import { attachRps } from './lib/worldrps.mjs';
+import { inviteBlock, BLOCK_CODE } from '/shared/playtogether.mjs';
+import { RpsCards } from './views/rps.mjs';
+import { attachRaid, detachRaid, raidFor, raidRules } from './lib/raid.mjs';
+import { RaidCards } from './views/raid.mjs';
+import { attachTogether } from './lib/together.mjs';
+import { TogetherCards } from './views/together.mjs';
+import { sessionsIn, outcomeOf, recordResult } from './lib/wager.mjs';
 import { play } from './lib/sound.mjs';
 import { Ctx, Toasts, Led, Modal, openExternal } from './lib/ui.mjs';
 import { LINKS } from './lib/links.mjs';
+import { EDITION } from '/shared/edition.mjs';
 import { groupArrowKeys } from './lib/a11y.mjs';
 import { startPadNav } from './lib/padnav.mjs';
+import { leaveHeld } from './lib/leaveguard.mjs';
 import { AppMark, NavIcon, Icon } from './lib/icons.mjs';
 import { BootScreen } from './views/boot.mjs';
 import { Onboarding } from './views/onboarding.mjs';
@@ -20,9 +33,12 @@ import { LibraryView } from './views/library.mjs';
 import { unpackToast } from './lib/libadded.mjs';
 import { SoulLinkView, NuzlockeView } from './views/soullink.mjs';
 import { PlayView, GameSession, ExternalFeed } from './views/play.mjs';
+import { LinkSessions } from './lib/linksession.mjs';
+import { LinkBar } from './views/linkplay.mjs';
 import { unsavedProgress, unsavedTexts } from './views/savestates.mjs';
+import { lastMoment } from './lib/lastmoment.mjs';
 import { LinkView } from './views/link.mjs';
-import { SettingsView, gpuFallbackText } from './views/settings.mjs';
+import { SettingsView, gpuFallbackText, settingsLink } from './views/settings.mjs';
 import { GuideView } from './views/guide.mjs';
 import { StreamView } from './views/stream.mjs';
 import { useStreamer } from './lib/streamer.mjs';
@@ -33,11 +49,26 @@ import { FirstStepsPill } from './views/firststeps.mjs';
 import { useCoffeeFx, CoffeeFx } from './views/coffee.mjs';
 import { LicenseNag } from './views/nag.mjs';
 import { countLaunch, shouldNag } from './lib/nag.mjs';
+import { WhatsNew } from './views/whatsnew.mjs';
+import { mayShowWhatsNew, whatsNewPending, whatsNewSeenPatch, WHATS_NEW_EVENT } from './lib/whatsnew.mjs';
 import { mySlotIn } from './lib/restart.mjs';
 import { initRules, setupHostRules } from './lib/hostrules.mjs';
 import { IS_MAC, IS_WIN, PLATFORM, shortcut } from './lib/platform.mjs';
 import { TrophiesView, TrophyToasts } from './views/trophies.mjs';
 import { syncTrophies, rememberSlots, watchRun, onTrophyUnlock } from './lib/trophies.mjs';
+import { runStarted } from '/shared/trophies.mjs';
+import { FriendsView } from './views/friends.mjs';
+import { ProfileView } from './views/profile.mjs';
+import { PlusView } from './views/plus.mjs';
+import { ThanksView } from './views/thanks.mjs';
+import { ThanksAsk } from './views/thanksask.mjs';
+import { HandheldView } from './views/handheld.mjs';
+import { railGroups, FOOT_SECTIONS } from './lib/railnav.mjs';
+import { accountEvent, useAccount, signIn, cancelSignIn, cosmeticsPackAccess } from './lib/account.mjs';
+import { useSocial } from './lib/socialapp.mjs';
+import { Avatar } from './views/social.mjs';
+import { initUiScale, watchUiScaleKeys, useUiScale, setUiScale, stepUi, suggestUiScale, uiScaleKeys } from './lib/uiscale.mjs';
+import { uiScaleLabel } from '/shared/uiscale.mjs';
 
 applyStoredTheme(); // before the first render: no flash of the wrong colours
 
@@ -82,6 +113,7 @@ function sendMenuLabels(controls = menuControls) {
     faster: t('menu.faster', 'Faster'), slower: t('menu.slower', 'Slower'), quicksave: t('menu.quicksave', 'Quick save'), quickload: t('menu.quickload', 'Quick load'),
     screenshot: t('keys.screenshot', 'Screenshot'), mute: t('keys.mute', 'Sound on/off'), fullscreen: t('menu.fullscreen', 'Fullscreen'),
     shortcuts: t('menu.shortcuts', 'Keyboard shortcuts'), guide: t('menu.guide', 'Guide'),
+    view: t('menu.view', 'View'), uiBigger: t('menu.uiBigger', 'Bigger interface'), uiSmaller: t('menu.uiSmaller', 'Smaller interface'), uiReset: t('menu.uiReset', 'Interface at 100 %'),
   });
 }
 
@@ -94,7 +126,13 @@ function parseHash() {
 function useRoute() {
   const [r, setR] = useState(parseHash());
   useEffect(() => {
-    const on = () => setR(parseHash());
+    let at = location.hash;
+    const on = () => {
+      // a screen with unsaved changes (the profile editor) may hold the change: the old address goes back, it asks
+      if (location.hash !== at && leaveHeld(location.hash)) return history.replaceState(history.state, '', at || '#/library');
+      at = location.hash;
+      setR(parseHash());
+    };
     addEventListener('hashchange', on);
     return () => removeEventListener('hashchange', on);
   }, []);
@@ -126,21 +164,109 @@ function navLight(e) {
   a.style.setProperty('--my', `${Math.round(e.clientY - r.top)}px`);
 }
 
-/** "Buy me a coffee" – always at the bottom left: in the rail, or as a small button while the rail is folded. */
-function CoffeeLink({ float = false, fx = null, onOpen }) {
-  const label = t('rail.coffee', 'Buy me a coffee');
-  const hint = t('rail.coffeeHint', 'Support souldew on Buy Me a Coffee');
-  return html`<a class=${`coffee no-drag ${float ? 'coffee-float' : ''} ${fx ? `cfx-live cfx-on-${fx.id}` : ''}`} href=${LINKS.coffee} target="_blank" rel="noopener" title=${hint} aria-label=${float ? hint : undefined}
-    onClick=${(e) => { e.preventDefault(); onOpen?.(); openExternal(LINKS.coffee); }}><${Icon} name="coffee" size=${float ? 18 : 16} />${!float && html`<span>${label}</span>`}<${CoffeeFx} fx=${fx} /></a>`;
+/**
+ * souldew+ at the foot of the rail – where "Buy me a coffee" was: the page about it (#/plus), no price, no nag. Members
+ * (any tier) read "thank you" under it. Folded, a small mark in the window's bottom left corner instead. The coffee
+ * button's little Pokémon moments stay with it (views/coffee.mjs).
+ */
+function RailPlus({ thanks = false, here = false, float = false, fx = null, onOpen }) {
+  // a build without the souldew account (shared/edition.mjs): no souldew+ – "Buy me a coffee" for the original author,
+  // as before 3.0
+  if (!EDITION.accounts) {
+    const hint = t('rail.coffeeHint', 'Support souldew on Buy Me a Coffee');
+    return html`<a class=${`rail-plus no-drag ${float ? 'rail-plus-float' : ''} ${fx ? `cfx-live cfx-on-${fx.id}` : ''}`} href=${LINKS.coffee} target="_blank" rel="noopener" style="--na:#e1b05a"
+      title=${hint} aria-label=${float ? hint : undefined} onClick=${(e) => { e.preventDefault(); onOpen?.(); openExternal(LINKS.coffee); }}>
+      <span class="rail-plus-mark" aria-hidden="true"><${Icon} name="coffee" size=${float ? 12 : 10} /></span>
+      ${!float && html`<span class="rail-plus-text"><b>${t('rail.coffee', 'Buy me a coffee')}</b></span>`}
+      <${CoffeeFx} fx=${fx} /></a>`;
+  }
+  const label = thanks ? t('rail.plusThanksSr', 'souldew+ – thank you') : t('rail.plus', 'souldew+');
+  return html`<a class=${`rail-plus no-drag ${float ? 'rail-plus-float' : ''} ${here ? (float ? 'on' : 'active') : ''} ${fx ? `cfx-live cfx-on-${fx.id}` : ''}`} href="#/plus" style="--na:#e1b05a"
+    aria-current=${here ? 'page' : undefined} title=${thanks ? t('rail.plusThanksHint', 'souldew+ – thank you for supporting souldew') : t('rail.plusHint', 'What souldew+ adds – and everything that stays free')}
+    aria-label=${float ? label : undefined} onClick=${() => onOpen?.()}>
+    <span class="rail-plus-mark" aria-hidden="true"><${Icon} name="plus" size=${float ? 12 : 10} /></span>
+    ${!float && html`<span class="rail-plus-text"><b>${t('rail.plus', 'souldew+')}</b>${thanks && html`<span class="rail-plus-thanks">${t('rail.thanks', 'thank you')}</span>`}</span>`}
+    <${CoffeeFx} fx=${fx} /></a>`;
 }
+
+/**
+ * Signed out: "Sign in" with the Discord mark at the rail's foot – where the profile picture sits once signed in (the
+ * same chip, so every skin styles both alike). It starts the same sign-in as Settings › Account (the system browser);
+ * while the browser is open it says so, a click opens the browser again and the small × stops waiting.
+ */
+function RailSignIn({ toast }) {
+  const acct = useAccount();
+  const [busy, setBusy] = useState(false);
+  if (!EDITION.accounts || !acct.loaded || acct.session?.signedIn || acct.session?.off) return null;
+  const pending = !!acct.session?.pending;
+  const go = async () => {
+    setBusy(true);
+    try {
+      await signIn();
+    } catch (e) {
+      toast({ kind: 'death', title: t('acct.signInFailed', 'Signing in didn’t start'), text: e.message });
+    }
+    setBusy(false);
+  };
+  const label = pending ? t('rail.signInPending', 'Finish signing in in your browser – click to open it again') : t('rail.signInHint', 'Sign in with Discord – opens your browser. Everything works without an account.');
+  return html`<div class=${`rail-signin-wrap ${pending ? 'pending' : ''}`}>
+    <button type="button" class="rail-me rail-signin" disabled=${busy} onClick=${go} title=${label} aria-label=${label}>
+      <span class="rail-signin-mark" aria-hidden="true"><${Icon} name="discord" size=${18} /></span>
+      <span class="stack-s" style="gap:0"><b class="ellipsis">${pending ? t('rail.signInWaiting', 'Waiting …') : t('rail.signIn', 'Sign in')}</b>
+        <span class="tiny ellipsis">${pending ? t('rail.signInBrowser', 'in your browser') : t('rail.withDiscord', 'with Discord')}</span></span>
+    </button>
+    ${pending && html`<button type="button" class="rail-signin-x" onClick=${() => cancelSignIn()} title=${t('common.cancel', 'Cancel')} aria-label=${t('rail.signInCancel', 'Stop signing in')}><${Icon} name="close" size=${12} /></button>`}
+  </div>`;
+}
+
+/** One section of the rail: its line icon, its label and what it shows on the right (playing, friends online, counts). */
+function NavItem({ n, here, playingIn, session }) {
+  return html`<a href=${`#/${n.id}`} class=${here === n.id ? 'active' : ''} aria-current=${here === n.id ? 'page' : undefined} style=${`--na:${n.accent}`}>
+    <${NavIcon} name=${n.icon} /><span class="nav-label">${n.label}</span>
+    <span class="nav-end">${n.onAir && html`<span class="nav-onair" title=${t('stream.onAirHint', 'Streamer mode is on – codes, keys, paths and spoilers are covered')}><span class="sr-only">${t('stream.mode', 'Streamer mode')}</span></span>`}${playingIn === n.id && html`<span class="nav-live" title=${t('nav.playing', 'Running now: {game}', { game: session.target.label || session.target.name || '' })}><${Led} on color="green" />
+        <span class="sr-only">${t('nav.playing', 'Running now: {game}', { game: session.target.label || session.target.name || '' })}</span></span>`}
+      ${n.online > 0 && html`<span class="nav-online" title=${t('nav.onlineHint', '{count} friend online|{count} friends online', { count: n.online })}><${Led} on color="green" />${n.online}<span class="sr-only"> ${t('nav.onlineSr', 'online')}</span></span>`}
+      ${n.count > 0 && html`<span class="nav-badge" title=${n.countHint || t('nav.countHint', 'Things to check on the board')}>${n.count > 99 ? '99+' : n.count}<span class="sr-only"> ${t('nav.countSr', 'to check')}</span></span>`}</span>
+  </a>`;
+}
+
 
 /** The open run at the foot of the rail: who of the others is live – or, in a solo Nuzlocke, whether you play.
  * A click opens its game (back to it while it runs) – the way into the game now that the rail has no "Play" item. */
+/**
+ * The first time the sidebar folds away for the game: a small note next to its button that says how it comes back
+ * (the button, the window's left edge, ⌘B / Ctrl+B). Shown once per computer, gone after a few seconds or a click.
+ */
+function RailHint() {
+  const [shown, setShown] = useState(() => {
+    try {
+      return localStorage.getItem('sl-rail-play-hint') !== '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    if (!shown) return undefined;
+    try {
+      localStorage.setItem('sl-rail-play-hint', '1');
+    } catch {
+      // private mode: it may show again
+    }
+    const id = setTimeout(() => setShown(false), 12000);
+    return () => clearTimeout(id);
+  }, [shown]);
+  if (!shown) return null;
+  return html`<div class="rail-hint no-drag" role="status">
+    <span>${t('rail.playHint', 'The sidebar folds away while you play. This button, the left edge of the window or {key} bring it back.', { key: shortcut('Mod+B') })}</span>
+    <button class="btn small ghost" onClick=${() => setShown(false)}>${t('play.slowOk', 'Got it')}</button>
+  </div>`;
+}
+
 function RailRun({ manifest, names, me, onlineSlots, linkStatus, session, navigate }) {
   const playing = session?.target.runId === manifest.id;
   const built = !!manifest.outputs?.[me];
   // not built yet (joined, game still to build): the run's page has the next step
-  const open = () => (built ? navigate('play', { run: manifest.id }) : navigate(runMode(manifest), { run: manifest.id }));
+  const open = () => (built ? navigate('play', { run: manifest.id }) : navigate(runSection(manifest), { run: manifest.id }));
   const action = playing ? t('play.backToGame', 'Back to the game') : built ? t('rail.openGame', 'Click to play') : t('rail.openRun', 'Click to open the run');
   if (runMode(manifest) === 'nuzlocke') {
     return html`<button type="button" class="power" onClick=${open} title=${`${t('rail.soloHint', 'Solo Nuzlocke – nobody to connect with')} · ${action}`}>
@@ -207,8 +333,15 @@ function App() {
   const [pendingRun, setPendingRun] = useState(null); // run switch waiting for "close the game?"
   const sessionRef = useRef(null);
   sessionRef.current = session;
+  // the game's last moment before a close from the UI (lib/lastmoment.mjs): the play view takes "where you left off" then
+  const lastRef = useRef(null);
+  if (!lastRef.current) lastRef.current = lastMoment();
   const [, setLangTick] = useState(0);
   const linkRef = useRef(null);
+  const linkPlayRef = useRef(null); // trades and battles (web/lib/linksession.mjs)
+  // the play view's reader of this player's money (views/play.mjs sets it while the run's game runs) – the wager dialogs
+  const wagerRef = useRef({ money: null });
+  const [linkPlay, setLinkPlay] = useState(null);
   const runIdRef = useRef(null);
   runIdRef.current = runId;
   const inboxKey = useRef('');
@@ -237,10 +370,34 @@ function App() {
     }
     const next = countLaunch(status.config?.nag);
     const free = () => !!status.config?.onboarded && !sessionRef.current && !document.querySelector('dialog[open]');
-    const show = free() && shouldNag({ ...next, off: status.config?.nagOff });
+    // (never on the first start after the update to 3.0 – the "What's new" cards have that moment)
+    const show = free() && !whatsNewPending(status.config) && shouldNag({ ...next, off: status.config?.nagOff });
     api.post('/api/config', { nag: show ? { ...next, lastShown: Date.now() } : next }).catch(() => {});
     if (show) setTimeout(() => free() && setNag({ launches: next.launches }), 1500);
   }, [ready, boot, status]);
+  // "What's new in 3.0" (views/whatsnew.mjs): once after the update from 2.x – when nothing else is in the way (the
+  // welcome tour, the start-up animation, a game, another dialog: lib/whatsnew.mjs), so it may wait for the game to
+  // close – and again whenever Help or Settings ask for it (WHATS_NEW_EVENT). Closing it counts as seen.
+  const [whatsNew, setWhatsNew] = useState(false);
+  const whatsNewDone = useRef(false);
+  useEffect(() => {
+    if (!ready || whatsNew || whatsNewDone.current) return undefined;
+    const free = () => mayShowWhatsNew({ config: status?.config, boot, playing: !!sessionRef.current, dialogOpen: !!document.querySelector('dialog[open]') });
+    if (!free()) return undefined;
+    const id = setTimeout(() => { if (free() && !whatsNewDone.current) setWhatsNew(true); }, 900);
+    return () => clearTimeout(id);
+  }, [ready, boot, status, session, whatsNew]);
+  useEffect(() => {
+    const open = () => setWhatsNew(true);
+    addEventListener(WHATS_NEW_EVENT, open);
+    return () => removeEventListener(WHATS_NEW_EVENT, open);
+  }, []);
+  const closeWhatsNew = useCallback(() => {
+    setWhatsNew(false);
+    if (whatsNewDone.current || !whatsNewPending(status?.config)) return;
+    whatsNewDone.current = true;
+    api.post('/api/config', whatsNewSeenPatch()).then(() => reloadStatus()).catch(() => {});
+  }, [status]);
   useEffect(() => {
     // for trying it out: dispatchEvent(new Event('souldew:nag'))
     const open = () => setNag({ launches: Math.max(5, (status?.config?.nag?.launches) || 5) });
@@ -311,10 +468,13 @@ function App() {
   }, []);
   // Closing from the UI: asks first when there is progress since the last in-game save.
   const [pendingClose, setPendingClose] = useState(null); // { after } – close waiting for "not saved in-game"
+  // The game ends once the play view has its last state ("where you left off" – a moment, see lib/lastmoment.mjs).
   const closeSession = useCallback((after) => {
     if (unsavedProgress()) return setPendingClose({ after });
-    endSession();
-    after?.();
+    lastRef.current.close(() => {
+      endSession();
+      after?.();
+    });
   }, []);
   const setMe = useCallback((slot, id = runIdRef.current) => {
     setMeState(slot);
@@ -328,6 +488,15 @@ function App() {
       const s = await api.get('/api/status');
       setStatus(s);
       applyTheme(s.config?.theme);
+      // souldew+: the chosen skin is remembered now and shows as soon as the pack is loaded and verified (in the background)
+      applySkin(s.config?.skin);
+      initFavourites(s.config?.favourites); // the starred looks in the cosmetics pickers
+      initHandheld(s.config?.handheld); // "Your handheld" in the launch animation (a local setting)
+      prewarmHandheld(); // three.js and the sticker atlas at idle, so the first launch spends no time loading them
+      // the pack comes through the account – and only once the account is known: until the server has read the saved
+      // sign-in (keychain, in the background) the player only looks signed out, and that must not wipe a member's pack
+      setPackAccessProvider((o) => cosmeticsPackAccess({ ...o, signedOut: devPackAccess }));
+      refreshPack().catch((e) => console.warn('souldew+ pack', e));
       const lang = await setLang(s.config?.lang || guessLang());
       sendMenuLabels(s.config?.controls || null);
       await detectLayout(lang); // key names in Help / Settings › Controls
@@ -353,6 +522,9 @@ function App() {
   // ---- active run ----------------------------------------------------------------
   // a name typed when joining can arrive after the run's doc is open (the build finishes later): apply it then too
   useEffect(() => applyJoinName(doc, manifest), [doc, manifest]);
+  // Play together: which game this computer's player plays, for the partners' "who can link with whom" (again after a
+  // join's build – the run's game is ours from then on)
+  useEffect(() => { announceGame(doc, manifest, me); }, [doc, manifest, me]);
   useEffect(() => {
     // Drop everything of the previous run before loading the next one.
     setDoc(null);
@@ -372,7 +544,9 @@ function App() {
       const m = await reloadManifest(runId);
       if (!m || cancelled) return;
       const d = await new RunDoc(runId).load();
-      const rd = await new RunData().load(m);
+      // (the ROM's own data comes later, below: its scan must not hold up the run – the board, the sync with the
+      // others, their link sessions)
+      const rd = await new RunData().load(m, { rom: false });
       if (cancelled) return;
       // (an invite imported without a stored choice: the first player after the host, as before)
       // (a stored slot the run doesn't have – fewer players after a rebuild – would break every name lookup)
@@ -399,6 +573,12 @@ function App() {
       setDoc(d);
       setRunData(rd);
       setDocVersion((v) => v + 1);
+      // The ROM's own data (its types, a hack's own Pokémon): a scan of the game file on the server – seconds for a DS
+      // game, up to minutes on a slow PC the first time. Until it arrives the official types stand in. (The run used
+      // to wait for it: a partner on such a PC stayed offline that long – no sync, no link session.)
+      rd.romFetch(m).then((j) => {
+        if (!cancelled && j) setRunData((cur) => (cur === rd ? rd.withRom(j) : cur));
+      });
     })();
     return () => {
       cancelled = true;
@@ -418,7 +598,8 @@ function App() {
   const gpuFallback = ready && !boot ? status?.config?.gpuFallback : null;
   useEffect(() => {
     if (!gpuFallback) return;
-    toast({ kind: 'warn', title: t('set.gpuFallbackTitle', 'Graphics backend reset'), text: gpuFallbackText(gpuFallback), ttl: 20000 });
+    toast({ kind: 'warn', title: t('set.gpuFallbackTitle', 'Graphics backend reset'), text: gpuFallbackText(gpuFallback), ttl: 20000,
+      action: { label: t('play.slowSettings', 'Open Settings'), run: () => navigate('settings', settingsLink('gpu')) } });
     api.post('/api/config', { gpuFallback: null }).catch(() => {});
   }, [gpuFallback?.from, gpuFallback?.reason]);
   // A safe graphics start (--safe-graphics, electron/main.mjs): say what it is and where the backend is changed.
@@ -428,8 +609,9 @@ function App() {
       if (!g?.safe) return;
       const choose = PLATFORM === 'win32' || PLATFORM === 'linux';
       toast({ kind: 'warn', title: t('set.gpuSafeTitle', 'Safe graphics mode'), ttl: 20000,
-        text: choose ? t('set.gpuSafeToast', 'souldew draws without the graphics card this time (slower). Pick another graphics backend in Settings › General, then restart normally.')
-          : t('set.gpuSafeToastMac', 'souldew draws without the graphics card this time (slower). Quit and start it again for the normal mode.') });
+        text: choose ? t('set.gpuSafeToast', 'souldew draws without the graphics card this time (slower). Pick another graphics backend in Settings › About › Troubleshooting, then restart normally.')
+          : t('set.gpuSafeToastMac', 'souldew draws without the graphics card this time (slower). Quit and start it again for the normal mode.'),
+        ...(choose ? { action: { label: t('play.slowSettings', 'Open Settings'), run: () => navigate('settings', settingsLink('gpu')) } } : {}) });
     }).catch(() => {});
   }, [ready, boot]);
 
@@ -539,7 +721,9 @@ function App() {
     syncTrophies();
   }, [ready, boot, runCount, me]);
   useEffect(() => {
-    if (!runDoc) return undefined;
+    // an invite that's open but not built yet isn't this computer's run: nothing it shows counts (shared/trophies.mjs)
+    // (Play together counts for no trophy – server/lib/trophies.mjs)
+    if (!runDoc || !runStarted(manifest) || isTogether(manifest)) return undefined;
     return watchRun(runDoc, manifest, me, (sp) => runData?.types?.(sp, me) || []);
   }, [runDoc, manifest, me, runData]);
   useEffect(() => onTrophyUnlock(({ fresh, backfilled, state }) => {
@@ -575,6 +759,38 @@ function App() {
   const applySnap = useCallback((snap, { notify = true, battle = null, held = null } = {}) => {
     if (!runDoc) return null;
     const doc = runDoc;
+    // A link session (docs/MULTIPLAYER.md › rules): what the game shows meanwhile isn't the run's – a link battle (also
+    // one fought in a "trade" session: the Colosseum is next door) would count deaths and wipes, a trade screen shuffles
+    // the party. Nothing of it is applied; the first and the last team it showed make the trade's log entry, and the run
+    // goes on from the session's in-game save. Only "Losing a link battle counts as deaths" applies a battle's team.
+    // A raid (web/lib/raid.mjs) with "Deaths in a raid count" off: while this player's raid battle runs, what the game
+    // shows isn't applied; a Pokémon that went down in it is taken as standing until it's healed (it is at 0 HP in the
+    // game until a Pokémon Center – a raid is a real battle)
+    const together = isTogether(manifest); // (Play together: only the live team is written – lib/run.mjs applyTogether)
+    const rh = together ? null : raidFor(doc);
+    if (rh && snap.source === 'live' && !raidRules(getRules(doc, manifest)).deaths) {
+      if (rh.inRaidBattle()) {
+        rh.spare(snap.party);
+        return null;
+      }
+      const sp = rh.spared(snap.party, held);
+      if (sp) {
+        snap = { ...snap, party: sp.party };
+        held = sp.held;
+      }
+    }
+    const lps = linkPlayRef.current;
+    if (lps?.state?.phase === 'running' && snap.source === 'live') {
+      if ((snap.party || []).length) {
+        lps.partyFirst ||= snap.party;
+        lps.partyLast = snap.party;
+      }
+      if (!(lps.state.kind === 'battle' && getRules(doc, manifest)?.linkBattleDeaths)) return null;
+    }
+    // The game itself still in link mode after its session (left inside a Cable Club / Colosseum – Gen 2 even fights
+    // the partner's team it received once more, alone): the same rule as during the session.
+    if (snap.linkedGame && snap.source === 'live' && !getRules(doc, manifest)?.linkBattleDeaths) return null;
+    if (together) return applyTogether(doc, manifest, me, snap);
     // An ended run stays as it ended: playing on (for fun, or after a wipe) records nothing anymore.
     if (doc.get('run:status')) return null;
     const res = applySnapshot(doc, manifest, genOfRun(manifest, runData), me, snap, { rd: runData, battle, held });
@@ -621,7 +837,35 @@ function App() {
     // a zipped 3DS game being unpacked into the library (server/lib/library.mjs unpackZipGames) – what came of it is
     // told by the page that added it (web/lib/libadded.mjs addedMessage, or the error)
     unpack: (p) => toast(unpackToast(p)),
+    // the souldew account: signed in / out, new counters of friend requests and invites (server/lib/accounts)
+    account: (p) => accountEvent(p),
   }), [runId]);
+
+  // ---- raids (web/lib/raid.mjs): one hub per run document – the invites, the host's start, the log entry ----
+  useEffect(() => {
+    if (!runDoc || !manifest || !me) return undefined;
+    const hub = attachRaid({ doc: runDoc, manifest, me });
+    if (pref.get('sl-e2e', false)) window.__slRaid = hub; // (scripts/raid-e2e.mjs sets sl-e2e)
+    return () => detachRaid(runDoc);
+  }, [runDoc, manifest?.id, me]);
+
+  // ---- link battles every player agreed on: the log entry (each computer writes the same, keyed by the session) ----
+  useEffect(() => {
+    if (!runDoc || !manifest) return undefined;
+    const doc = runDoc;
+    const check = () => {
+      for (const [sid, entries] of Object.entries(sessionsIn(doc))) {
+        if (doc.get(`feed:lb-${sid}`)) continue;
+        try {
+          logLinkBattle(doc, manifest, sid, outcomeOf(entries));
+        } catch (e) {
+          console.warn('link battle log', e);
+        }
+      }
+    };
+    check();
+    return doc.subscribe((keys) => keys.some((k) => k.startsWith('lb:')) && check());
+  }, [runDoc, manifest]);
 
   // ---- live link -----------------------------------------------------------------
   const connect = useCallback(async () => {
@@ -631,6 +875,8 @@ function App() {
     const names = getPlayers(doc, manifest);
     const link = new SyncLink({
       room: manifest.room, secret: manifest.secret, slot: me, slots: slotsOf(manifest), name: names[me].name, doc,
+      // TURN for strict NATs: short-lived credentials from souldew's bot through the local server (docs/MULTIPLAYER.md)
+      getIceServers: () => api.get('/api/link/ice').then((r) => (r?.iceServers ? { iceServers: r.iceServers, relayOnly: !!r.relayOnly } : null)),
       onStatus: (s) => linkRef.current === link && setLinkStatus({ ...s }),
       onMessage: (msg) => {
         if (msg.payload?.type === 'ping') {
@@ -641,10 +887,91 @@ function App() {
       },
     });
     linkRef.current = link;
+    attachRps(link, { doc, manifest }); // rock-paper-scissors between the players (lib/worldrps.mjs)
+    attachTogether(link, { doc, manifest }); // battles, gifts, catches and deaths, "come to me" (lib/together.mjs)
+    linkPlayRef.current?.stop();
+    // a link session: the play view shows the local seat (target.link); its end closes it
+    // this player's game of this run, running in the fast player right now (a link session starts from it – seamless)
+    const nativeEmu = () => document.querySelector('iframe[src^="/playernative.html"]')?.contentWindow?.__emu || null;
+    const ownGame = () => {
+      const tg = sessionRef.current?.target;
+      return !!tg && tg.runId === manifest.id && !tg.link && tg.saveUrl === `/api/runs/${manifest.id}/save/${me}` && !!nativeEmu()?.ready;
+    };
+    const lp = new LinkSessions({
+      sync: link, runId: manifest.id, me, emu: nativeEmu, ownGame,
+      rules: () => getRules(doc, manifest),
+      // Play together: every player has a game of their own – which of them can link (shared/playtogether.mjs)
+      block: (slots, kind) => {
+        if (!isTogether(manifest)) return null;
+        const b = inviteBlock(togetherGames(doc, manifest, me), me, slots, kind);
+        return b ? BLOCK_CODE[b.why] || 'linkSystem' : null;
+      },
+      // what this computer read of a session's battles (web/lib/wager.mjs): compared with the partners' in the run
+      // (kept on this computer too: a payment follows only what it read itself)
+      onResult: (entry) => recordResult(doc, me, entry),
+      onChange: (st) => linkPlayRef.current === lp && setLinkPlay({ ...st }),
+      // out of step: from now on the play view writes none of the session's saves, and the ones on their way land first
+      beforeRestore: async () => {
+        const tl = sessionRef.current?.target?.link;
+        if (!tl) return;
+        tl.discard = true;
+        await Promise.race([tl.settle?.(), new Promise((res) => setTimeout(res, 15000))]);
+      },
+      openSession: (st) => {
+        lp.partyFirst = lp.partyLast = null; // the teams the link session shows first and last (the trade's log entry)
+        const out = manifest.outputs?.[me];
+        if (!out) return;
+        const link = { id: st.id, seats: st.seats, kind: st.kind, delay: st.delay, model: st.models?.[me] || null };
+        const cur = sessionRef.current;
+        if (st.seamless && cur?.target?.runId === manifest.id) { // the running game went into the session: same player, same picture
+          cur.target.link = link; // (the play view's save writer reads target.link as it goes)
+          setSession({ ...cur });
+          return;
+        }
+        startSession({
+          kind: 'run', key: `link-${st.id}`, soloKey: `run-${manifest.id}-${me}`, system: manifest.game?.system, code: manifest.game?.code, title: manifest.game?.title,
+          rom: `/api/runs/${manifest.id}/file?inline=1&name=${encodeURIComponent(out.rom)}`, name: out.rom.replace(/\.\w+$/, ''),
+          saveUrl: `/api/runs/${manifest.id}/save/${me}`, stateId: runStateId(manifest, me), label: manifest.name, gameId: manifest.game?.id,
+          runId: manifest.id, params: { run: manifest.id }, link,
+        });
+        navigate('play', { run: manifest.id });
+      },
+      closeSession: (st) => {
+        const cur = sessionRef.current;
+        const tl = cur?.target?.link;
+        // fell out of step: the run's save went back to before the session – the play view writes no last save of it
+        if (st.ended?.reason === 'linkDesync' && tl) tl.discard = true;
+        if (st.kind === 'trade' && st.ended?.reason !== 'linkDesync') {
+          const partner = (st.seats || []).find((s) => s !== me);
+          try {
+            logLinkTrade(doc, manifest, me, partner, lp.partyFirst, lp.partyLast);
+          } catch (e) {
+            console.warn('trade log', e);
+          }
+        }
+        // the player's own console went on alone (seamless): the same game keeps running – no restart, nothing to close
+        if (st.ended?.resumed && tl && cur) {
+          cur.target.link = null;
+          setSession({ ...cur });
+          return;
+        }
+        endSession();
+      },
+    });
+    linkPlayRef.current = lp;
+    if (pref.get('sl-e2e', false)) window.__slLink = { sessions: lp, sync: link }; // (scripts/link-e2e.mjs sets sl-e2e)
+    if (lp.state.phase !== 'idle') {
+      setLinkPlay({ ...lp.state }); // (a session this page dropped out of: the bar offers to rejoin it)
+      // the run's own game came up meanwhile (a reload on the play view): it waits until the link is rejoined or left
+      if (lp.state.phase === 'rejoinable' && sessionRef.current?.target?.runId === manifest.id && !sessionRef.current.target.link) endSession();
+    }
     await link.start();
     if (linkRef.current === link) pref.set(`sl-autolink-${manifest.id}`, true);
   }, [runDoc, manifest, me]);
   const disconnect = useCallback(() => {
+    linkPlayRef.current?.stop();
+    linkPlayRef.current = null;
+    setLinkPlay(null);
     linkRef.current?.stop();
     linkRef.current = null;
     setLinkStatus(null);
@@ -654,6 +981,9 @@ function App() {
     // A solo Nuzlocke has nobody to sync with – no relay traffic unless connected by hand (Connection page).
     if (runDoc && runMode(manifest) !== 'nuzlocke' && pref.get(`sl-autolink-${manifest.id}`, true)) connect();
     return () => {
+      linkPlayRef.current?.stop();
+      linkPlayRef.current = null;
+      setLinkPlay(null);
       linkRef.current?.stop();
       linkRef.current = null;
       setLinkStatus(null);
@@ -678,6 +1008,7 @@ function App() {
     };
   }, []);
 
+
   // ---- native menu ----------------------------------------------------------------
   useEffect(() => {
     if (!window.sls?.on) return;
@@ -690,27 +1021,58 @@ function App() {
         }
         if (what === 'reveal-library') api.post('/api/library/reveal', {});
         if (what === 'shortcuts') navigate('guide', { tab: 'keys' });
+        if (what === 'ui-in' || what === 'ui-out' || what === 'ui-reset') stepUi(what.slice(3), { onLimit: uiScaleLimited });
       }),
     ];
     return () => offs.forEach((f) => f());
   }, []);
+
+  // ---- interface size (lib/uiscale.mjs, Settings › General) ----------------------------------------------------
+  // The shortcuts on the page (⌘+ / ⌘− / ⌘0, Ctrl elsewhere – the play view hands over the ones pressed in the game), the
+  // window's size as it changes, and once per computer a quiet hint when the window is big on a large screen at 100 %.
+  const uiScaleLimited = useCallback(() => toast({ key: 'ui-scale', title: t('ui.scaleLimitTitle', 'That’s the biggest size this window has room for'),
+    text: t('ui.scaleLimitText', 'Make the window larger and the interface grows to the size you picked.') }), [toast]);
+  useEffect(() => {
+    const offKeys = watchUiScaleKeys({ onLimit: uiScaleLimited });
+    const offState = initUiScale();
+    return () => {
+      offKeys();
+      offState();
+    };
+  }, []);
+  const uiScale = useUiScale();
+  const uiHinted = useRef(false);
+  useEffect(() => {
+    if (uiHinted.current || !ready || boot || !status?.config?.onboarded || status.config.uiScaleHint) return;
+    const s = suggestUiScale(uiScale);
+    if (!s) return;
+    uiHinted.current = true;
+    api.post('/api/config', { uiScaleHint: true }).catch(() => {}); // asked once – whatever the answer
+    toast({ key: 'ui-scale-hint', ttl: 30000, title: t('ui.scaleHintTitle', 'The interface looks small on this screen – make it bigger?'),
+      text: t('ui.scaleHintText', '{size} suits a screen this large. You can change it any time – “Interface size” in Settings, or {bigger} and {smaller}.',
+        { size: uiScaleLabel(s), ...uiScaleKeys() }),
+      action: { label: t('ui.scaleHintYes', 'Make it {size}', { size: uiScaleLabel(s) }), run: () => setUiScale(s) } });
+  }, [ready, boot, status, uiScale]);
 
   // Who of the other players is online right now (heard from within PARTNER_TTL, or a direct link is up);
   // partnerOnline: anybody at all (the two-player call sites).
   const others = manifest ? othersOf(me, manifest) : [];
   const onlineSlots = new Set(Object.entries(linkStatus?.partners || {})
     .filter(([s, p]) => others.includes(s) && (p.p2p || Date.now() - p.seen < PARTNER_TTL)).map(([s]) => s));
+  if (runDoc && raidFor(runDoc)) raidFor(runDoc).online = onlineSlots; // (who can be asked to a raid, who is still there)
   const partnerOnline = onlineSlots.size > 0
     || !!(linkStatus?.partner && linkStatus.partnerSeen && Date.now() - linkStatus.partnerSeen < PARTNER_TTL);
   // checks() walks both teams and the rules – only again when the doc (docVersion) or the run changed, not on every
   // render (toasts, live frames from an external emulator …)
   const checkCount = useMemo(() => (runDoc ? checks(runDoc, manifest, runData).length : 0), [runDoc, docVersion, manifest, runData]);
   const warnCount = runDoc ? checkCount + inbox.inbox.length + inbox.alerts.length : 0;
+  // the souldew account (lib/socialapp.mjs): presence, notices, the Friends entry – nothing at all while signed out
+  const social = useSocial({ ready, route, session, manifest, doc: runDoc, me, linkStatus, toast, navigate });
   const ctx = {
     status, reloadStatus, library, reloadLibrary, runId, setRunId, manifest, missingRun, reloadManifest, doc: runDoc, docVersion, runData, me, setMe,
-    navigate, route, link: linkRef.current, linkStatus, partnerOnline, onlineSlots, connect, disconnect, inbox, setInbox, applySnap, revealDeaths, ballsSeen, toast, liveInfo,
+    navigate, route, link: linkRef.current, linkStatus, linkPlay, linkSessions: linkPlayRef.current, partnerOnline, onlineSlots, connect, disconnect, inbox, setInbox, applySnap, revealDeaths, ballsSeen, toast, liveInfo,
     externalRun, setExternalRun,
-    session, startSession, endSession, closeSession, offerRestart,
+    session, startSession, endSession, closeSession, offerRestart, wagerRef, lastMoment: lastRef.current,
   };
 
   if (!ready) {
@@ -725,7 +1087,7 @@ function App() {
     return html`<div class="boot"><div class="boot-screen"></div></div>`;
   }
   const showOnboarding = !!status && !status.config?.onboarded;
-  const View = { library: LibraryView, soullink: SoulLinkView, nuzlocke: NuzlockeView, play: PlayView, link: LinkView, stream: StreamView, trophies: TrophiesView, settings: SettingsView, guide: GuideView }[route.route] || LibraryView;
+  const View = { library: LibraryView, soullink: SoulLinkView, nuzlocke: NuzlockeView, play: PlayView, link: LinkView, stream: StreamView, trophies: TrophiesView, settings: SettingsView, guide: GuideView, friends: FriendsView, profile: ProfileView, plus: PlusView, thanks: ThanksView, handheld: HandheldView }[route.route] || LibraryView;
   const names = runDoc ? getPlayers(runDoc, manifest) : null;
   // Fullscreen – the window's (macOS: green button, Windows: F11) or the game's (F): the side rail folds away, the game gets the room
   const [winFs, setWinFs] = useState(false);
@@ -736,14 +1098,21 @@ function App() {
     document.addEventListener('fullscreenchange', doc);
     return () => { off?.(); document.removeEventListener('fullscreenchange', doc); };
   }, []);
-  // The side rail: open, or folded away by hand (remembered) – and always folded in fullscreen. Folded, it slides in
-  // over the page while the pointer is at the window's left edge (or a key moves the focus into it).
+  // The side rail: open, or folded away by hand (remembered) – and always folded in fullscreen and while the game fills
+  // the Play page (the game gets the room). Folded, it slides in over the page while the pointer is at the window's left
+  // edge (or a key moves the focus into it); the button at the top left and ⌘B / Ctrl+B show it too.
   // (onfocusin / onfocusout in lowercase: Preact would listen for a `FocusOut` event otherwise)
   const [railHidden, setRailHidden] = useState(() => { try { return localStorage.getItem('sl-rail-hidden') === '1'; } catch { return false; } });
   const [peek, setPeek] = useState(false);
   const peekTimer = useRef(0);
   const fs = winFs || docFs;
-  const folded = railHidden || fs;
+  // The game fills the Play page when that page shows it, otherwise it keeps running in the corner.
+  const sp = session?.target.params || {};
+  const rp = route.params;
+  const showsSession = route.route === 'play' && rp.home === undefined
+    && (rp.run ? rp.run === sp.run : rp.rom ? rp.rom === sp.rom && (rp.patch || '') === (sp.patch || '') : true);
+  const playFold = !!session && showsSession;
+  const folded = railHidden || fs || playFold;
   const setHidden = useCallback((h) => {
     setRailHidden(h);
     setPeek(false);
@@ -757,37 +1126,37 @@ function App() {
     const key = (e) => {
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'b') return;
       e.preventDefault();
-      if (fs) setPeek((p) => !p);
+      if (fs || playFold) setPeek((p) => !p);
       else setHidden(!railHidden);
     };
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
-  }, [fs, railHidden, setHidden]);
+  }, [fs, playFold, railHidden, setHidden]);
   const playing = !!session;
   useEffect(() => { window.sls?.setPlaying?.(playing); }, [playing]);
   fxBusy.current = playing || fs || boot || showOnboarding;
   const native = !!window.sls?.native;
-  // The game fills the Play page when that page shows it, otherwise it keeps running in the corner.
-  const sp = session?.target.params || {};
-  const rp = route.params;
-  const showsSession = route.route === 'play' && rp.home === undefined
-    && (rp.run ? rp.run === sp.run : rp.rom ? rp.rom === sp.rom && (rp.patch || '') === (sp.patch || '') : true);
   // The rail has no "Play" item: the game belongs to the section of what it plays – a run to SoulLink or Nuzlocke,
   // a game of the library (free play) to the library. That item carries the green "playing" light, and while the
   // game fills the page, it is the one marked as here.
   const sectionOf = (id) => {
     const r = id === manifest?.id ? manifest : status?.runs?.find((x) => x.id === id);
-    return r ? runMode(r) : 'soullink';
+    return r ? runSection(r) : 'soullink';
   };
   const playingIn = session ? (session.target.runId ? sectionOf(session.target.runId) : 'library') : null;
-  const here = route.route !== 'play' ? route.route
+  const here = route.route === 'handheld' ? 'settings' // (Settings › Play › Launch animation › Your handheld)
+    : route.route !== 'play' ? route.route
     : showsSession && session ? playingIn : rp.run ? sectionOf(rp.run) : 'library';
+  // souldew+ at the rail's foot says "thank you" to every member (supporter, souldew+, patron)
+  const thanks = !!social.signedIn && (social.me?.entitlement?.tier || 'none') !== 'none';
   const NAV = [
     { id: 'library', label: t('nav.library', 'Library'), icon: 'library', accent: '#e0a458' },
     // the board's to-do count shows at the section of the open run
-    { id: 'soullink', label: t('nav.soullink', 'SoulLink'), icon: 'link', count: manifest && runMode(manifest) === 'soullink' ? warnCount : 0, accent: '#d77fc6' },
+    { id: 'soullink', label: t('nav.soullink', 'SoulLink'), icon: 'link', count: manifest && runSection(manifest) === 'soullink' ? warnCount : 0, accent: '#d77fc6' },
     { id: 'nuzlocke', label: t('nav.nuzlocke', 'Nuzlocke'), icon: 'nuzlocke', count: manifest && runMode(manifest) === 'nuzlocke' ? warnCount : 0, accent: '#e8735f' },
     { id: 'link', label: t('nav.link', 'Connection'), icon: 'signal', accent: '#6f9bff' },
+    // signed in only: the souldew account's friends (green: how many are online; the badge: requests and invites)
+    ...(social.signedIn ? [{ id: 'friends', label: t('nav.friends', 'Friends'), icon: 'friends', accent: '#6fb39b', online: social.online, count: social.toAnswer, countHint: t('nav.friendsHint', 'Friend requests and invites') }] : []),
     { id: 'stream', label: t('nav.stream', 'Stream'), icon: 'stream', accent: '#ff5b6e', onAir: streamer },
     { id: 'trophies', label: t('nav.trophies', 'Trophies'), icon: 'trophy', accent: '#e7c24f' },
     { id: 'settings', label: t('nav.settings', 'Settings'), icon: 'gear', accent: '#9a8ee6' },
@@ -798,8 +1167,9 @@ function App() {
     <div class=${`frame ${native ? 'app-native' : ''} ${folded ? 'rail-folded' : ''} ${folded && peek ? 'rail-peek' : ''}`}>
       ${native && html`<div class="titlebar-drag"></div>`}
       ${folded && html`<div class="rail-edge" aria-hidden="true" onPointerEnter=${peekIn} onPointerLeave=${peekOut}></div>`}
-      ${folded && !fs && !peek && html`<${CoffeeLink} float fx=${coffee.fx} onOpen=${coffee.clicked} />`}
-      ${railHidden && !fs && !peek && html`<button class="rail-open no-drag" onClick=${() => setHidden(false)} title=${`${t('rail.show', 'Show the sidebar')} (${shortcut('Mod+B')})`} aria-label=${t('rail.show', 'Show the sidebar')}><${Icon} name="sidebar" size=${18} /></button>`}
+      ${folded && !fs && !playFold && !peek && html`<${RailPlus} float thanks=${thanks} here=${here === 'plus'} fx=${coffee.fx} onOpen=${coffee.clicked} />`}
+      ${(railHidden || playFold) && !fs && !peek && html`<button class="rail-open no-drag" onClick=${() => (playFold ? setPeek(true) : setHidden(false))} title=${`${t('rail.show', 'Show the sidebar')} (${shortcut('Mod+B')})`} aria-label=${t('rail.show', 'Show the sidebar')}><${Icon} name="sidebar" size=${18} /></button>`}
+      ${playFold && !fs && !peek && html`<${RailHint} />`}
       <aside class=${`rail ${native ? '' : 'web'} ${native ? 'drag' : ''}`} onPointerEnter=${folded ? peekIn : undefined} onPointerLeave=${folded ? peekOut : undefined}
         onfocusin=${folded ? peekIn : undefined} onfocusout=${folded ? (e) => { if (!e.currentTarget.contains(e.relatedTarget)) peekOut(); } : undefined}>
         <div class="brand no-drag"><${AppMark} size=${34} /><div class="name">souldew</div>
@@ -807,24 +1177,27 @@ function App() {
         ${!fs && html`<button class="rail-toggle no-drag" onClick=${() => setHidden(!railHidden)} title=${`${railHidden ? t('rail.pin', 'Keep the sidebar open') : t('rail.hide', 'Hide the sidebar')} (${shortcut('Mod+B')})`}
             aria-label=${railHidden ? t('rail.pin', 'Keep the sidebar open') : t('rail.hide', 'Hide the sidebar')} aria-pressed=${!railHidden}><${Icon} name="sidebar" size=${16} /></button>`}
         <nav class="nav no-drag" aria-label=${t('nav.aria', 'Sections')} onPointerOver=${navLight} onPointerMove=${navLight}>
-          ${NAV.map((n) => html`<a href=${`#/${n.id}`} class=${here === n.id ? 'active' : ''} aria-current=${here === n.id ? 'page' : undefined} style=${`--na:${n.accent}`}>
-            <${NavIcon} name=${n.icon} /><span class="nav-label">${n.label}</span>
-            <span class="nav-end">${n.onAir && html`<span class="nav-onair" title=${t('stream.onAirHint', 'Streamer mode is on – codes, keys, paths and spoilers are covered')}><span class="sr-only">${t('stream.mode', 'Streamer mode')}</span></span>`}${playingIn === n.id && html`<span class="nav-live" title=${t('nav.playing', 'Running now: {game}', { game: session.target.label || session.target.name || '' })}><${Led} on color="green" />
-                <span class="sr-only">${t('nav.playing', 'Running now: {game}', { game: session.target.label || session.target.name || '' })}</span></span>`}
-              ${n.count > 0 && html`<span class="nav-badge" title=${t('nav.countHint', 'Things to check on the board')}>${n.count > 99 ? '99+' : n.count}<span class="sr-only"> ${t('nav.countSr', 'to check')}</span></span>`}</span>
-          </a>`)}
+          ${railGroups(new Set(NAV.map((n) => n.id))).map((ids, i) => html`${i > 0 && html`<hr class="nav-rule" />`}${ids.map((id) => NAV.find((n) => n.id === id)).map((n) => html`<${NavItem} key=${n.id} n=${n} here=${here} playingIn=${playingIn} session=${session} />`)}`)}
         </nav>
         <div class="rail-foot no-drag">
           <${FirstStepsPill} />
           ${native && html`<${UpdateBanner} />`}
           ${manifest && names && html`<${RailRun} manifest=${manifest} names=${names} me=${me} onlineSlots=${onlineSlots} linkStatus=${linkStatus} session=${session} navigate=${navigate} />`}
-          <${CoffeeLink} fx=${!folded || peek ? coffee.fx : null} onOpen=${coffee.clicked} />
+          ${social.signedIn && social.me && html`<a class="rail-me" href="#/profile" aria-current=${route.route === 'profile' && !route.params.id ? 'page' : undefined} title=${t('pf.yours', 'Your profile')}>
+            <${Avatar} user=${social.me} size=${30} /><span class="stack-s" style="gap:0"><b class="ellipsis">${social.me.name}</b><span class="tiny ellipsis">${social.me.status || `@${social.me.handle || ''}`}</span></span></a>`}
+          ${!social.signedIn && html`<${RailSignIn} toast=${toast} />`}
+          <div class="nav rail-tools" onPointerOver=${navLight} onPointerMove=${navLight}>
+            <${RailPlus} thanks=${thanks} here=${here === 'plus'} fx=${!folded || peek ? coffee.fx : null} onOpen=${coffee.clicked} />
+            ${FOOT_SECTIONS.map((id) => NAV.find((n) => n.id === id)).map((n) => html`<a key=${n.id} href=${`#/${n.id}`} class=${`rail-icon ${here === n.id ? 'active' : ''}`}
+              aria-current=${here === n.id ? 'page' : undefined} title=${n.label} aria-label=${n.label} style=${`--na:${n.accent}`}><${NavIcon} name=${n.icon} /></a>`)}
+          </div>
         </div>
       </aside>
       <main class="main">
         <div class=${`main-inner ${session && showsSession ? 'under-session' : ''}`}><${Boundary} route=${route.route}><${View} /><//></div>
         ${session && html`<${Boundary} route="session"><${GameSession} key=${session.target.key + session.at} session=${session} mode=${showsSession ? 'full' : 'mini'} /><//>`}
         ${externalRun && html`<${Boundary} route="external"><${ExternalFeed} /><//>`}
+        <div class="cards-dock"><${RpsCards} /><${TogetherCards} /><${RaidCards} /></div>
       </main>
     </div>
     ${showOnboarding && !boot && html`<${Onboarding} onDone=${() => navigate('library')} />`}
@@ -837,16 +1210,19 @@ function App() {
         // a board of the other run was asked for: back to the overview instead of waiting for a run that won't open
         else if (rp.run && rp.run !== runId) navigate(route.route);
       }}>${t('play.lockKeep', 'Keep playing')}</button>
-        <button class="btn primary" onClick=${() => { const id = pendingRun.id; setPendingRun(null); endSession(); switchRun(id); }}>${t('play.lockSwitch', 'Close game & switch')}</button>`}>
+        <button class="btn primary" onClick=${() => { const id = pendingRun.id; setPendingRun(null); lastRef.current.close(() => { endSession(); switchRun(id); }); }}>${t('play.lockSwitch', 'Close game & switch')}</button>`}>
       <p class="muted">${t('play.lockTextRun', '{game} belongs to the run that is open now. To open another run, close the game first – your progress is saved and it continues where you left off.', { game: session?.target.label || '' })}</p>
       ${pendingRun && unsavedProgress() && html`<p class="warning">${unsavedTexts(unsavedProgress()).text}</p>`}
     <//>
     <${Modal} open=${!!pendingClose} onClose=${() => setPendingClose(null)} title=${unsavedTexts(unsavedProgress()).title}
-      footer=${html`<button class="btn ghost" onClick=${() => { const p = pendingClose; setPendingClose(null); endSession(); p?.after?.(); }}>${unsavedTexts().close}</button>
+      footer=${html`<button class="btn ghost" onClick=${() => { const p = pendingClose; setPendingClose(null); lastRef.current.close(() => { endSession(); p?.after?.(); }); }}>${unsavedTexts().close}</button>
         <button class="btn primary" onClick=${() => { setPendingClose(null); if (session) navigate('play', session.target.params); }}>${t('unsaved.back', 'Back to the game')}</button>`}>
       <p class="muted">${unsavedTexts(unsavedProgress()).text}</p>
     <//>
     <${LicenseNag} open=${!!nag} launches=${nag?.launches} onClose=${() => setNag(null)} />
+    <${WhatsNew} open=${whatsNew} onClose=${closeWhatsNew} />
+    <${ThanksAsk} busy=${boot || playing || showOnboarding || whatsNew} />
+    ${manifest && linkPlay && !playFold && html`<${LinkBar} />`}
     <${Toasts} toasts=${toasts} dismiss=${(id) => setToasts((ts) => ts.filter((x) => x.id !== id))} />
     <${TrophyToasts} items=${trophyToasts} navigate=${navigate} dismiss=${(key) => setTrophyToasts((ts) => ts.filter((x) => x.key !== key))} />
     <${DeathAlert} alert=${runOver ? null : deathAlert} onClose=${() => setDeathAlert(null)} />

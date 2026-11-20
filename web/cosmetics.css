@@ -1,0 +1,195 @@
+/* souldew+ cosmetics: the theme and launch pickers in Settings, the souldew+ mark, and the banner / frame / nameplate
+   components (web/lib/cosmetics/components.mjs). Every rule here is app UI; the skins themselves come from the pack. */
+
+/* the quiet souldew+ mark – one fixed gold on every skin (a light skin's dark --warn would hide the plus) */
+.plus-mark { display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 5px; color: #1b1a1f; background: #e1b05a;
+  box-shadow: inset 0 -1px 0 #0003, 0 0 0 1px #0000001a; line-height: 0; }
+.plus-mark svg { display: block; }
+
+/* ---- Settings › General › Appearance › Theme (themes design v3, picker.css) ---- */
+.skin-picker-head { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.skin-card { position: relative; }
+.skin-card .plus-mark { position: absolute; top: 10px; right: 10px; }
+.theme-card.previewing { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn), 0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent); }
+.skin-preview-bar { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; margin-top: 10px; border-radius: var(--r-m); font-size: 13.5px;
+  background: color-mix(in srgb, var(--warn) 9%, var(--shell-3)); border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--edge)); }
+.skin-preview-bar .spacer { flex: 1; }
+.skin-preview-bar .led { flex: none; }
+.skin-group { display: grid; gap: 6px; margin-top: 10px; }
+.skin-group-label { padding-left: 2px; }
+.skin-picker.compact { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; }
+.skin-card.compact { padding: 9px 10px 10px; gap: 6px; }
+.skin-card.compact .theme-swatches { gap: 0; margin-bottom: 0; border-radius: 5px; overflow: hidden; box-shadow: inset 0 0 0 1px #0004; }
+.skin-card.compact .theme-swatches .sw { flex: 1; width: auto; height: 14px; border-radius: 0; box-shadow: none; }
+.skin-card.compact b { font-size: 13px; font-weight: 600; padding-right: 22px; }
+.skin-card.compact .plus-mark { top: auto; bottom: 9px; right: 9px; }
+
+/* ---- Settings › Play › Launch animation ---- */
+.launch-picker { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 14px; align-items: start; }
+.launch-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-content: start; }
+.launch-card { position: relative; display: grid; gap: 3px; text-align: left; padding: 9px 10px 10px; border-radius: var(--r-l); background: var(--shell-3);
+  border: 1px solid var(--edge); color: var(--ink); font: inherit; cursor: pointer; }
+.launch-card:hover { border-color: var(--edge-hi); }
+.launch-card.on { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.launch-card b { font-size: 13px; font-weight: 600; padding-right: 22px; }
+.launch-card .hint { font-size: 12px; color: var(--ink-2); }
+.launch-card .plus-mark { position: absolute; top: 9px; right: 9px; }
+.launch-stage { display: grid; gap: 8px; justify-items: stretch; }
+.launch-screen { position: relative; aspect-ratio: 240 / 160; border-radius: var(--r-m); overflow: hidden; background: #000;
+  box-shadow: 0 0 0 1px var(--edge), inset 0 0 0 1px #0008; }
+.launch-screen > canvas { image-rendering: pixelated; }
+.launch-screen .cart-insert { position: absolute; inset: 0; z-index: 1; overflow: hidden; }
+.launch-screen .ci-stage { transform: scale(.34); }
+.launch-stage .btn { justify-self: start; }
+@media (max-width: 760px) { .launch-picker { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- components ---- */
+.cos-art-host { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
+.cos-banner { position: relative; overflow: hidden; width: 100%; background: var(--shell-3); }
+.cos-banner--profile { height: 160px; border-radius: var(--r-l); box-shadow: inset 0 0 0 1px #0007, 0 1px 0 #ffffff08; }
+.cos-banner--friend { height: 92px; }
+.cos-banner--card { height: 54px; border-radius: var(--r-m); }
+.cos-banner--fill { height: 100%; }
+/* the fade under the name: mixed from the skin's own surface, so a paper skin fades to paper instead of smudging the
+   banner dark (the design's fixed #1b1a1fcc did that on every light skin) */
+.cos-banner.cos-shade::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, transparent 40%, color-mix(in srgb, var(--shell) 80%, transparent)); }
+.cos-banner--friend.cos-shade::after { background: linear-gradient(180deg, transparent 30%, var(--shell-2)); }
+.cos-banner > :not(.cos-art-host):not(.cos-ph) { position: relative; z-index: 1; }
+/* no content (locked, or the pack isn't loaded): the banner's palette as a quiet strip, never a broken box */
+.cos-ph { position: absolute; inset: 0; background: var(--cos-sw, var(--shell-3)); opacity: .55; border-radius: inherit;
+  -webkit-mask: repeating-linear-gradient(90deg, #000 0 2px, #0009 2px 4px); mask: repeating-linear-gradient(90deg, #000 0 2px, #0009 2px 4px); }
+
+.cos-frame { --av: 40px; position: relative; display: inline-block; flex: none; width: var(--av); height: var(--av); vertical-align: middle; }
+.cos-frame > img { display: block; width: 100%; height: 100%; border-radius: 26%; image-rendering: pixelated; }
+.cos-frame > canvas.sd-frame { z-index: 1; }
+/* a presence dot or badge after the img stays above the frame, however Preact orders the nodes */
+.cos-frame > :not(img):not(canvas) { z-index: 2; }
+
+.cos-nameplate { position: relative; isolation: isolate; }
+.cos-nameplate > .cos-art-host { z-index: -1; }
+
+/* ---- the profile editor's picker ---- */
+.cos-picker { display: grid; gap: 12px; }
+.cos-picker-head { align-items: center; gap: 12px; }
+.cos-picker-note { display: inline-flex; align-items: center; gap: 6px; }
+.cos-group { display: grid; gap: 6px; }
+.cos-group-label { padding-left: 2px; }
+.cos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 8px; }
+.cos-picker--frames .cos-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+.cos-pick { position: relative; display: grid; gap: 7px; text-align: left; padding: 8px; border-radius: var(--r-l); background: var(--shell-3);
+  border: 1px solid var(--edge); color: var(--ink); font: inherit; cursor: pointer; min-width: 0; }
+.cos-pick:hover { border-color: var(--edge-hi); }
+.cos-pick.on { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.cos-pick-art { position: relative; display: block; height: 54px; border-radius: var(--r-m); overflow: hidden; background: var(--shell-2); }
+.cos-picker--frames .cos-pick-art { height: 92px; display: grid; place-items: center; overflow: visible; }
+.cos-pick-art .cos-banner--card { height: 100%; }
+.cos-pick-text { display: grid; gap: 2px; min-width: 0; padding-right: 20px; }
+.cos-pick-text b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cos-pick-meta { display: flex; flex-wrap: wrap; column-gap: 6px; row-gap: 1px; align-items: baseline; color: var(--ink-2); min-width: 0; }
+.cos-pick .plus-mark { position: absolute; right: 8px; bottom: 9px; }
+.cos-pick.locked .cos-pick-art { filter: saturate(.8); }
+.cos-rarity.r-common { color: var(--ink-2); } .cos-rarity.r-rare { color: var(--crs); } .cos-rarity.r-epic { color: var(--p4, #a993e6); } .cos-rarity.r-legendary { color: var(--warn); }
+.cos-pair { color: var(--ok-ink, var(--tri)); }
+.cos-pick-frame { display: grid; place-items: center; }
+.cos-pick-av { display: block; width: 100%; height: 100%; border-radius: 26%; background: linear-gradient(160deg, var(--shell-4, #3a3942), var(--shell-2)); box-shadow: 0 0 0 1px #0d0c10; }
+.cos-pick-plate { display: flex; align-items: center; gap: 10px; height: 100%; padding: 0 10px; }
+.cos-pick-plate .cos-pick-av { width: 30px; height: 30px; flex: none; }
+.cos-pick-plate b { font-size: 13px; }
+.cos-pick--none .cos-pick-art { background: repeating-linear-gradient(135deg, var(--shell-2) 0 6px, var(--shell-3) 6px 12px); }
+
+@media (prefers-reduced-motion: reduce) { .cos-pick, .launch-card { transition: none; } }
+.plus-note { display: inline-flex; align-items: center; gap: 6px; }
+.launch-title { font-size: 13px; color: var(--ink-2); }
+
+/* ---- the play view: a souldew+ launch animation over the game box (views/launch.mjs) ---- */
+.console-screen .launch-host { position: absolute; inset: 0; z-index: 4; border-radius: inherit; overflow: hidden; }
+
+/* ---- live theme preview (a non-member trying a souldew+ theme for 15 minutes) ---- */
+.skin-preview-bar.live { background: color-mix(in srgb, var(--crs) 10%, var(--shell-3)); border-color: color-mix(in srgb, var(--crs) 40%, var(--edge)); }
+.skin-live-badge { flex: none; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .02em;
+  color: var(--shell); background: var(--crs); }
+
+/* ---- preview media (web/lib/cosmetics/previews.mjs): the real look of a locked item – pictures, scaled pixel-exact ---- */
+.cos-preview { display: block; image-rendering: pixelated; pointer-events: none; user-select: none; }
+.cos-pick-art > .cos-preview, .cos-pick-art > .cos-preview--banners { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.cos-pick-frame--pic { position: relative; width: 56px; height: 56px; }
+/* the frame picture is the avatar box (40 native px) plus its overhang (6 a side): 52/40 of the box, centred on it */
+.cos-pick-frame--pic .cos-preview, .plus-show-item--frames .cos-preview { position: absolute; width: 130%; height: 130%; left: -15%; top: -15%; max-width: none; }
+.cos-pick-plate--pic { position: relative; overflow: hidden; }
+.cos-pick-plate--pic .cos-preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right center; }
+.cos-pick-plate--pic > :not(.cos-preview) { position: relative; z-index: 1; }
+
+/* a locked theme for someone who can't try it live: how the app looks in it */
+.skin-shot { margin: 10px 0 0; display: grid; gap: 6px; max-width: 560px; }
+.skin-shot .cos-preview { width: 100%; height: auto; aspect-ratio: 16 / 10; border-radius: var(--r-m); border: 1px solid var(--sk-line, #0d0c10); image-rendering: auto; }
+
+/* "What souldew+ holds" */
+.plus-show { margin-top: 6px; }
+.plus-show-head { align-items: baseline; gap: 10px; }
+.plus-show-head h3 { margin: 0; font-size: 14px; }
+.plus-show-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); max-height: 460px; overflow: auto; padding-right: 4px; }
+.plus-show-grid--frames { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.plus-show-grid--skins { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.plus-show-item { display: grid; gap: 5px; padding: 6px; border-radius: var(--r-m); background: var(--shell-3); border: 1px solid var(--sk-line, #0d0c10); outline: none; }
+.plus-show-item:hover, .plus-show-item:focus-visible { border-color: var(--edge-hi); }
+.plus-show-item:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
+.plus-show-art { position: relative; display: block; border-radius: 6px; overflow: hidden; background: var(--shell-2); }
+.plus-show-item--banners .plus-show-art { aspect-ratio: 768 / 112; }
+.plus-show-item--nameplates .plus-show-art { aspect-ratio: 320 / 52; }
+.plus-show-item--launch .plus-show-art { aspect-ratio: 3 / 2; }
+.plus-show-item--skins .plus-show-art { aspect-ratio: 16 / 10; }
+.plus-show-item--skins .cos-preview { image-rendering: auto; }
+.plus-show-item--frames .plus-show-art { width: 56px; height: 56px; margin: 12px auto; overflow: visible; background: none; }
+.plus-show-art > .cos-preview { width: 100%; height: 100%; object-fit: cover; }
+.plus-show-item--frames .plus-show-art > .cos-preview { width: 130%; height: 130%; object-fit: fill; }
+.plus-show-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.plus-show-item--frames .plus-show-name { text-align: center; }
+
+/* ---- favourites (web/lib/favourites.mjs): the star on every look, the filter row above a picker ---- */
+/* the wrapper takes the card's place in its grid; the star is its own button in a corner, shown on hover / focus, and
+   always (filled, one fixed gold on every skin) once the look is a favourite */
+.fav-scope { position: relative; display: grid; min-width: 0; }
+.fav-scope > :first-child { min-width: 0; }
+.fav-star { position: absolute; top: 6px; left: 6px; z-index: 3; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%;
+  color: #f1ece2; background: color-mix(in srgb, #121116 74%, transparent); box-shadow: 0 0 0 1px #0000004d; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.fav-scope:hover > .fav-star, .fav-scope:focus-within > .fav-star, .fav-star.on { opacity: 1; }
+.fav-star:hover { color: #f6d77e; }
+.fav-star.on { color: #f0c75a; }
+.fav-star:focus-visible { opacity: 1; outline: 2px solid var(--focus); outline-offset: 1px; }
+.fav-glyph { display: block; flex: none; }
+.fav-star.pop .fav-glyph { animation: fav-pop .34s cubic-bezier(.2, .8, .2, 1.3); }
+@keyframes fav-pop { 0% { transform: scale(.55); } 60% { transform: scale(1.28); } 100% { transform: scale(1); } }
+/* a tiny badge for small swatches (the souldew+ page's theme strip) */
+.fav-star.mini { top: -6px; right: -6px; left: auto; width: 16px; height: 16px; }
+.fav-star.mini .fav-glyph { width: 10px; height: 10px; }
+
+/* where the star sits per picker – never on the souldew+ mark, never on the name */
+.pe-fav .fav-star { top: 10px; left: 10px; }
+.pe-fav.k-nameplates .fav-star { top: auto; bottom: 34px; left: auto; right: 10px; }
+.skin-fav .fav-star { top: 5px; left: auto; right: 5px; width: 20px; height: 20px; }
+.launch-fav .fav-star { top: 7px; left: auto; right: 7px; width: 20px; height: 20px; }
+.launch-fav .launch-card .plus-mark { right: 32px; }
+.plus-show-li { list-style: none; min-width: 0; }
+.plus-show-fav .fav-star { top: 10px; left: 10px; }
+
+/* the filter row: small chips on one line – never taller than a search field, quiet while there are no favourites */
+.fav-filter { display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.fav-filter::-webkit-scrollbar { display: none; }
+.fav-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 0; border-radius: 13px; background: transparent;
+  color: var(--ink-2); font: inherit; font-size: 12.5px; white-space: nowrap; cursor: pointer; }
+.fav-chip:hover { background: var(--lt-hover, var(--shell-3)); color: var(--ink); }
+.fav-chip.on { background: var(--shell-4); color: var(--ink); box-shadow: var(--press); }
+.fav-chip.none:not(.on) { color: var(--ink-3); }
+.fav-chip .fav-glyph { color: #e1b05a; }
+.fav-chip.none .fav-glyph { color: currentColor; }
+.fav-n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.fav-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.fav-empty { margin: 6px 2px; }
+.skin-filter { margin-top: 10px; }
+.launch-cards .fav-empty { grid-column: 1 / -1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fav-star { transition: none; }
+  .fav-star.pop .fav-glyph { animation: none; }
+}

@@ -2,7 +2,8 @@
 // nothing but a gamepad – for the couch and Steam Deck game mode.
 //
 // D-pad / left stick: move the focus to the nearest control in that direction (held: repeats). A: press it (a select
-// steps to its next option, X to the previous one; a slider moves with left / right). B: back – closes the topmost
+// steps to its next option, X to the previous one; a slider moves with left / right). Y: the focused card's own second
+// action – today the favourite star of a look (lib/favourites.mjs: [data-pad-y] in [data-pad-y-scope]). B: back – closes the topmost
 // dialog, drawer or menu, else goes back to the previous screen. L / R: the page's tabs (board, help, trophies, a
 // dialog's tabs), else the previous / next section of the sidebar. Start: into the sidebar and back out. Right stick:
 // scrolls what the focus is in. The buttons are the console buttons of Settings › Controller, so a remapped A is
@@ -124,7 +125,7 @@ const deadzone = (v) => (Math.abs(v) < 0.25 ? 0 : v);
 /**
  * What the app reads from a controller (a Gamepad, or { buttons: [{ pressed }], axes }), with the console buttons of
  * Settings › Controller (`pads` = config.pads): dir (null | 'up' | 'down' | 'left' | 'right' – the D-pad, else the left
- * stick), confirm (A), back (B), alt (X), prev / next (L / R), menu (Start), scrollX / scrollY (right stick, -1…1),
+ * stick), confirm (A), back (B), alt (X), extra (Y), prev / next (L / R), menu (Start), scrollX / scrollY (right stick, -1…1),
  * and `any`: something but the game's hotkeys is pressed or pushed.
  */
 export function readPad(pad, pads = null) {
@@ -139,7 +140,7 @@ export function readPad(pad, pads = null) {
   const buttons = [...(pad?.buttons || [])];
   const hot = padActions(pads); // the game's shortcut buttons (ZL / ZR unless re-bound) and Home
   const any = buttons.some((b, i) => b?.pressed && !(i in hot)) || [lx, ly, rx, ry].some((v) => Math.abs(v) > STICK);
-  return { dir, confirm: on(pm.a), back: on(pm.b), alt: on(pm.x), prev: on(pm.l), next: on(pm.r), menu: on(pm.start), scrollX: deadzone(rx), scrollY: deadzone(ry), any };
+  return { dir, confirm: on(pm.a), back: on(pm.b), alt: on(pm.x), extra: on(pm.y), prev: on(pm.l), next: on(pm.r), menu: on(pm.start), scrollX: deadzone(rx), scrollY: deadzone(ry), any };
 }
 
 // ---- who owns the controller ----------------------------------------------------------------------------------------
@@ -375,9 +376,17 @@ function move(dir) {
     if (same.length) list = same;
   }
   const i = pickTarget(rectOf(from), dir, list.map(rectOf));
-  if (i >= 0) return focusEl(list[i]);
+  if (i >= 0) return focusEl(openTab(list[i], from) || list[i]);
   // nothing further that way: scroll on, so text below the last control comes into view
   if (dir === 'up' || dir === 'down') scroller(from)?.scrollBy({ top: (dir === 'down' ? 1 : -1) * innerHeight * 0.4, behavior: 'smooth' });
+}
+
+/** Moving into a tab list from outside lands on the open tab, not on whichever tab happens to be nearest. */
+function openTab(target, from) {
+  const tabs = target.getAttribute('role') === 'tab' && target.closest('[role="tablist"]');
+  if (!tabs || tabs.contains(from)) return null;
+  const open = tabs.querySelector('[role="tab"][aria-selected="true"]');
+  return open && usable(open) ? open : null;
 }
 
 function scroller(from) {
@@ -400,6 +409,12 @@ function confirm() {
 function alt() {
   const el = currentFocus(scopeOf());
   if (el?.tagName === 'SELECT') stepSelect(el, -1);
+}
+
+// Y: the focused card's second action (its [data-pad-y] control – the favourite star), never moving the focus
+function extra() {
+  const el = currentFocus(scopeOf());
+  el?.closest('[data-pad-y-scope]')?.querySelector('[data-pad-y]')?.click();
 }
 
 const frames = (n) => new Promise((res) => {
@@ -530,7 +545,7 @@ function tick() {
   if (state.blockDir && s.dir !== state.blockDir) state.blockDir = null;
   const dir = state.repeat(state.blockDir ? null : s.dir, now);
   const pressed = (k) => s[k] && !prev[k];
-  const acted = dir || pressed('confirm') || pressed('back') || pressed('alt') || pressed('prev') || pressed('next') || pressed('menu') || s.scrollX || s.scrollY;
+  const acted = dir || pressed('confirm') || pressed('back') || pressed('alt') || pressed('extra') || pressed('prev') || pressed('next') || pressed('menu') || s.scrollX || s.scrollY;
   if (!acted) return;
   const wasPadMode = state.padMode;
   setPadMode(true);
@@ -542,6 +557,7 @@ function tick() {
   if (pressed('confirm')) confirm();
   if (pressed('back')) back();
   if (pressed('alt')) alt();
+  if (pressed('extra')) extra();
   if (pressed('prev')) tabs(-1);
   if (pressed('next')) tabs(1);
   if (pressed('menu')) menu();

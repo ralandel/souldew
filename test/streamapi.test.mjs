@@ -242,6 +242,20 @@ test('events: catch, death, level-up, evolution, faint, badge, location, battles
   assert.deepEqual(eventsBetween(build(d2), build(d3)).map((x) => x.type), ['battle-start']);
 });
 
+test('events: a link battle every player agreed on (3.0) – who won, who lost, the wager; in the feed too', () => {
+  const build = (d) => buildState(manifest(), d, { ...lookups, now: NOW });
+  const d0 = docOf();
+  const d1 = structuredClone(d0);
+  d1['feed:lb-abc123'] = e({ at: NOW, type: 'linkBattle', slot: 'p1', winners: ['p1', 'x9'], losers: ['p2'], draw: false, battles: 1, wager: 2000, text: 'won a link battle against Ben' });
+  const ev = eventsBetween(build(d0), build(d1));
+  assert.deepEqual(ev.map((x) => x.type), ['link-battle']);
+  assert.deepEqual([ev[0].winners, ev[0].losers, ev[0].draw, ev[0].battles, ev[0].wager], [['p1'], ['p2'], false, 1, 2000]);
+  const f = build(d1).feed.find((x) => x.type === 'linkBattle');
+  assert.deepEqual([f.winners, f.wager], [['p1'], 2000]);
+  assert.ok(!('text' in f), 'no free text from the log');
+  assert.deepEqual(eventsBetween(build(d1), build(d1)), [], 'once');
+});
+
 test('access: pages from this computer, OBS and curl may read; other sites need the token', () => {
   const req = (origin, headers = {}) => ({ headers: { ...(origin === undefined ? {} : { origin }), ...headers } });
   const url = new URL('http://127.0.0.1/api/v1');

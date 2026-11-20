@@ -1,5 +1,5 @@
 // The fast player (playernative.html) for the DS, GBA and Game Boy: the game runs in souldew's native host
-// (server/lib/native.mjs, native/retro-host – melonDS DS with its JIT, mGBA, Gambatte) and arrives here as a stream of
+// (server/lib/native.mjs, native/retro-host – melonDS DS with its JIT, mGBA, SameBoy) and arrives here as a stream of
 // pictures, sound, memory and battery saves; input, speed, save states and cheats go back. It offers the Play view the
 // same window.__emu as player.html (EmulatorJS) – the live reader, cheats, save states, the battery save, speed,
 // screenshots and the partner's mini view work the same way. The game's RAM is mirrored here (what changed, ten times a
@@ -7,11 +7,26 @@
 import * as controls from '/lib/controls.mjs';
 import { setLang, guessLang, t } from '/lib/i18n.mjs';
 import { serverErrorText } from '/lib/errors.mjs';
+import { LINK_CMD, LINK_MSG } from '/shared/link.mjs';
+import { b64 } from '/lib/bytes.mjs';
+import { installWorld } from '/lib/worldoverlay.mjs';
+import { sharpScale, dsTouchAt } from '/lib/pixelscale.mjs';
 
 const q = new URLSearchParams(location.search);
 const SYSTEM = q.get('system') || 'nds';
-const MSG = { VIDEO: 2, AUDIO: 3, STATE: 5, LOG: 6, EVENT: 7, RAM: 8, SRAM: 9 };
-const CMD = { INPUT: 1, SPEED: 2, SAVE: 3, LOAD: 4, QUIT: 6, RESET: 7, WRITE: 9, FLUSH: 10, SRAM: 11, RESYNC: 12, STEP: 13 };
+// A link session (trades and battles, docs/MULTIPLAYER.md): this page shows the local seat of the link host. No save
+// states, cheats or fast-forward there – every console of the session must stay the same on every player's computer.
+// The host's buttons for the partners and its hashes go to the play view (web/lib/linksession.mjs sends them on).
+// Seamless (docs/MULTIPLAYER.md › "Seamless"): a running game goes into a link session and back without a restart – its
+// state goes in (linkSnapshot), the page switches its stream to the link host (attachLink) and, once the session is over,
+// back to the fast player started from this console's state as the link host left it (resumeSolo). The canvas stays.
+// The souldew engine (Settings › "souldew engine (beta)": the link host plays the game alone too) does both switches in
+// its own process: the session's id stays, the stream goes on, and leaving needs no state to travel (/api/native/unlink).
+// ?link=1&session=<id>: a session the play view opened for a game that wasn't running here (it starts from the save).
+let LINK_SESSION = q.get('link') === '1' ? q.get('session') : null;
+// (retrohost's messages – the link host speaks the same ones plus its own, shared/link.mjs)
+const MSG = { VIDEO: 2, AUDIO: 3, STATE: 5, LOG: 6, EVENT: 7, RAM: 8, SRAM: 9, MEM: LINK_MSG.MEM, LINPUT: LINK_MSG.LINPUT, SEATSRAM: LINK_MSG.SEATSRAM, SEATSTATE: LINK_MSG.SEATSTATE, WATCHED: 16, DEPTH: 17 };
+const CMD = { INPUT: 1, SPEED: 2, SAVE: 3, LOAD: 4, QUIT: 6, RESET: 7, WRITE: 9, FLUSH: 10, SRAM: 11, RESYNC: 12, STEP: 13, WATCH: 14, DEPTH: 15, SEATSTATE: LINK_CMD.SEATSTATE, READ: LINK_CMD.READ };
 const post = (m) => window.parent?.postMessage(m, location.origin);
 // ?debug=1 (the ROM matrix): what arrives from the host – events, picture sizes, saves – on the console
 const DEBUG = q.get('debug') === '1';
@@ -23,12 +38,28 @@ if (DEBUG) {
   addEventListener('pagehide', () => console.log('[native] pagehide'));
 }
 
+/** "Linking…" over the last picture (playernative.html #linking) – null hides it. */
+let linkingTimer = null;
+function linking(text) {
+  const el = document.getElementById('linking');
+  if (!el) return;
+  clearTimeout(linkingTimer);
+  if (text) el.querySelector('span').textContent = text;
+  el.classList.toggle('on', !!text);
+  if (text) linkingTimer = setTimeout(() => el.classList.remove('on'), 60000); // (never stuck over the game)
+}
+
 const st = {
   id: null, core: null, ready: false, paused: false, speed: 1, volume: 1, frames: 0, hostFrame: 0, fps: 0, hostSpeed: 0,
   ram: [], ramReady: false, sram: null, bootSave: 'pending', error: null, log: [], ended: false, lr: /left/i.test(q.get('layout') || ''),
-  info: null, turboAudio: 'music',
+  info: null, turboAudio: 'music', switches: [], whole: q.get('px') === 'whole',
+  model: q.get('model') || null, // a Game Boy game's console ('dmg' | 'cgb'): its save states only load into that model
+  engine: false, // the souldew engine plays (its loaded event says so): link sessions switch in its own process
 };
-const waiters = { state: [], loaded: [], stepped: [] };
+const waiters = { state: [], loaded: [], stepped: [], seatState: [], seatSram: [] };
+// a link session's READs (any seat's bytes – the link battle's result, shared/linkbattle.mjs) and FLUSH's every-seat saves
+const memWaiters = []; // { seat, addr, res }
+const seatSaves = { want: 0, got: null, res: null };
 
 // ---- commands -----------------------------------------------------------------------------------------------------
 // One request at a time, and what comes meanwhile goes along with the next one (the server takes several framed
@@ -37,7 +68,11 @@ const waiters = { state: [], loaded: [], stepped: [] };
 // bookkeeping – until Chromium ended the page after ~30 000 of them: a long DS plan in the ROM matrix, and in the end
 // a long play session.) Each command's promise resolves false when the server refused it.
 const MAX_BATCH = 8 * 1024 * 1024; // (a save state goes alone)
-const queue = []; // { bytes, done }
+// A big payload (a save state: a DS one is ≈ 20 MB) goes as a Blob – copied once, when the command is made – not
+// concatenated into a new array and copied again into the request: "where you left off" loads while the launch
+// animation runs, and those copies were 40–55 ms on the main thread, a dropped frame of the device.
+const BLOB_AT = 256 * 1024;
+const queue = []; // { bytes: Uint8Array | Blob (header + payload), len, done }
 let inFlight = false;
 const idle = [];
 function sendQueued() {
@@ -49,16 +84,20 @@ function sendQueued() {
   }
   const batch = [];
   let size = 0;
-  while (queue.length && (!batch.length || size + queue[0].bytes.length <= MAX_BATCH)) {
+  while (queue.length && (!batch.length || size + queue[0].len <= MAX_BATCH)) {
     const c = queue.shift();
     batch.push(c);
-    size += c.bytes.length;
+    size += c.len;
   }
-  const body = new Uint8Array(size);
-  let o = 0;
-  for (const c of batch) {
-    body.set(c.bytes, o);
-    o += c.bytes.length;
+  let body;
+  if (typeof Blob === 'function' && batch.some((c) => c.bytes instanceof Blob)) body = new Blob(batch.map((c) => c.bytes)); // (no copy: Blobs of Blobs)
+  else {
+    body = new Uint8Array(size);
+    let o = 0;
+    for (const c of batch) {
+      body.set(c.bytes, o);
+      o += c.len;
+    }
   }
   inFlight = true;
   fetch(`/api/native/cmd?id=${st.id}`, { method: 'POST', headers: { 'x-soullink': '1' }, body })
@@ -74,13 +113,16 @@ function sendQueued() {
     });
 }
 function cmd(type, payload = new Uint8Array(0)) {
-  const b = new Uint8Array(8 + payload.length);
+  const big = payload.length >= BLOB_AT && typeof Blob === 'function';
+  const b = new Uint8Array(big ? 8 : 8 + payload.length);
   const v = new DataView(b.buffer);
   v.setUint32(0, type, true);
   v.setUint32(4, payload.length, true);
-  b.set(payload, 8);
+  if (!big) b.set(payload, 8);
+  // (either way the bytes are this moment's: the Blob holds its own copy, as the array does)
+  const bytes = big ? new Blob([b, payload]) : b;
   return new Promise((done) => {
-    queue.push({ bytes: b, done });
+    queue.push({ bytes, len: 8 + payload.length, done });
     sendQueued();
   });
 }
@@ -142,6 +184,12 @@ if (gl) initGl();
 const sideBySide = () => SYSTEM === 'nds' && st.lr;
 let pendingFrame = null;
 let lastFrame = null;
+let nextWatched = null; // WATCHED: the bytes the host sends right before a picture (Shared World's camera)
+let nextDepth = null; // DEPTH: the DS's 3D depth in the rectangles the overlay named, for the same picture
+let lastWatched = null; // (the newest of them, drawn or not – Shared World's A press checks what the game shows now)
+// the game's picture in game pixels (the DS side by side: both screens next to each other) and the whole factor it is
+// drawn at (lib/pixelscale.mjs) – the canvas holds pic × pre
+const pic = { w: 0, h: 0, pre: 1 };
 function drawFrame() {
   const f = pendingFrame || lastFrame;
   pendingFrame = null;
@@ -150,17 +198,40 @@ function drawFrame() {
   const lr = sideBySide();
   const cw = lr ? f.w * 2 : f.w;
   const ch = lr ? f.h / 2 : f.h;
-  if (canvas.width !== cw || canvas.height !== ch) {
-    canvas.width = cw;
-    canvas.height = ch;
-    gl.viewport(0, 0, cw, ch);
+  if (pic.w !== cw || pic.h !== ch) {
+    pic.w = cw;
+    pic.h = ch;
     layout();
   }
+  if (canvas.width !== cw * pic.pre || canvas.height !== ch * pic.pre) {
+    canvas.width = cw * pic.pre;
+    canvas.height = ch * pic.pre;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+  if (f.depth) window.__world?.onDepth?.(f.depth); // (the DS's 3D depth for this picture – before its bytes, which draw it)
+  if (f.watched) window.__world?.onWatched(f.watched); // (the overlay draws for exactly this picture)
   if (f.fmt === 2) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, f.w, f.h, 0, gl.RGB, gl.UNSIGNED_SHORT_5_6_5, new Uint16Array(f.px.buffer, f.px.byteOffset, f.w * f.h));
   else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, f.w, f.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, f.px);
   gl.uniform1i(uni.bgra, f.fmt === 0 ? 1 : 0);
   gl.uniform1i(uni.lr, lr ? 1 : 0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  streamFrame();
+}
+
+// The partners' video (captureStream) at the picture's own size, as before the sharp scaling: the bigger drawing buffer
+// would only cost upload and encoder time. Drawn only while someone watches.
+let streamCanvas = null;
+function streamFrame() {
+  if (!streamCanvas) return;
+  const w = pic.w || canvas.width;
+  const h = pic.h || canvas.height;
+  if (streamCanvas.width !== w || streamCanvas.height !== h) {
+    streamCanvas.width = w;
+    streamCanvas.height = h;
+  }
+  const x = streamCanvas.getContext('2d');
+  x.imageSmoothingEnabled = false; // a whole factor down: the game's pixels exactly
+  x.drawImage(canvas, 0, 0, w, h);
 }
 function onVideo(p) {
   const v = new DataView(p.buffer, p.byteOffset, 8);
@@ -170,8 +241,21 @@ function onVideo(p) {
   const bpp = fmt === 0 ? 4 : 2;
   if (!w || !h || p.length < 8 + w * h * bpp) return dbg('bad picture', w, h, fmt, p.length);
   if (DEBUG && (w !== st.dbgW || h !== st.dbgH)) dbg('picture', w, h, fmt), (st.dbgW = w), (st.dbgH = h);
+  const px = p.subarray(8, 8 + w * h * bpp);
+  if (st.awaitPicture) { // the first picture after a switch into / out of a link session: the game goes on
+    // (a console started from a state has drawn nothing yet in its first frame – a black picture there would flash
+    // between two real ones: the last picture stays a few frames longer)
+    if (st.awaitPicture++ < 8 && px.every((x) => x === 0)) return;
+    st.awaitPicture = 0;
+    linking(null);
+    const ms = st.switchFrom ? Math.round(performance.now() - st.switchFrom) : null;
+    st.switches.push({ to: LINK_SESSION ? 'link' : 'solo', ms, at: Date.now() }); // (diagnostics / tests: how long the picture stood)
+    if (st.switches.length > 20) st.switches.shift();
+  }
   if (!pendingFrame) requestAnimationFrame(drawFrame);
-  pendingFrame = { w, h, fmt, px: p.subarray(8, 8 + w * h * bpp) };
+  pendingFrame = { w, h, fmt, px, watched: nextWatched, depth: nextDepth };
+  nextWatched = null;
+  nextDepth = null;
   st.frames++;
   if (!st.ready) {
     st.ready = true;
@@ -182,15 +266,29 @@ function onVideo(p) {
   }
 }
 
-// keep the picture's proportions in the frame (the page decides the frame's size)
+// the picture as big as the frame allows, its proportions kept (the page decides the frame's size): game pixels blown
+// up by a whole number with hard edges, the rest smoothed – or whole multiples only (Settings) – lib/pixelscale.mjs
 function layout() {
   const box = document.body.getBoundingClientRect();
-  const k = Math.min(box.width / canvas.width, box.height / canvas.height) || 1;
-  canvas.style.width = `${Math.floor(canvas.width * k)}px`;
-  canvas.style.height = `${Math.floor(canvas.height * k)}px`;
+  const src = pic.w ? pic : { w: canvas.width, h: canvas.height };
+  const s = sharpScale(src, { w: box.width, h: box.height }, devicePixelRatio || 1, { whole: st.whole });
+  canvas.style.width = `${s.w}px`;
+  canvas.style.height = `${s.h}px`;
+  canvas.style.imageRendering = s.smooth ? 'auto' : 'pixelated';
+  if (pic.w && s.pre !== pic.pre) {
+    pic.pre = s.pre;
+    drawFrame(); // the new buffer size, with the last picture
+  }
 }
 addEventListener('resize', layout);
 new ResizeObserver(layout).observe(document.body);
+// the window moved to a screen with another pixel density: the whole factor changes, the frame's size doesn't
+(function watchDensity() {
+  matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', () => {
+    layout();
+    watchDensity();
+  }, { once: true });
+})();
 layout();
 
 // ---- sound: the host's samples through souldew's turbo mixer (lib/native-audio-worklet.mjs) ------------------------
@@ -246,6 +344,15 @@ async function startAudio(rate) {
     st.log.push(`audio: ${e.message}`);
   }
 }
+/** The host's sound comes at `rate` (from now on): a context at another rate is replaced by one at this rate. */
+function audioRate(rate) {
+  if (audio.ctx && rate && Math.round(audio.ctx.sampleRate) !== Math.round(rate)) {
+    const old = audio.ctx;
+    audio.ctx = audio.node = audio.gain = null;
+    old.close().catch(() => {});
+  }
+  startAudio(rate);
+}
 // DS games: the ROM's sound archive, read in a worker – the mixer synthesizes the song the game plays
 const sdat = { worker: null, ready: false };
 const sdatSong = (key) => {
@@ -278,6 +385,7 @@ const wake = () => audio.ctx?.state === 'suspended' && audio.ctx.resume().catch(
 addEventListener('pointerdown', wake);
 addEventListener('keydown', wake);
 function onAudio(p) {
+  st.audioIn = (st.audioIn || 0) + 1; // (diagnostics / tests: the host sends sound – link sessions too)
   if (!audio.node || st.paused) return;
   const s = new Int16Array(p.buffer.slice(p.byteOffset, p.byteOffset + (p.length & ~1)));
   const f = new Float32Array(s.length);
@@ -297,9 +405,39 @@ function onRam(p) {
     if (o + len > p.length) break;
     const r = st.ram.find((x) => addr >= x.addr && addr + len <= x.addr + x.b.length);
     if (r) r.b.set(p.subarray(o, o + len), addr - r.addr);
+    if (r && addr === r.addr && len === r.b.length) whole.add(r);
     o += len;
   }
   if (!st.ramReady && st.ram.length) st.ramReady = true;
+  // every region whole (a RESYNC's answer – the host's changes are blocks, never all of it): the mirror is the core's now
+  const full = st.ram.length > 0 && st.ram.every((r) => whole.has(r));
+  whole.clear();
+  if (full) freshWaiters.splice(0).forEach((f) => f(true));
+}
+const whole = new Set(); // (onRam: the regions a message carried whole)
+const freshWaiters = []; // fresh(): who waits for the core's whole RAM
+/**
+ * The mirror as the core holds it right now: the whole RAM once more (RESYNC), sent by the host after everything asked
+ * of it before (a WRITE included) and after the next frame. A write's own copy in the mirror (write) can't tell whether
+ * it landed – the host only sends what changed against what it sent last, so a write the game lost (Emerald moving its
+ * save blocks) would never come back. Resolves true once it is in, false when it can't come (no game, a link session,
+ * no answer).
+ */
+function fresh() {
+  if (!st.ramReady || st.ended || LINK_SESSION || !st.id) return Promise.resolve(false);
+  return new Promise((res) => {
+    const f = (ok) => {
+      clearTimeout(timer);
+      res(ok);
+    };
+    const timer = setTimeout(() => {
+      const i = freshWaiters.indexOf(f);
+      if (i >= 0) freshWaiters.splice(i, 1);
+      res(false);
+    }, 4000);
+    freshWaiters.push(f);
+    cmd(CMD.RESYNC);
+  });
 }
 const region = (addr, len) => st.ram.find((r) => addr >= r.addr && addr + len <= r.addr + r.b.length);
 /** `len` bytes at a console bus address (a copy), or null outside the game's RAM. */
@@ -310,6 +448,7 @@ function read(addr, len) {
 }
 /** A cheat: bytes at a bus address – between two frames in the host, and right away in the mirror. */
 function write(addr, bytes) {
+  if (LINK_SESSION) return false; // (no cheats in a link session: the partners' copies of this console would differ)
   if (!st.ramReady || !ArrayBuffer.isView(bytes) || !bytes.length || bytes.length > 65536) return false;
   const r = region(addr, bytes.length);
   if (!r) return false;
@@ -318,8 +457,26 @@ function write(addr, bytes) {
   const pl = new Uint8Array(4 + b.length);
   new DataView(pl.buffer).setUint32(0, addr >>> 0, true);
   pl.set(b, 4);
+  written.push({ fn: null }); // (the host answers every WRITE with an event, in order – writeChecked waits for its own)
   cmd(CMD.WRITE, pl);
   return true;
+}
+const written = []; // one entry per WRITE sent, the host's "written" events in the same order: { fn } – who waits for it
+/** A write the host confirmed: resolves true once it is in the game's memory, false when the host refused it (or no
+ *  answer came – an older host answers too, so a missing answer means the host is gone). */
+function writeChecked(addr, bytes) {
+  if (!write(addr, bytes)) return Promise.resolve(false);
+  const slot = written.at(-1);
+  return new Promise((res) => {
+    const timer = setTimeout(() => {
+      slot.fn = null; // (its answer still comes and is dropped)
+      res(false);
+    }, 3000);
+    slot.fn = (ok) => {
+      clearTimeout(timer);
+      res(ok);
+    };
+  });
 }
 
 // ---- events -------------------------------------------------------------------------------------------------------
@@ -332,11 +489,21 @@ function onEvent(p) {
   }
   if (!['stats', 'stepped', 'written', 'ffrate'].includes(e.event)) dbg('event', JSON.stringify(e).slice(0, 300));
   if (e.event === 'loaded') {
+    for (const w of written.splice(0)) w.fn?.(false); // (a new host: the old one's writes get no answer any more)
     st.info = e;
-    // a mirror for every region the core has (all of it arrives with the first RAM message)
-    st.ram = (e.ram || []).filter((r) => r.ok && r.len > 0 && r.len <= 16 * 1024 * 1024).map((r) => ({ addr: r.addr >>> 0, b: new Uint8Array(r.len) }));
-    startAudio(e.sampleRate);
-  } else if (e.event === 'stats') {
+    st.engine = e.engine === true;
+    if (Number.isInteger(e.local)) st.localSeat = e.local;
+    // a mirror for every region the core has (all of it arrives with the first RAM message) – after a switch into or out
+    // of a link session the same regions stay as they are until then (the live reader never sees an empty party)
+    const regions = (e.ram || []).filter((r) => r.ok && r.len > 0 && r.len <= 16 * 1024 * 1024);
+    const same = regions.length === st.ram.length && regions.every((r, i) => (r.addr >>> 0) === st.ram[i].addr && r.len === st.ram[i].b.length);
+    if (!same) {
+      st.ram = regions.map((r) => ({ addr: r.addr >>> 0, b: new Uint8Array(r.len) }));
+      st.ramReady = false;
+    }
+    audioRate(e.sampleRate); // (the link host's rate may be another)
+  } else if (e.event === 'audioRate') audioRate(e.sampleRate); // (a GBA game switched its sound hardware's rate)
+  else if (e.event === 'stats') {
     st.fps = e.fps;
     st.hostSpeed = e.speed;
     // (a host before 2.8.2 doesn't say its ratio: the measured speed then, as before)
@@ -349,7 +516,10 @@ function onEvent(p) {
   } else if (e.event === 'stepped') {
     if (Number.isFinite(e.frame)) st.hostFrame = e.frame;
     waiters.stepped.splice(0).forEach((f) => f(e.frame));
-  } else if (e.event === 'stateLoaded') waiters.loaded.splice(0).forEach((f) => f(!!e.ok));
+  } else if (e.event === 'written') written.shift()?.fn?.(!!e.ok);
+  else if (e.event === 'stateLoaded') waiters.loaded.splice(0).forEach((f) => f(!!e.ok));
+  else if (e.event === 'seatState' && !e.size) waiters.seatState.splice(0).forEach((f) => f(null));
+  else if (LINK_SESSION && (e.event === 'hash' || e.event === 'wait')) post({ type: `emu-link-${e.event}`, ...e });
   else if (e.event === 'error') {
     st.error = e.message;
     fail(t('native.failed', 'The game can’t run in the fast player: {why}', { why: e.message }));
@@ -373,8 +543,11 @@ function fail(text) {
 }
 
 // ---- the stream from the host ------------------------------------------------------------------------------------
+let pumpGen = 0;
 async function pump() {
+  const gen = ++pumpGen;
   const res = await fetch(`/api/native/stream?id=${st.id}`);
+  if (gen !== pumpGen) return res.body?.cancel().catch(() => {}); // (switched meanwhile)
   if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
   cmd(CMD.RESYNC); // the whole RAM, whatever was sent before this page listened
   const reader = res.body.getReader();
@@ -384,7 +557,7 @@ async function pump() {
   let need = 8;
   for (;;) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done || gen !== pumpGen) break;
     parts.push(value);
     partsLen += value.length;
     if (buf.length + partsLen < need) continue;
@@ -410,7 +583,13 @@ async function pump() {
       else if (type === MSG.RAM) onRam(p);
       else if (type === MSG.SRAM) onSram(p);
       else if (type === MSG.EVENT) onEvent(p);
+      else if (type === MSG.LINPUT && LINK_SESSION) post({ type: 'emu-link-input', bytes: p.slice() });
+      else if (type === MSG.WATCHED) nextWatched = lastWatched = p.slice();
+      else if (type === MSG.DEPTH) nextDepth = p.slice();
       else if (type === MSG.STATE) waiters.state.shift()?.(p.slice());
+      else if (type === MSG.SEATSTATE) waiters.seatState.shift()?.(p.length > 4 ? p.slice(4) : null);
+      else if (type === MSG.SEATSRAM && p.length >= 4) onSeatSram(new DataView(p.buffer, p.byteOffset, 4).getUint32(0, true), p.slice(4));
+      else if (type === MSG.MEM && p.length >= 8) onMem(p);
       else if (type === MSG.LOG) {
         st.log.push(new TextDecoder().decode(p));
         if (st.log.length > 200) st.log.splice(0, st.log.length - 200);
@@ -420,15 +599,43 @@ async function pump() {
     buf = buf.subarray(o);
     need = buf.length >= 8 ? 8 + new DataView(buf.buffer, buf.byteOffset, 8).getUint32(4, true) : 8;
   }
+  if (gen !== pumpGen || st.switching) { // (into or out of a link session: another stream follows – or, if the switch fails, a restart)
+    if (gen === pumpGen) ended();
+    return reader.cancel().catch(() => {});
+  }
   dbg('stream ended');
   ended();
   if (!st.error) fail(t('native.stopped', 'The game stopped. Close it and start it again.'));
 }
+/** Reads the current session's stream (a failure ends the game with an error over the picture). */
+function startPump() {
+  pump().catch((e) => {
+    ended();
+    fail(t('native.failed', 'The game can’t run in the fast player: {why}', { why: e.message }));
+  });
+}
+/** A seat's battery save from FLUSH: ours for resumeSolo, every seat's for linkSeatSaves. */
+function onSeatSram(seat, bytes) {
+  if (seat === st.localSeat) waiters.seatSram.shift()?.(bytes);
+  if (seatSaves.got && seat < seatSaves.want) {
+    seatSaves.got[seat] = bytes;
+    if (Object.keys(seatSaves.got).length === seatSaves.want) seatSaves.res?.(seatSaves.got);
+  }
+}
+function onMem(p) {
+  const v = new DataView(p.buffer, p.byteOffset, 8);
+  const seat = v.getUint32(0, true);
+  const addr = v.getUint32(4, true);
+  const i = memWaiters.findIndex((w) => w.seat === seat && w.addr === addr);
+  if (i >= 0) memWaiters.splice(i, 1)[0].res(p.slice(8));
+}
 function ended() {
   st.ended = true;
-  waiters.state.splice(0).forEach((f) => f(null));
+  freshWaiters.splice(0).forEach((f) => f(false));
+  memWaiters.splice(0).forEach((w) => w.res(null));
+  seatSaves.res?.(null);
+  for (const k of ['state', 'stepped', 'seatState', 'seatSram']) waiters[k].splice(0).forEach((f) => f(null));
   waiters.loaded.splice(0).forEach((f) => f(false));
-  waiters.stepped.splice(0).forEach((f) => f(null));
 }
 
 // ---- input ------------------------------------------------------------------------------------------------------------
@@ -441,6 +648,7 @@ function sendInput() {
   const sig = [buttons, inp.px, inp.py, inp.touch].join();
   if (sig === sentInput) return;
   sentInput = sig;
+  window.__world?.input(buttons);
   const b = new Uint8Array(17);
   const v = new DataView(b.buffer);
   v.setUint32(0, buttons >>> 0, true);
@@ -482,14 +690,10 @@ addEventListener('blur', () => {
 });
 
 // touch (DS): the mouse on the bottom screen – the core takes a pointer over its whole picture (-0x7fff…0x7fff), the
-// two screens on top of each other; side by side the click is mapped back onto that picture
-function toPicture(x, y) {
-  if (!sideBySide()) return [x, y];
-  return x < 0.5 ? [x * 2, y * 0.5] : [(x - 0.5) * 2, 0.5 + y * 0.5];
-}
+// two screens on top of each other; side by side the click is mapped back onto that picture (lib/pixelscale.mjs)
 function pointer(e) {
   const r = canvas.getBoundingClientRect();
-  const [x, y] = toPicture(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+  const { x, y } = dsTouchAt((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, sideBySide());
   inp.px = Math.round(x * 0xfffe - 0x7fff);
   inp.py = Math.round(y * 0xfffe - 0x7fff);
 }
@@ -574,11 +778,16 @@ function startPads() {
 async function snapshot({ maxW = 192, type = 'image/jpeg', quality = 0.5 } = {}) {
   if (!st.ready) return null;
   drawFrame(); // (the last picture again: the canvas may be cleared after a resize)
-  const k = Math.min(1, maxW / canvas.width);
+  // at the game's own size at most (the canvas holds it blown up by a whole number, lib/pixelscale.mjs)
+  const w0 = pic.w || canvas.width;
+  const h0 = pic.h || canvas.height;
+  const k = Math.min(1, maxW / w0);
   const c = document.createElement('canvas');
-  c.width = Math.round(canvas.width * k);
-  c.height = Math.round(canvas.height * k);
-  c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+  c.width = Math.round(w0 * k);
+  c.height = Math.round(h0 * k);
+  const x = c.getContext('2d');
+  x.imageSmoothingEnabled = k < 1;
+  x.drawImage(canvas, 0, 0, c.width, c.height);
   return new Promise((res) => c.toBlob(res, type, quality));
 }
 const speedValue = () => (st.speed === Infinity ? 1000 : st.speed);
@@ -596,8 +805,11 @@ window.__emu = {
   ramInfo: () => ({ base: st.ramReady ? 0 : -1, size: st.ram.reduce((n, r) => n + r.b.length, 0), tried: 0, system: SYSTEM }),
   read,
   write,
+  writeChecked,
+  fresh,
   paused: () => st.paused,
   pause() {
+    if (LINK_SESSION) return; // (the partners' games would stand still too – leave the link instead)
     st.paused = true;
     cmd(CMD.SPEED, f32(0));
     tellAudio({ type: 'paused', paused: true });
@@ -612,13 +824,14 @@ window.__emu = {
     else this.pause();
   },
   restart: () => {
+    if (LINK_SESSION) return Promise.resolve(false);
     tellAudio('clear');
     tellAudio({ type: 'cut' });
     return cmd(CMD.RESET);
   },
   /** 1–4, or Infinity: as fast as this computer can. */
   setSpeed(ratio) {
-    st.speed = ratio === Infinity ? Infinity : Math.max(1, Number(ratio) || 1);
+    st.speed = LINK_SESSION ? 1 : ratio === Infinity ? Infinity : Math.max(1, Number(ratio) || 1);
     if (!st.paused) cmd(CMD.SPEED, f32(speedValue()));
     tellAudio({ type: 'speed', ratio: Math.min(st.speed, MAX_SOUND_RATIO) });
   },
@@ -632,15 +845,138 @@ window.__emu = {
   frames: () => st.hostFrame,
   fastForward: () => st.speed > 1,
   ffRatio: () => (st.speed > 1 ? st.speed : 3),
+  /** A link session's whole state (every console, the frame) for a partner who rejoins; null when not now. */
+  linkState() {
+    if (st.ended || !LINK_SESSION) return Promise.resolve(null);
+    return ask(waiters.state, CMD.SAVE, undefined, null, (b) => (b && b.length ? b.slice() : null));
+  },
+  /**
+   * Seamless link start: the running game stops (a frame boundary – the host takes commands between frames) and its save
+   * state comes back – the link session starts from it on every player's computer. "Linking…" shows over the picture.
+   * Resolves { state } or null (no game running here, or one in a link session already).
+   */
+  async linkSnapshot() {
+    if (LINK_SESSION || st.ended || !st.ready || !st.id) return null;
+    linking(t('native.linking', 'Linking…'));
+    st.switchFrom = performance.now();
+    st.switching = true;
+    st.wasPaused = st.paused;
+    cmd(CMD.SPEED, f32(0));
+    tellAudio({ type: 'paused', paused: true });
+    const state = await ask(waiters.state, CMD.SAVE, undefined, null, (b) => (b && b.length ? b.slice() : null));
+    if (!state) this.linkSnapshotCancel();
+    return state ? { state, frame: st.hostFrame, model: st.model } : null;
+  },
+  /** The link didn't start after all: the game goes on (from the snapshot, if its host is gone meanwhile). */
+  async linkSnapshotCancel(state = null) {
+    if (LINK_SESSION || !st.switching) return false;
+    if (st.ended && state) return startSolo({ state, save: st.sram });
+    st.switching = false;
+    linking(null);
+    if (!st.wasPaused) cmd(CMD.SPEED, f32(speedValue()));
+    tellAudio({ type: 'paused', paused: !!st.wasPaused });
+    return true;
+  },
+  /** The link session `id` (its host already runs, started from this game's snapshot): this page shows it from now on. */
+  attachLink(id) {
+    if (!id) return false;
+    const inPlace = id === st.id; // (the engine: its game was linked in its own process – the stream goes on)
+    LINK_SESSION = id;
+    st.id = id;
+    st.core = 'link';
+    window.__world?.rewatch(); // (the overlay's WATCH waits for the fast player after the session)
+    st.ended = false;
+    st.paused = false;
+    st.speed = 1;
+    st.switching = false;
+    st.awaitPicture = 1;
+    sentInput = ''; // (the held buttons go to the link host too)
+    tellAudio('clear');
+    tellAudio({ type: 'speed', ratio: 1 });
+    tellAudio({ type: 'paused', paused: false });
+    if (!inPlace) startPump();
+    sendInput();
+    return true;
+  },
+  /**
+   * A link session: `len` bytes at bus address `addr` of seat `seat`'s console (READ – it changes nothing), or null. How
+   * every peer reads every seat's link battle (shared/linkbattle.mjs).
+   */
+  linkRead(seat, addr, len) {
+    if (!LINK_SESSION || st.ended) return Promise.resolve(null);
+    return new Promise((res) => {
+      const w = { seat, addr: addr >>> 0, res };
+      memWaiters.push(w);
+      const b = new Uint8Array(12);
+      const v = new DataView(b.buffer);
+      v.setUint32(0, seat, true);
+      v.setUint32(4, addr >>> 0, true);
+      v.setUint32(8, len, true);
+      const drop = () => {
+        const i = memWaiters.indexOf(w);
+        if (i >= 0) memWaiters.splice(i, 1);
+        res(null);
+      };
+      cmd(CMD.READ, b).then((ok) => !ok && drop());
+      setTimeout(drop, 4000);
+    });
+  },
+  /** A link session: every seat's battery save as its console holds it now ({ seat: bytes }), or null. */
+  linkSeatSaves(n) {
+    if (!LINK_SESSION || st.ended || !(n > 0)) return Promise.resolve(null);
+    return new Promise((res) => {
+      const finish = (x) => {
+        if (seatSaves.res !== finish) return;
+        seatSaves.got = null;
+        seatSaves.res = null;
+        res(x);
+      };
+      seatSaves.res?.(null); // (one at a time)
+      Object.assign(seatSaves, { want: n, got: {}, res: finish });
+      cmd(CMD.FLUSH);
+      setTimeout(() => finish(null), 4000);
+    });
+  },
+  /**
+   * The link session is over: this console goes on alone from the state the link host left it in (with the session's
+   * last battery save) – or, given `from` ({ state, save }: a session that fell out of step), from the game as it was
+   * before the session. Resolves true once the fast player runs it; false when it can't (the play view then closes).
+   */
+  async resumeSolo(from = null) {
+    if (!LINK_SESSION || !q.get('rom')) return false;
+    linking(t('native.unlinking', 'Back to your game…'));
+    st.switchFrom = performance.now();
+    st.switching = true;
+    // the engine: the partners leave its process and the game goes on alone where it is (its last battery save comes as
+    // SRAM first, the play view stores it as every save) – nothing to fetch and hand back
+    if (!from && st.engine && !st.ended && (await unlinkInPlace())) return true;
+    let state = from?.state || null;
+    let save = from ? from.save || null : null;
+    if (!from && !st.ended) {
+      // the hosts stand still (the session's end): the session's last battery saves, then this console as it is
+      const sram = new Promise((res) => waiters.seatSram.push(res));
+      cmd(CMD.FLUSH);
+      save = await Promise.race([sram, new Promise((res) => setTimeout(() => res(null), 3000))]);
+      state = await Promise.race([ask(waiters.seatState, CMD.SEATSTATE, u32(300), null), new Promise((res) => setTimeout(() => res(null), 8000))]);
+    }
+    if (!state) {
+      st.switching = false;
+      linking(null);
+      return false;
+    }
+    // (out of step: exactly the save from before the link – none if there was none; never the session's last one)
+    return startSolo({ state, save: from ? save : save?.length ? save : st.sram });
+  },
   getState() {
-    if (st.ended) return Promise.resolve(null);
+    if (st.ended || LINK_SESSION) return Promise.resolve(null);
     return ask(waiters.state, CMD.SAVE, undefined, null, (b) => (b && b.length ? b : null));
   },
   loadState(u8) {
-    if (st.ended) return Promise.resolve(false);
+    if (st.ended || LINK_SESSION) return Promise.resolve(false);
     tellAudio('clear');
     tellAudio({ type: 'cut' });
-    return ask(waiters.loaded, CMD.LOAD, u8 instanceof Uint8Array ? u8 : new Uint8Array(u8), false);
+    // (the play view's bytes come from its own window: not an instanceof here – a view on them, not a copy)
+    return ask(waiters.loaded, CMD.LOAD, ArrayBuffer.isView(u8) ? new Uint8Array(u8.buffer, u8.byteOffset, u8.byteLength) : new Uint8Array(u8), false);
   },
   async screenshot() {
     const b = await snapshot({ maxW: 4096, type: 'image/png' });
@@ -649,7 +985,10 @@ window.__emu = {
   canvas: () => (st.ready ? canvas : null),
   captureStream(fps = 15) {
     try {
-      return st.ready && canvas.captureStream ? canvas.captureStream(fps) : null;
+      if (!st.ready || !canvas.captureStream) return null;
+      streamCanvas ||= document.createElement('canvas');
+      streamFrame();
+      return streamCanvas.captureStream(fps);
     } catch {
       return null;
     }
@@ -661,7 +1000,7 @@ window.__emu = {
   bootSave: () => st.bootSave,
   /** A battery save given after the start: into the core, then the game starts over with it. */
   loadSave(bytes) {
-    if (!ArrayBuffer.isView(bytes) || !bytes.length) return;
+    if (LINK_SESSION || !ArrayBuffer.isView(bytes) || !bytes.length) return;
     const b = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).slice();
     st.sram = b;
     st.bootSave = 'loaded';
@@ -702,12 +1041,19 @@ window.__emu = {
       setTimeout(() => res(null), 2000);
     });
   },
-  perf: () => ({ fps: st.fps, speed: st.hostSpeed, frames: st.hostFrame, shown: st.frames, core: st.core, info: st.info, error: st.error, log: st.log.slice(-20), pacing: { core: st.core, native: true } }),
+  /** Switches into and out of link sessions: { to: 'link' | 'solo', ms (the picture stood still), at } – the last 20. */
+  switches: () => st.switches.slice(),
+  perf: () => ({ fps: st.fps, speed: st.hostSpeed, frames: st.hostFrame, shown: st.frames, audioIn: st.audioIn || 0, audioOn: !!audio.node, core: st.core, info: st.info, error: st.error, log: st.log.slice(-20), pacing: { core: st.core, native: true } }),
   setOption(k, v) {
     if (/screens?_layout$/.test(k)) {
       st.lr = /left/i.test(v);
       drawFrame();
     }
+  },
+  /** Settings › "Whole pixels only" switched while playing. */
+  setWholePixels(on) {
+    st.whole = !!on;
+    layout();
   },
   fullscreen: () => document.documentElement.requestFullscreen?.(),
   /** Tests / diagnostics: hold buttons by name (["a"], ["up", "b"] …) – what a controller would do. */
@@ -732,6 +1078,57 @@ window.__emu = {
   flush: () => flushCommands(),
 };
 
+// Shared World (web/lib/worldoverlay.mjs): the partners over the picture – the play view turns it on for a SoulLink.
+// Never in a link session (everyone stands in the Cable Club then, and the session's consoles must stay untouched).
+if (!LINK_SESSION) {
+  installWorld({
+    system: SYSTEM,
+    romUrl: q.get('rom'),
+    read,
+    rect: () => (st.ready ? canvas.getBoundingClientRect() : null),
+    /** The DS's 3D depth in a few rectangles of the top screen with every picture: [[x, y, w, h]…] (≤ 8, ≤ 16384
+     *  pixels), [] stops it. Only souldew's melonDS DS core has it (native/melonds-ds-patch); others send nothing. */
+    depth(rects) {
+      const b = new Uint8Array(4 + rects.length * 8);
+      const v = new DataView(b.buffer);
+      v.setUint32(0, rects.length, true);
+      rects.forEach(([x, y, w, h], i) => (v.setInt16(4 + i * 8, x, true), v.setInt16(6 + i * 8, y, true), v.setUint16(8 + i * 8, w, true), v.setUint16(10 + i * 8, h, true)));
+      if (!st.id || LINK_SESSION) return false;
+      cmd(CMD.DEPTH, b);
+      return true;
+    },
+    /** The DS's top screen (where its 3D field is): the upper half, or the left one side by side. */
+    screen() {
+      if (!st.ready) return null;
+      const r = canvas.getBoundingClientRect();
+      return sideBySide() ? { left: r.left, top: r.top, width: r.width / 2, height: r.height } : { left: r.left, top: r.top, width: r.width, height: r.height / 2 };
+    },
+    // (hidden while a seamless link session runs on this page: the Cable Club is no place for partners walking about)
+    ready: () => st.ready && !st.ended && !LINK_SESSION,
+    /** A few RAM bytes with every picture (WATCH): ranges [[addr, len]…], [] stops it. Only retrohost knows WATCH –
+     *  during a link session the ranges wait (false: asked again) for the fast player that comes after it. */
+    watch(ranges) {
+      const b = new Uint8Array(4 + ranges.length * 8);
+      const v = new DataView(b.buffer);
+      v.setUint32(0, ranges.length, true);
+      ranges.forEach(([a, l], i) => (v.setUint32(4 + i * 8, a >>> 0, true), v.setUint32(8 + i * 8, l >>> 0, true)));
+      if (!st.id || LINK_SESSION) return false;
+      cmd(CMD.WATCH, b);
+      return true;
+    },
+    /** The newest WATCHED bytes from the host (the picture they go with may not be drawn yet). */
+    watchedNow: () => lastWatched,
+    paused: () => st.paused,
+    pause: () => window.__emu.pause(),
+    resume: () => window.__emu.resume(),
+    post,
+    keyButton: (e) => keyMap[e.keyCode],
+    /** The picture on screen: { w, h, fmt (0: 32-bit BGRX, else RGB565), px } – the Game Boy overlay takes its colours from
+     *  it, the DS overlay the field's light (off the player's own sprite). */
+    picture: () => lastFrame,
+  });
+}
+
 // ---- start ----------------------------------------------------------------------------------------------------------
 async function bootSaveBytes() {
   const url = q.get('save');
@@ -751,13 +1148,68 @@ async function bootSaveBytes() {
   }
   return { state: 'failed', bytes: null }; // the play view reads it again and hands it over with loadSave()
 }
-function b64(bytes) {
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return btoa(s);
-}
 
 const BOOT_TIMEOUT_MS = Number(q.get('bootTimeout')) || 30000;
+
+/** The engine's link session ends in place: the same process, the same stream; false when the server can't (then the
+ *  session's console travels the usual way). */
+async function unlinkInPlace() {
+  const res = await fetch('/api/native/unlink', { method: 'POST', headers: { 'content-type': 'application/json', 'x-soullink': '1' }, body: JSON.stringify({ id: st.id }) }).catch(() => null);
+  const j = res?.ok ? await res.json().catch(() => null) : null;
+  if (!j || j.id !== st.id) return false;
+  // the engine sent the session's last battery save, then its "loaded" (alone): once that is read here, the save goes
+  // to the play view as every save does (it skips saves during a link session – this one is the game's own again)
+  for (let i = 0; i < 40 && st.info?.mode !== 'solo'; i++) await new Promise((r) => setTimeout(r, 50));
+  LINK_SESSION = null;
+  if (st.sram) post({ type: 'emu-saved' });
+  st.core = j.core;
+  st.model = j.model || st.model;
+  window.__world?.rewatch();
+  st.paused = false;
+  st.speed = 1;
+  st.awaitPicture = 1;
+  sentInput = '';
+  tellAudio('clear');
+  tellAudio({ type: 'paused', paused: false });
+  st.switching = false;
+  sendInput();
+  return true;
+}
+
+/** The fast player again, from a save state (out of a link session): the same page, canvas and sound – no restart. */
+async function startSolo({ state, save }) {
+  st.switching = true;
+  const res = await fetch('/api/native/start', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-soullink': '1' },
+    body: JSON.stringify({ rom: q.get('rom'), key: q.get('key'), system: SYSTEM, save: save?.length ? b64(save) : null, saveUrl: q.get('save'), state: b64(state), model: st.model }),
+  }).catch(() => null);
+  const j = await res?.json().catch(() => ({}));
+  if (!res?.ok) {
+    st.switching = false;
+    linking(null);
+    fail(serverErrorText(j || {}, res?.status || 0));
+    return false;
+  }
+  LINK_SESSION = null;
+  const inPlace = j.id === st.id; // (the engine went on alone in its own process: the stream goes on)
+  st.id = j.id;
+  st.core = j.core;
+  st.model = j.model || st.model;
+  window.__world?.rewatch(); // (a new host – or the engine alone again: the Shared World overlay's WATCH ranges go to it)
+  st.ended = false;
+  st.paused = false;
+  st.speed = 1;
+  st.awaitPicture = 1;
+  st.sram = save?.length ? save.slice() : null; // (the game's battery save from here on – none if it had none)
+  if (st.sram) post({ type: 'emu-saved' }); // (to disk, as the play view does with every save)
+  sentInput = '';
+  tellAudio('clear');
+  tellAudio({ type: 'paused', paused: false });
+  st.switching = false;
+  if (!inPlace) startPump();
+  sendInput();
+  return true;
+}
 
 async function start() {
   const [status, save] = await Promise.all([fetch('/api/status').then((r) => r.json()).catch(() => null), bootSaveBytes()]);
@@ -769,6 +1221,7 @@ async function start() {
   } catch (e) {
     st.log.push(`controls: ${e.message}`);
   }
+  if (LINK_SESSION) return startLinked(status, save);
   const res = await fetch('/api/native/start', {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-soullink': '1' },
     // (saveUrl: where the server keeps a last battery save that comes after this page has gone – never when the save on
@@ -779,6 +1232,7 @@ async function start() {
   if (!res.ok) return fail(serverErrorText(j, res.status));
   st.id = j.id;
   st.core = j.core;
+  st.model = j.model || null;
   st.sram = save.bytes;
   st.bootSave = save.state;
   const stop = () => fetch('/api/native/stop', { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json', 'x-soullink': '1' }, body: JSON.stringify({ id: st.id }) }).catch(() => {});
@@ -790,9 +1244,15 @@ async function start() {
     fail(t('native.noStart', 'The game didn’t start in the fast player.'));
     stop();
   }, BOOT_TIMEOUT_MS);
-  pump().catch((e) => {
-    ended();
-    fail(t('native.failed', 'The game can’t run in the fast player: {why}', { why: e.message }));
-  });
+  startPump();
+}
+/** A link session the play view started (web/lib/linksession.mjs): attach to it. The server booted it with the run's save. */
+function startLinked(status, save) {
+  st.id = LINK_SESSION;
+  st.core = 'link';
+  st.sram = save.bytes;
+  st.bootSave = 'loaded';
+  addEventListener('pagehide', () => fetch('/api/native/stop', { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json', 'x-soullink': '1' }, body: JSON.stringify({ id: st.id }) }).catch(() => {}));
+  startPump();
 }
 start();

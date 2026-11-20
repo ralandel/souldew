@@ -13,13 +13,20 @@ import {
 import { writeHostRules } from '../lib/hostrules.mjs';
 import { PartyPanel, PartyGrid, TeamColumns, unhatched } from './party.mjs';
 import { MonDetail } from './mondetail.mjs';
+import { RunFriendInvites } from './friends.mjs';
 import { HostCode, PackVersionNote } from './invitecode.mjs';
 import { RestartModal } from './restart.mjs';
 import { KeepIntroItem } from './introsave.mjs';
+import { SaveImportDialog } from './saveimport.mjs';
 import { useStreamer } from '../lib/streamer.mjs';
-import { NuzlockeRules, Choice, TypeHelpRule, LivesRule, SoulLinkRules, SoulLinkAuto, HostRulesNote, BallsRule } from './nuzrules.mjs';
+import { NuzlockeRules, Choice, TypeHelpRule, LivesRule, SoulLinkRules, SoulLinkAuto, HostRulesNote, BallsRule, LinkRules, GiftRule, RaidRules } from './nuzrules.mjs';
 import { ShareButton, HallOfFame } from './liveshare.mjs';
 import { deathEvent } from '../lib/liveshare.mjs';
+import { LinkButtons, LinkGroupButton, HeadToHead, linkUnavailable } from './linkplay.mjs';
+import { RpsStart } from './rps.mjs';
+import { RaidStart } from './raid.mjs';
+import { RAID_SYSTEMS } from '/shared/live/raidhp.mjs';
+import { PartnerTogether } from './together.mjs';
 
 
 /** Is `slot` connected right now? Per player once the app tracks it (`onlineSlots`), before that "any partner". */
@@ -99,6 +106,9 @@ function PlayerTag({ slot, right }) {
         : playingHere ? t('board.playingNoTeam', 'playing – no team yet')
           : slot === me ? t('board.startPlaying', 'Start the game to go live')
             : online ? t('board.partnerOnline', 'online – no team yet') : linkStatus ? t('board.notPlaying', 'not playing yet') : t('rail.offline', 'Not connected')}</span>
+      ${slot !== me && html`<${HeadToHead} slot=${slot} />`}
+      ${slot !== me ? html`<${LinkButtons} slot=${slot} />` : html`<${LinkGroupButton} />`}
+      ${slot !== me && html`<${PartnerTogether} slot=${slot} />`}
     </div>
   </div>`;
 }
@@ -233,10 +243,14 @@ function endReason(st) {
   return { blackout: t('end.reasonBlackout', 'blackout'), deathless: t('end.reasonDeathless', 'deathless rule'), wipe: t('end.reasonWipe', 'team wiped'), lives: t('end.reasonLives', 'out of lives') }[st.reason] || '';
 }
 
-/** Export: my ROM, my save (only once one exists), the invite – plain downloads from the server. */
+/**
+ * Export: my ROM, my save (only once one exists), the invite – plain downloads from the server. Import: a save file from
+ * elsewhere into my game (web/views/saveimport.mjs – once the game is built).
+ */
 function FilesMenu() {
   const { manifest, me } = useApp();
   const [open, setOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [hasSave, setHasSave] = useState(false);
   const [intro, setIntro] = useState(null); // can this save become the intro save of the game (KeepIntroItem)
   const base = `/api/runs/${manifest.id}/download`;
@@ -257,9 +271,13 @@ function FilesMenu() {
       ${manifest.outputs?.[me] && html`<a role="menuitem" href=${`${base}?what=rom&slot=${me}`} download>${t('board.fileRom', 'Save my game (ROM)')}</a>`}
       ${hasSave && html`<a role="menuitem" href=${`${base}?what=save&slot=${me}`} download>${t('board.fileSave', 'Save my save file')}</a>`}
       <${KeepIntroItem} manifest=${manifest} me=${me} state=${intro} onDone=${() => setOpen(false)} />
+      ${manifest.outputs?.[me] && html`<button role="menuitem" onClick=${() => { setOpen(false); setImporting(true); }}
+        title=${t('simp.openHint', 'Replace this game’s save with one from another emulator, a flash cart or an older backup – the current one is backed up first.')}>${t('simp.open', 'Import a save file …')}</button>`}
       ${!isNuzlocke(manifest) && html`<a role="menuitem" href=${`${base}?what=pack`} download>${t('board.filePack', 'Save invite')}</a>`}
       ${nothing && html`<span class="small faint" style="padding:7px 10px;white-space:nowrap">${t('board.filesNone', 'Nothing to save yet.')}</span>`}
     </div>`}
+    ${importing && html`<${SaveImportDialog} target=${{ runId: manifest.id, slot: me, system: manifest.game?.system, label: manifest.name }}
+      onClose=${() => setImporting(false)} />`}
   </div>`;
 }
 
@@ -290,7 +308,7 @@ function EndRunModal({ onClose }) {
 }
 
 /** Invite: a 6-digit code first (HostCode – it picks the next free player slot), the file / clipboard as the fallback. */
-export function InviteBody({ manifest, heading = true }) {
+export function InviteBody({ manifest, heading = true, autoFriends = [] }) {
   const { toast } = useApp();
   const json = JSON.stringify(manifest.pack, null, 2);
   const others = slotsOf(manifest).slice(1).map((s) => manifest.players?.[s]?.name).filter(Boolean);
@@ -301,6 +319,7 @@ export function InviteBody({ manifest, heading = true }) {
     <p class="muted">${many
       ? t('invite.codeWhatGroup', 'Easiest: create a code for each player and tell it to them. Their app fetches the settings and the key to your room – no game data – once you allow it.')
       : t('invite.codeWhat', 'Easiest: create a code and tell it to {name}. Their app fetches the settings and the key to your room – no game data – once you allow it.', { name: partner })}</p>
+    <${RunFriendInvites} manifest=${manifest} autoFriends=${autoFriends} />
     <${PackVersionNote} manifest=${manifest} />
     <${HostCode} manifest=${manifest} />
     <details class="group"><summary>${t('invite.fileInstead', 'Or use an invite file')}</summary><div class="stack" style="padding:4px 14px 12px">
@@ -788,7 +807,7 @@ function GravesTab() {
 }
 
 function LogTab() {
-  const { doc, manifest, me, link } = useApp();
+  const { doc, manifest, me, link, onlineSlots } = useApp();
   const [text, setText] = useState('');
   const names = getPlayers(doc, manifest);
   const solo = isNuzlocke(manifest);
@@ -798,6 +817,8 @@ function LogTab() {
       <input type="text" class="grow" placeholder=${solo ? t('log.placeholderSolo', 'Note for the log …') : t('log.placeholder', 'Message to the log …')} value=${text} onInput=${(e) => setText(e.target.value)} />
       <button class="btn">${solo ? t('log.add', 'Add') : t('log.send', 'Send')}</button>
       ${!solo && html`<button type="button" class="btn ghost" disabled=${!link} onClick=${() => link?.sendMessage({ type: 'ping', text: t('log.pingText', 'Hey, take a look!') })}>${t('log.ping', 'Ping')}</button>`}
+      ${!solo && link && html`<${RpsStart} online=${onlineSlots} />`}
+      ${!solo && html`<${RaidStart} online=${onlineSlots} />`}
     </form>
     <div class="feed" style="max-height:none">
       ${items.length === 0 && html`<p class="small faint">${solo ? t('log.emptySolo', 'Catches, deaths, badges and your notes show up here.')
@@ -940,6 +961,9 @@ export function RulesTab() {
       : html`<section class="panel stack">
       <h2>${t('rules.options', 'Options')}</h2>
       <${SoulLinkRules} value=${r} onChange=${set} players=${n} disabled=${locked} />
+      ${!linkUnavailable(manifest.game) && html`<${LinkRules} value=${r} onChange=${set} disabled=${locked} />`}
+      ${RAID_SYSTEMS.includes(manifest.game?.system) && html`<${RaidRules} value=${r} onChange=${set} disabled=${locked} />`}
+      <${GiftRule} value=${r} onChange=${set} disabled=${locked} />
     </section>`}
     <section class="panel stack">
       <h2>${t('rules.ballsTitle', 'When the rules start')}</h2>

@@ -6,6 +6,9 @@ import { readFileSync, existsSync, statSync, createReadStream, createWriteStream
 import { once } from 'node:events';
 import { join, extname, resolve, basename, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
+import { inflateRawSync } from 'node:zlib';
+import { upgradeStep, backupInfo, majorOf } from './lib/upgrade.mjs';
+import { AUTO_SLOT, STATE_EXT, mtimeOf, statePath as statePathIn, rotateAutoState as rotateAutoStateIn } from './lib/statefiles.mjs';
 import { WEB_DIR, SHARED_DIR, CACHE_DIR, DATA_DIR, CONFIG_PATH, NODE_MODULES, DEV, LIBRARY_DIR } from './lib/paths.mjs';
 import { writeFileAtomic, httpError, safeFileName, safeJoin, realInside, logLine, readRange } from './lib/fsutil.mjs';
 import { detectJava, uprStatus, installUpr, runBridge, inspectRom } from './lib/toolchain.mjs';
@@ -19,6 +22,7 @@ import { saveCover, deleteCover, coverFile, customCovers, coverUrl, COVER_LIMIT 
 import { inspectCtr, ncchSizeOf } from './lib/ctrrando.mjs';
 import { shinySupport, isOriginalRom } from './lib/shiny.mjs';
 import { packFormatState, packMinVersion } from '../shared/runpack.mjs';
+import { okLibraryId } from '../shared/playtogether.mjs';
 import { isHostKey, unsigned } from '../shared/hostrules.mjs';
 import { signRules, isHostComputer } from './lib/hostkey.mjs';
 import { shinyThreshold } from '../shared/shiny.mjs';
@@ -31,12 +35,19 @@ import { CtrSessions, ctrTools, saveStamp, ctrInventory, redactHome, ctrEncrypte
 import { prepareUpdate, updateStamp } from './lib/ctrupdate.mjs';
 import { pickUpdate } from '../shared/ctr/update.mjs';
 import { pickRenderer, validRenderer, gpuKey, remember, validScale, scaleFor } from './lib/ctrrenderer.mjs';
-import { NativeSessions, nativeTools, NATIVE_CORES } from './lib/native.mjs';
+import { NativeSessions, nativeTools, NATIVE_CORES, linkTool, MAX_SAVE, MAX_STATE, GB_LOOKS, gbModel, nativeCoreId, ENGINE_SYSTEMS } from './lib/native.mjs';
+import { LINK_SYSTEMS, MAX_LINK_SEATS, sameLinkSystem, linkUnavailable } from '../shared/link.mjs';
+import { cleanFavourites } from '../shared/favourites.mjs';
+import { cleanHandheld, cleanLaunchLook, cleanLaunchPace, cleanClearTint } from '../shared/handheld.mjs';
+import { ownSeat, resolveSeat, pickSeat, extractTarget, partnerBuildRequest } from './lib/linkroms.mjs';
+import { linkIceServers } from './lib/linkice.mjs';
+import { needsIdenticalRom, baseRomsFor } from '../shared/restart.mjs';
 import { moveToGraveyard, parseHgssSave } from '../shared/gen4save.mjs';
 import { listPresets, savePreset, deletePreset } from './lib/presets.mjs';
 import { pageHeaders } from './lib/csp.mjs';
 import { gpuBackends, validBackend, fallbackNotice } from '../shared/gpu.mjs';
-import { hostAllowed, apiRequestError, privateRequestError } from './lib/guard.mjs';
+import { validUiScale } from '../shared/uiscale.mjs';
+import { hostAllowed, apiRequestError, privateRequestError, rendererSecretError } from './lib/guard.mjs';
 import { overlaySnapshot, TEST_SPECIES, currentRunId } from '../shared/overlay.mjs';
 import { startPokelinkBridge, pokelinkPlayers, POKELINK_PORT } from './lib/pokelink.mjs';
 import { romDataFor } from './lib/romloc.mjs';
@@ -45,13 +56,26 @@ import { COFFEE_CORNERS } from '../shared/coffee.mjs';
 import { LINKS } from '../shared/links.mjs';
 import { randomBytes } from 'node:crypto';
 import { syncTrophies } from './lib/trophies.mjs';
+import { checkImport, replaceSave, undoImport, lastImport, unzipSingleSave, readZipFiles, checkCtrImport, replaceCtrSave, undoCtrImport, ctrSaveArchives } from './lib/saveimport.mjs';
 import { listIntroSaves, introFor, introKeyFor, introKeyForLibrary, publicIntro, keepIntroSave, removeIntroSave, applyIntroSave, introState } from './lib/introsave.mjs';
 import * as liveRuns from './lib/liveruns.mjs';
+import { createAccounts } from './lib/accounts/index.mjs';
+import { isPackagedBuild } from './lib/accounts/enttoken.mjs';
+
+/** The environment switches only development and tests may use (an installed app ignores them). */
+export const DEV_SWITCHES = ['SLS_ACCOUNTS_URL', 'SLS_PLUS_DEV_PACK', 'SLS_PLUS_DEV_KEY', 'SLS_ACCOUNTS_DEV_ENT_KEY'];
+export function withoutDevSwitches(env) {
+  const out = { ...env };
+  for (const k of DEV_SWITCHES) delete out[k];
+  return out;
+}
+import { createPlusPack, plusRoutes } from './lib/pluspack.mjs';
+import { createPlusPreviews, servePreview } from './lib/pluspreviews.mjs';
 import { presence as presenceCounter } from './lib/presence.mjs';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.gif': 'image/gif',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2', '.woff': 'font/woff',
   '.ttf': 'font/ttf', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.wasm': 'application/wasm', '.data': 'application/octet-stream',
   '.zip': 'application/zip', '.7z': 'application/x-7z-compressed', '.lua': 'text/plain; charset=utf-8',
@@ -99,6 +123,9 @@ function discordWebhookFor(runId) {
   return typeof hook === 'string' && isDiscordWebhook(hook) ? hook : '';
 }
 
+/** A souldew+ skin / launch animation id as the catalog writes them – anything else is no choice at all. */
+const validSkinId = (v) => (typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(v) ? v : null);
+
 function send(res, status, body, headers = {}) {
   const isBuf = Buffer.isBuffer(body) || body instanceof Uint8Array;
   const payload = isBuf || typeof body === 'string' ? body : JSON.stringify(body);
@@ -129,6 +156,8 @@ async function readRaw(req, limit = 512 * 1024 * 1024) {
 }
 
 const UPLOAD_LIMIT = 600 * 1024 * 1024; // the biggest DS ROMs are 512 MB
+/** An imported save (a zip of a 3DS backup at most – a DS save is 1 MB, a 3DS game's `main` under 0.5 MB). */
+const IMPORT_LIMIT = 24 * 1024 * 1024;
 /** 3DS games (1–4 GB) and zips (which may hold one) may be as big as library.mjs lets a 3DS game be. */
 const uploadLimitFor = (name) => {
   const ext = extname(String(name)).slice(1).toLowerCase();
@@ -206,37 +235,13 @@ const keyOf = (s) => createHash('sha1').update(String(s)).digest('hex').slice(0,
 
 /** Save files of solo games (not part of a run) live here, keyed by the library id. */
 const SOLO_SAVES = join(DATA_DIR, DEV ? 'runs/.saves' : 'Saves');
+/** A library game's battery save (its free play's – and a Play together run's that plays it). */
+export const librarySavePath = (id) => join(SOLO_SAVES, `${keyOf(id)}.sav`);
 
-// ---- save states of the built-in emulator -------------------------------------------
-// states/<key>-<slot>.state, plus a small JPEG (.jpg) and an info file (.json: party, core …) per state.
-// Slots 1–8 are the player's, 99 is "where you left off", 96–98 keep older copies of 99.
+// ---- save states of the built-in emulator (server/lib/statefiles.mjs) -----------------
 const STATE_DIR = join(SOLO_SAVES, 'states');
-const AUTO_SLOT = 99;
-const BACKUP_SLOTS = [98, 97, 96]; // newest first
-const BACKUP_EVERY = 10 * 60 * 1000;
-const STATE_EXT = ['state', 'jpg', 'json'];
-const statePath = (key, slot, ext) => join(STATE_DIR, `${key}-${slot}.${ext}`);
-const mtimeOf = (p) => {
-  try {
-    return Math.round(statSync(p).mtimeMs);
-  } catch {
-    return 0;
-  }
-};
-
-/** Before "where you left off" is replaced it becomes a backup – if the newest backup is ≥ 10 min older. */
-function rotateAutoState(key) {
-  const auto = mtimeOf(statePath(key, AUTO_SLOT, 'state'));
-  if (!auto || auto - mtimeOf(statePath(key, BACKUP_SLOTS[0], 'state')) < BACKUP_EVERY) return;
-  const move = (from, to) => {
-    for (const ext of STATE_EXT) {
-      if (existsSync(statePath(key, from, ext))) renameSync(statePath(key, from, ext), statePath(key, to, ext)); // keeps the mtime
-      else rmSync(statePath(key, to, ext), { force: true });
-    }
-  };
-  for (let i = BACKUP_SLOTS.length - 1; i > 0; i--) move(BACKUP_SLOTS[i - 1], BACKUP_SLOTS[i]);
-  move(AUTO_SLOT, BACKUP_SLOTS[0]);
-}
+const statePath = (key, slot, ext) => statePathIn(STATE_DIR, key, slot, ext);
+const rotateAutoState = (key) => rotateAutoStateIn(STATE_DIR, key);
 
 /**
  *   GET    /api/saves/states?id=                 list: [{ slot, at, thumb, info }]
@@ -441,6 +446,11 @@ function handleExport(req, res, path, url) {
     else if (what === 'spoiler') name = out?.log;
     else if (what === 'save') {
       const sav = defaultSavePath(manifest, slot);
+      // (Play together: the library game's own save, outside the run folder – named after the run's game file)
+      if (sav && runMode(manifest) === 'together') {
+        if (!existsSync(sav)) return send(res, 404, { error: 'No save file yet', code: 'noSaveYet' });
+        return sendDownload(req, res, String(out?.rom || 'Save').replace(/\.\w+$/, '.sav'), sav);
+      }
       name = sav ? basename(sav) : null;
     }
     else if (what === 'pack') {
@@ -466,9 +476,27 @@ export function errorBody(e) {
 /**
  * Start the server.
  * @param {{port?: number, host?: string, onReady?: (url:string)=>void}} opts
+ * The desktop app also passes the souldew account's helpers (server/lib/accounts/index.mjs): secureStore (Electron's
+ * safeStorage – without it a session is kept in memory only), openExternal (the system browser for "Sign in with
+ * Discord") and focus (bring the window forward when the browser hands the sign-in back).
+ * The saved sign-in is read only after the server is up and never awaited by it (it may mean the keychain, and the
+ * keychain a password prompt): right after listen, or – deferAccount – when the caller calls loadAccount() (the
+ * desktop app: once its window is open). An account route that comes earlier starts it itself.
  */
-export function startServer({ port = 7373, host = '127.0.0.1', background = true } = {}) {
+export function startServer({ port = 7373, host = '127.0.0.1', background = true, secureStore = null, openExternal = null, focus = () => {}, packaged = isPackagedBuild(), rendererSecret = null, deferAccount = false } = {}) {
+  // An installed app never takes the account service, a dev pack or a dev key from the environment (only development
+  // and tests do) – otherwise a changed environment could send the tokens elsewhere or make the app trust another key.
+  const env = packaged ? withoutDevSwitches(process.env) : process.env;
   const GEN4 = JSON.parse(readFileSync(join(SHARED_DIR, 'data', 'gen4.json'), 'utf8'));
+  // The first start of a new major version (server/lib/upgrade.mjs): the backup of the player's data comes before any
+  // migration below touches it, and the "What's new" cards are noted. Not in development (the data folder is the
+  // project folder there) – the version is still noted. A config that can't be read is left alone.
+  try {
+    const config = existsSync(CONFIG_PATH) ? JSON.parse(readFileSync(CONFIG_PATH, 'utf8')) : {};
+    upgradeStep({ dataDir: DATA_DIR, config, current: liveRuns.souldewVersion(), save: saveConfig, backups: !DEV });
+  } catch (e) {
+    console.warn('[upgrade] skipped:', e.message);
+  }
   // The stream API's localPages switch (server/lib/streamapi.mjs streamMigration): an install set up before it
   // existed keeps reading from local pages without a token, a new one starts strict. A config that can't be read
   // is left alone (saveConfig would replace it with this one patch).
@@ -575,6 +603,98 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
     }
     return null;
   };
+  /**
+   * The save an import is for (POST /api/saves/import…): a solo game's (?id=<library id>) or a run player's
+   * (?run=&slot=). → { system, gameId (the catalog id – a hack's: null, it gets the size check only), path (the battery
+   * save), backupDir + key (where its backups go, by which name), archive() (3DS: the game's save folder, or null),
+   * running() ('player': the fast / 3DS player has it open, 'emulator': an external one is open – a run's save is where
+   * melonDS writes too –, false), runId, slot }
+   */
+  const importTarget = (url) => {
+    const q = (k) => url.searchParams.get(k);
+    const sessionOn = (s) => !!s && !s.exit;
+    if (q('run')) {
+      const runId = q('run');
+      if (!/^[a-f0-9]{8}$/.test(runId)) throw httpError(400, 'Invalid run', 'badRequest');
+      const manifest = readManifest(runId);
+      if (!manifest) throw httpError(404, 'Run not found', 'runNotFound');
+      const slot = q('slot');
+      if (!slotsOf(manifest).includes(slot)) throw httpError(400, 'Invalid player', 'badPlayer');
+      if (!manifest.outputs?.[slot]) throw httpError(409, 'The ROM for this player hasn’t been built yet', 'romNotBuilt');
+      const system = manifest.game?.system;
+      const hacked = !!(manifest.patch || manifest.game?.hackId || manifest.game?.hackName);
+      const gameId = hacked ? null : manifest.game?.id || manifest.base?.gameId || null;
+      const ctrKey = `run-${runId}-${slot}`;
+      const path = system === '3ds' ? null : defaultSavePath(manifest, slot);
+      if (system !== '3ds' && !path) throw httpError(409, 'No ROM for this player', 'noRomForPlayer');
+      const titles = (catalog().games || []).find((g) => g.id === manifest.game?.id)?.titleIds || null;
+      // (Play together: the library game's own save – its backups go where that game's always go)
+      const lib = runMode(manifest) === 'together' ? manifest.outputs[slot].library : null;
+      return {
+        system, gameId, path, runId, slot, manifest, ...(lib ? { backupDir: join(SOLO_SAVES, 'backups'), key: keyOf(lib) } : { backupDir: join(runDir(runId), 'backups'), key: slot }),
+        archive: () => (system === '3ds' ? ctrSaveArchives(join(saveDirFor(ctrKey), 'Azahar', 'sdmc', 'Nintendo 3DS'), titles)[0] || null : null),
+        // the fast player / 3DS player on this save – or an external emulator, which writes the run's save next to its ROM
+        running: () => (system === '3ds' ? (sessionOn(ctr.current) && sameFile(ctr.current.save, saveDirFor(ctrKey)) ? 'player' : false)
+          : sessionOn(native.current) && !!native.current.saveFile && sameFile(native.current.saveFile.path, path) ? 'player' : emulatorRunning() ? 'emulator' : false),
+      };
+    }
+    const id = q('id');
+    if (!id || id.length > 2000) throw httpError(400, 'ID missing', 'idMissing');
+    const [romId, patchId] = id.split('|');
+    const lib = scanLibrary(loadConfig());
+    const rom = lib.roms.find((r) => r.id === romId);
+    if (!rom) throw httpError(404, 'Game not found in the library', 'romNotFound');
+    const system = rom.system;
+    const gameId = patchId || rom.hackId || rom.customHack ? null : rom.gameId || null;
+    const key = keyOf(id);
+    const path = join(SOLO_SAVES, `${key}.sav`);
+    const titles = (catalog().games || []).find((g) => g.id === rom.gameId)?.titleIds || null;
+    return {
+      system, gameId, path, runId: null, slot: null, backupDir: join(SOLO_SAVES, 'backups'), key,
+      archive: () => (system === '3ds' ? ctrSaveArchives(join(saveDirFor(id), 'Azahar', 'sdmc', 'Nintendo 3DS'), titles)[0] || null : null),
+      running: () => ((system === '3ds' ? sessionOn(ctr.current) && sameFile(ctr.current.save, saveDirFor(id))
+        : sessionOn(native.current) && !!native.current.saveFile && sameFile(native.current.saveFile.path, path)) ? 'player' : false),
+    };
+  };
+  /** A 3DS backup's files from the request: a zip, JSON [{ path, data }] (a folder the page read) or `main` alone. */
+  const ctrFilesOf = (body, url) => {
+    const kind = url.searchParams.get('kind');
+    if (kind === 'files') {
+      let list;
+      try {
+        list = JSON.parse(body.toString('utf8'))?.files;
+      } catch {
+        list = null;
+      }
+      if (!Array.isArray(list)) throw httpError(400, 'Invalid save files', 'saveImportFormat', { detail: 'files' });
+      return list.map((f) => ({ path: String(f?.path || ''), bytes: new Uint8Array(Buffer.from(String(f?.data || ''), 'base64')) }));
+    }
+    if (kind === 'zip') return readZipFiles(body, join(CACHE_DIR, 'tmp'));
+    return [{ path: 'main', bytes: new Uint8Array(body) }];
+  };
+  /** Never under a running game: the player (the page closes it first) or an external emulator. */
+  const refuseRunning = (t) => {
+    const r = t.running();
+    if (r === 'emulator') throw httpError(409, 'An emulator is still open – save in the game, close the emulator, then try again', 'emulatorRunning');
+    if (r) throw httpError(409, 'The game is still running – close it first', 'saveGameRunning');
+  };
+  /** What the page may know of the step back: when, from which file, whether there was a save before. */
+  const publicUndo = (u) => (u ? { at: u.at, name: u.name || null, hadSave: !!u.backup } : null);
+  /**
+   * After an import or its undo: a run notes it in run.json (`saveImports` – the trophies leave such a run's wins and
+   * badges out, shared/trophies.mjs) and its save watch reads the new save; nothing else changes.
+   */
+  const afterSaveChange = (t, { import: at = null, undo = null }) => {
+    if (!t.runId) return;
+    const m = readManifest(t.runId);
+    if (!m) return;
+    const list = Array.isArray(m.saveImports?.[t.slot]) ? m.saveImports[t.slot] : [];
+    if (at) list.push({ at });
+    else if (undo && list.length) list[list.length - 1] = { ...list[list.length - 1], undone: undo };
+    m.saveImports = { ...(m.saveImports && typeof m.saveImports === 'object' ? m.saveImports : {}), [t.slot]: list.slice(-50) };
+    writeManifest(m);
+    if (t.path && watcher.paths(t.runId)) watcher.read(t.runId, true);
+  };
   const ctrToolsNow = () => ctrTools({ azaharApp: detectEmulator('azahar', loadConfig().emulatorPaths?.azahar).path || null });
   /** The file behind a ROM URL the page has (/api/library/rom?id=… or a run's /api/runs/<id>/file?name=…). */
   const romPathFromUrl = (src) => {
@@ -651,7 +771,10 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
   };
   const nativeStatus = () => {
     const tl = nativeTools();
-    return { ok: tl.ok, cores: Object.fromEntries(Object.entries(tl.cores || {}).map(([k, v]) => [k, !!v])), ids: Object.fromEntries(Object.entries(NATIVE_CORES).map(([k, c]) => [k, c.id])) };
+    const look = loadConfig().gbLook;
+    // engine: the souldew engine (the link host as the fast player) is in this build – Settings › "souldew engine (beta)"
+    return { ok: tl.ok, cores: Object.fromEntries(Object.entries(tl.cores || {}).map(([k, v]) => [k, !!v])), ids: Object.fromEntries(Object.keys(NATIVE_CORES).map((k) => [k, nativeCoreId(k, gbModel(k, look))])),
+      engine: !!linkTool() };
   };
   // Azahar (3DS): polled once someone plays a 3DS game – the play view asks for its status, a launch starts it too
   let azahar = null;
@@ -881,6 +1004,19 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
   const routes = [];
   const route = (method, pattern, handler) => routes.push({ method, pattern, handler });
 
+  // ---- souldew+ premium pack: the encrypted cache (server/lib/pluspack.mjs – never decrypted or run here) ----
+  const plusPack = createPlusPack({ dir: join(DATA_DIR, DEV ? 'runs/.plus' : 'plus'), packaged, env, devDir: packaged ? '' : env.SLS_PLUS_DEV_PACK || '' });
+  plusRoutes(route, plusPack, readBody);
+  // souldew+ preview media: signed pictures of every premium item – for everyone, signed in or not
+  const plusPreviews = createPlusPreviews({ dir: join(DATA_DIR, DEV ? 'runs/.plus' : 'plus'), packaged, env, devDir: packaged ? '' : env.SLS_PLUS_DEV_PACK || '' });
+  route('GET', /^\/api\/plus\/previews$/, () => plusPreviews.state());
+  // ---- souldew account (sign-in, profile, friends, presence, invites): server/lib/accounts/index.mjs ----------------
+  // a pack key that changed or went away (tier dropped, key rotated, signed out) takes the encrypted pack cache with it
+  const accounts = createAccounts({ secure: secureStore, port: () => server.address()?.port, emit, openExternal, focus, lang: () => loadConfig().lang || 'en', packaged, env,
+    onPackKeyChange: () => { if (!plusPack.dev) plusPack.wipe(); } });
+  routes.push(...accounts.routes);
+  route('GET', /^\/api\/account\/diagnostics$/, () => accounts.diagnostics());
+
   // ---- status & config ------------------------------------------------------------
   route('GET', /^\/api\/status$/, () => {
     const config = loadConfig();
@@ -915,6 +1051,8 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
         turboMax: config.turboMax === true,
         fullTurbo: config.fullTurbo !== false,
         nativeCore: config.nativeCore !== false,
+        nativeEngine: config.nativeEngine === true,
+        gbLook: GB_LOOKS.includes(config.gbLook) ? config.gbLook : 'original',
         pads: config.pads || null,
         gpuBackend: validBackend(config.gpuBackend, process.platform),
         gpuFallback: fallbackNotice(config.gpuFallback),
@@ -923,8 +1061,25 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
         padNav: config.padNav !== false,
         ctrRenderer: validRenderer(config.ctrRenderer),
         ctrScale: validScale(config.ctrScale),
+        ctrFfHintOff: config.ctrFfHintOff === true,
+        wholePixels: config.wholePixels === true,
+        skin: validSkinId(config.skin),
+        launchAnimation: cleanLaunchLook(config.launchAnimation),
+        launchPace: cleanLaunchPace(config.launchPace),
+        launchClear: cleanClearTint(config.launchClear),
+        handheld: cleanHandheld(config.handheld),
+        favourites: cleanFavourites(config.favourites),
         presence: EDITION.presence && config.presence !== false,
+        // Settings › About "Check for updates automatically" – the desktop app's updater reads it (electron/updater.mjs)
+        updateCheck: config.updateCheck !== false,
+        // the "What's new" cards after an update to a new major version ('3.0'), until closed (server/lib/upgrade.mjs)
+        whatsNew: typeof config.whatsNew === 'string' ? config.whatsNew : null,
+        uiScale: validUiScale(config.uiScale),
+        uiScaleHint: config.uiScaleHint === true,
       },
+      // the backup made before the first start of this major version (Settings › About) – or why there is none
+      upgradeBackup: backupInfo(config.upgradeBackups?.[majorOf(liveRuns.souldewVersion())]),
+      plusDev: plusPack.dev,
     };
   });
 
@@ -933,9 +1088,14 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
     const allowed = {};
     // No path-like keys here: emulatorPaths decides which program /launch runs, libraryFolders which folders are
     // scanned (set via /api/library/folders). Neither may be writable by a plain config POST.
-    for (const k of ['lang', 'onboarded', 'playerName', 'emulatorFor', 'lastRun', 'bootAnimation', 'sounds', 'shareScreen', 'shortcuts', 'controls', 'theme', 'pads', 'speedGuard', 'turboMax', 'fullTurbo', 'nativeCore', 'gpuBackend', 'gpuFallback', 'nag', 'nagOff', 'padNav', 'ctrRenderer', 'ctrScale', 'presence']) {
+    for (const k of ['lang', 'onboarded', 'playerName', 'emulatorFor', 'lastRun', 'bootAnimation', 'sounds', 'shareScreen', 'shortcuts', 'controls', 'theme', 'pads', 'speedGuard', 'turboMax', 'fullTurbo', 'nativeCore', 'nativeEngine', 'gbLook', 'gpuBackend', 'gpuFallback', 'nag', 'nagOff', 'padNav', 'ctrRenderer', 'ctrScale', 'wholePixels', 'skin', 'launchAnimation', 'launchPace', 'launchClear', 'handheld', 'favourites', 'presence', 'updateCheck', 'whatsNew', 'uiScale', 'uiScaleHint', 'ctrFfHintOff']) {
       if (k in body) allowed[k] = body[k];
     }
+    // the "What's new" cards: the page can only close them (the server opens them, server/lib/upgrade.mjs)
+    if ('whatsNew' in allowed && allowed.whatsNew !== null) delete allowed.whatsNew;
+    // the interface size (shared/uiscale.mjs; electron/main.mjs reads it for the window) and its one-time hint on a big screen
+    if ('uiScale' in allowed) allowed.uiScale = validUiScale(allowed.uiScale);
+    if ('uiScaleHint' in allowed) allowed.uiScaleHint = allowed.uiScaleHint === true;
     // the 3DS renderer (server/lib/ctrrenderer.mjs): a new choice forgets what "auto" learned – it starts afresh
     if ('ctrRenderer' in allowed) {
       allowed.ctrRenderer = validRenderer(allowed.ctrRenderer);
@@ -943,8 +1103,24 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
     }
     // the 3DS resolution (1×–3×, server/lib/ctrrenderer.mjs CTR_SCALES): applies to the next 3DS game
     if ('ctrScale' in allowed) allowed.ctrScale = validScale(allowed.ctrScale);
+    // the play view's hint that the 3DS resolution holds back fast-forward (web/lib/ffhint.mjs): "Don't show again"
+    if ('ctrFfHintOff' in allowed) allowed.ctrFfHintOff = allowed.ctrFfHintOff === true;
     // the joke license window (web/lib/nag.mjs): launch count + when it last showed, and its off switch
     if ('nagOff' in allowed) allowed.nagOff = allowed.nagOff === true;
+    if ('wholePixels' in allowed) allowed.wholePixels = allowed.wholePixels === true;
+    // souldew+ look (web/lib/cosmetics): an id from the catalog – whether the account owns it is the page's business
+    // (the pack is only there when it does); the config just must not hold anything but an id
+    if ('skin' in allowed) allowed.skin = validSkinId(allowed.skin);
+    // the launch animation (shared/handheld.mjs): a family id (an older id – the 2.x cartridge, an earlier souldew+
+    // animation – becomes "Your colours"), Full / Quick / Off, the Clear shell's colour
+    if ('launchAnimation' in allowed) allowed.launchAnimation = cleanLaunchLook(allowed.launchAnimation);
+    if ('launchPace' in allowed) allowed.launchPace = cleanLaunchPace(allowed.launchPace);
+    if ('launchClear' in allowed) allowed.launchClear = cleanClearTint(allowed.launchClear);
+    // "Your handheld" (a local setting nobody else sees): its shape only – known ids, ≤ 8 stickers per device, ≤ 12 designs,
+    // numbers clamped, ≤ 32 KB. What the account owns is the page's business (the launch plays owned items only).
+    if ('handheld' in allowed) allowed.handheld = cleanHandheld(allowed.handheld);
+    // the starred cosmetics (shared/favourites.mjs): ids per kind only – what they are is the catalog's business
+    if ('favourites' in allowed) allowed.favourites = cleanFavourites(allowed.favourites);
     if ('nag' in allowed) {
       const n = allowed.nag;
       if (!n || typeof n !== 'object' || Array.isArray(n)) delete allowed.nag;
@@ -961,8 +1137,11 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
     if ('turboMax' in allowed) allowed.turboMax = allowed.turboMax === true;
     if ('fullTurbo' in allowed) allowed.fullTurbo = allowed.fullTurbo !== false; // on unless switched off
     if ('nativeCore' in allowed) allowed.nativeCore = allowed.nativeCore !== false; // the fast player: on unless switched off
+    if ('nativeEngine' in allowed) allowed.nativeEngine = allowed.nativeEngine === true; // the souldew engine (beta): off unless switched on
+    if ('gbLook' in allowed && !GB_LOOKS.includes(allowed.gbLook)) delete allowed.gbLook; // Game Boy games: original / GBC colours
     if ('padNav' in allowed) allowed.padNav = allowed.padNav !== false; // controller navigation (web/lib/padnav.mjs): on unless switched off
     if ('presence' in allowed) allowed.presence = allowed.presence !== false; // the anonymous "playing now" count: on unless switched off
+    if ('updateCheck' in allowed) allowed.updateCheck = allowed.updateCheck !== false; // the automatic update check: on unless switched off
     // the graphics backend electron/main.mjs applies at the next start; the fallback notice can only be dismissed
     if ('gpuBackend' in allowed) {
       if (gpuBackends(process.platform).includes(allowed.gpuBackend)) allowed.gpuStart = null; // a new choice starts counting afresh
@@ -1188,7 +1367,8 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
       let manifest = await buildRun({ ...body, identity, config: loadConfig() }, (l) => log.push(l), (p) => (track.progress = p));
       // "Start from my intro save": the player on this computer (introSlot) begins with the intro save of the game –
       // only theirs, and only while they have no save in this run yet
-      if (body.introSave === true && ALL_SLOTS.includes(body.introSlot)) {
+      // (never in Play together: the slot's save is the player's own game – an intro save would replace its progress)
+      if (body.introSave === true && ALL_SLOTS.includes(body.introSlot) && runMode(manifest) !== 'together') {
         const started = applyIntroSave(manifest.id, body.introSlot, { savePath: defaultSavePath });
         if (started) {
           manifest = started;
@@ -1451,6 +1631,71 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
     return { intro: publicIntro(keepIntroSave(manifest, m[2], { savePath: defaultSavePath })) };
   });
 
+  // ---- importing a battery save (server/lib/saveimport.mjs): a .sav from elsewhere, the replaced one backed up first --
+  //   POST /api/saves/import/check?<target>   body: the file → what it is, whether it fits the game, what it replaces
+  //   POST /api/saves/import?<target>&confirm=1&name=   body: the file → written (the old one backed up)
+  //   POST /api/saves/import/undo?<target>     the replaced save goes back (once)
+  //   GET  /api/saves/import/last?<target>     the step back that is kept, or null
+  // <target>: id=<library id> (a solo game) or run=<id>&slot=p1…p4. A 3DS game: kind=zip|files|main (a Checkpoint /
+  // JKSM backup – zipped, its files as JSON [{ path, data (base64) }], or the `main` file alone).
+  route('POST', /^\/api\/saves\/import\/check$/, async (req, m, url) => {
+    const t = importTarget(url);
+    const body = await readRaw(req, IMPORT_LIMIT);
+    if (t.system === '3ds') {
+      const res = checkCtrImport(ctrFilesOf(body, url), { archive: t.archive(), gameId: t.gameId });
+      return { system: '3ds', files: res.files.length, family: res.family, check: { verdict: res.verdict, found: res.family, want: res.want }, missing: res.missing.slice(0, 20),
+        current: { exists: !!t.archive() }, running: t.running(), undo: publicUndo(lastImport(t.backupDir, t.key)) };
+    }
+    const { bytes } = unzipSingleSave(body, join(CACHE_DIR, 'tmp'));
+    const res = checkImport(new Uint8Array(bytes), { system: t.system, gameId: t.gameId });
+    let current = { exists: false };
+    try {
+      const st = statSync(t.path);
+      current = { exists: st.size > 0, size: st.size, at: Math.round(st.mtimeMs) };
+    } catch {
+      // no save yet
+    }
+    return { system: t.system, size: res.size, from: res.from, notes: res.notes, check: res.check, current, running: t.running(), undo: publicUndo(lastImport(t.backupDir, t.key)) };
+  });
+  route('POST', /^\/api\/saves\/import$/, async (req, m, url) => {
+    const t = importTarget(url);
+    // a run's save is a big change: the page asks first, and says so here (a request without it changes nothing)
+    if (t.runId && url.searchParams.get('confirm') !== '1') throw httpError(400, 'Importing a save into a run needs a confirmation', 'saveImportConfirm');
+    refuseRunning(t);
+    const body = await readRaw(req, IMPORT_LIMIT);
+    const name = String(url.searchParams.get('name') || '').slice(0, 120) || null;
+    let result;
+    if (t.system === '3ds') {
+      const res = checkCtrImport(ctrFilesOf(body, url), { archive: t.archive(), gameId: t.gameId });
+      result = { ...replaceCtrSave({ archive: t.archive(), files: res.files, backupDir: t.backupDir, key: t.key }), check: { verdict: res.verdict, found: res.family, want: res.want } };
+    } else {
+      const { bytes, name: inner } = unzipSingleSave(body, join(CACHE_DIR, 'tmp'));
+      const res = checkImport(new Uint8Array(bytes), { system: t.system, gameId: t.gameId });
+      result = { ...replaceSave({ path: t.path, bytes: res.bytes, backupDir: t.backupDir, key: t.key, name: inner || name }), size: res.size, notes: res.notes, check: res.check };
+    }
+    console.log(`[saves] imported ${t.system} save${t.runId ? ` into run ${t.runId} ${t.slot}` : ''} (${result.check?.verdict || '?'}${result.replaced || result.backup ? ', old one backed up' : ''})`);
+    afterSaveChange(t, { import: result.at });
+    return result;
+  });
+  route('POST', /^\/api\/saves\/import\/undo$/, async (req, m, url) => {
+    const t = importTarget(url);
+    refuseRunning(t);
+    const r = t.system === '3ds' ? undoCtrImport({ archive: t.archive(), backupDir: t.backupDir, key: t.key }) : undoImport({ path: t.path, backupDir: t.backupDir, key: t.key });
+    console.log(`[saves] import undone${t.runId ? ` in run ${t.runId} ${t.slot}` : ''}`);
+    afterSaveChange(t, { undo: Date.now() });
+    return r;
+  });
+  route('GET', /^\/api\/saves\/import\/last$/, (req, m, url) => {
+    const t = importTarget(url);
+    let hasSave = false;
+    try {
+      hasSave = t.system === '3ds' ? !!t.archive() : statSync(t.path).size > 0;
+    } catch {
+      // none yet
+    }
+    return { undo: publicUndo(lastImport(t.backupDir, t.key)), running: t.running(), hasSave };
+  });
+
   route('POST', /^\/api\/runs\/([a-f0-9]{8})\/watch$/, async (req, m) => {
     const { path } = await readBody(req);
     if (path && typeof path !== 'string') throw httpError(400, 'Invalid path', 'badPath');
@@ -1523,6 +1768,9 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
       const manifest = readManifest(runId);
       const out = manifest?.outputs?.[slot];
       if (!out) throw httpError(409, 'The ROM for this player hasn’t been built yet', 'romNotBuilt');
+      // Play together plays the library game's own save (shared/playtogether.mjs): an outside emulator would write a
+      // second one next to the run's copy of the ROM – play it in souldew, or from the library
+      if (runMode(manifest) === 'together') throw httpError(409, 'Play together runs in souldew’s own player – your game’s save stays one', 'togetherBuiltIn');
       romPath = typeof out.rom === 'string' && out.rom ? runPath(runId, out.rom) : null;
       if (!romPath) throw httpError(409, 'The ROM for this player hasn’t been built yet', 'romNotBuilt');
       // melonDS writes "<ROM name>.sav" next to the ROM – or into the save folder set in its own settings
@@ -1630,14 +1878,199 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
   // ---- DS / GBA / GB in the fast native player (server/lib/native.mjs) -------------------------------------------
   route('GET', /^\/api\/native\/status$/, () => ({ tools: nativeStatus(), session: native.status() }));
   route('POST', /^\/api\/native\/start$/, async (req) => {
-    const { rom, key, system, save, saveUrl } = await readBody(req);
+    const { rom, key, system, save, saveUrl, state, model: asked } = await readBody(req);
     if (typeof key !== 'string' || !key || key.length > 600) throw httpError(400, 'Invalid save key', 'badKey');
     if (!Object.hasOwn(NATIVE_CORES, system)) throw httpError(400, 'The fast player doesn’t play this system', 'nativeSystem');
-    if (save != null && (typeof save !== 'string' || save.length > 6 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(save))) throw httpError(400, 'Invalid save file', 'badSave');
+    const b64ok = (v, maxBytes) => typeof v === 'string' && v.length <= Math.ceil(maxBytes / 3) * 4 && /^[A-Za-z0-9+/]*={0,2}$/.test(v);
+    if (save != null && !b64ok(save, MAX_SAVE)) throw httpError(400, 'Invalid save file', 'badSave');
+    // (state: the save state to go on from – the player's own console as a link session left it, docs/MULTIPLAYER.md)
+    if (state != null && !b64ok(state, MAX_STATE)) throw httpError(400, 'Invalid save state', 'badSave');
     const tools = nativeTools();
-    if (!tools.cores?.[system]) throw httpError(409, 'The fast player is missing for this system', 'nativeMissing');
-    const id = native.startNative({ rom: nativeRomPath(rom), key, system, tools, save: save ? Buffer.from(save, 'base64') : null, saveFile: saveTargetFromUrl(saveUrl) });
-    return { id, core: NATIVE_CORES[system].id };
+    // the souldew engine (beta): the link host plays the game (the same states and protocol); else retrohost and its core
+    const engine = loadConfig().nativeEngine === true && ENGINE_SYSTEMS.includes(system) ? linkTool() : null;
+    if (!engine && !tools.cores?.[system]) throw httpError(409, 'The fast player is missing for this system', 'nativeMissing');
+    // a Game Boy game's console: Settings › "Game Boy look" – or the one a state to go on from was made on
+    const model = system === 'gb' && (asked === 'dmg' || asked === 'cgb') ? asked : gbModel(system, loadConfig().gbLook);
+    const id = await native.startNative({ rom: nativeRomPath(rom), key, system, tools, save: save ? Buffer.from(save, 'base64') : null, saveFile: saveTargetFromUrl(saveUrl),
+      state: state ? Buffer.from(state, 'base64') : null, model, engine });
+    return { id, core: nativeCoreId(system, model), model, engine: !!engine };
+  });
+  // the engine's link session is over: its game goes on alone in the same process (no state travels, no new player)
+  route('POST', /^\/api\/native\/unlink$/, async (req) => {
+    const { id } = await readBody(req);
+    // (only with the engine switched on – a link host started from the board otherwise hands over to retrohost as before)
+    const r = typeof id === 'string' && loadConfig().nativeEngine === true ? await native.unlink(id) : null;
+    if (!r) throw httpError(409, 'This game has no link session', 'noNativeSession');
+    return r;
+  });
+  // ---- link sessions: trades and battles between the players of a run (docs/MULTIPLAYER.md) -----------------------
+  // Every seat's game must be a file on this computer (server/lib/linkroms.mjs: the run's builds, a file the player
+  // picked, or the library – ROMs never travel), byte-identical to the one its player plays: by SHA-1, never by name.
+  const linkDeps = (manifest) => {
+    const dir = runDir(manifest.id);
+    const lib = scanLibrary(loadConfig());
+    return {
+      runFile: runPath, dir,
+      libraryRoms: lib.roms.filter((r) => sameLinkSystem(r.system, manifest.game?.system)),
+      extract: (rom) => { // (named with the entry's CRC: an existing file is that game already)
+        const target = extractTarget(dir, rom);
+        if (!existsSync(target)) writeFileAtomic(target, Buffer.from(loadFile(rom.id, loadConfig())));
+        return target;
+      },
+      lib,
+    };
+  };
+  const linkManifest = (runId) => {
+    const manifest = readManifest(String(runId || ''));
+    if (!manifest) throw httpError(404, 'Run not found', 'runNotFound');
+    return manifest;
+  };
+  // the run's peer connections: STUN + short-lived TURN credentials from souldew's bot (server/lib/linkice.mjs)
+  route('GET', /^\/api\/link\/ice$/, () => linkIceServers());
+  route('GET', /^\/api\/link\/check$/, (req, m, url) => {
+    const manifest = linkManifest(url.searchParams.get('runId'));
+    const system = manifest.game?.system || null;
+    const slots = Object.fromEntries(slotsOf(manifest).map((s) => {
+      const r = ownSeat(manifest, s, runPath);
+      return [s, { rom: !!r.path, sha1: r.sha1, crc: r.crc }];
+    }));
+    // model: this player's console for a Game Boy game that boots for the link (Settings › "Game Boy look")
+    return { tool: !!linkTool(), system, supported: !linkUnavailable(manifest.game), game: manifest.game?.id || null, slots,
+      randomized: needsIdenticalRom(manifest), model: gbModel(system, loadConfig().gbLook) };
+  });
+  // Which seats' games are here: { seats: { slot: { ok, how } }, missing: [{ slot, canBuild }] }. `seats`: { slot:
+  // { sha1, crc } } as each player announced their own.
+  route('POST', /^\/api\/link\/resolve$/, async (req) => {
+    const { runId, seats } = await readBody(req);
+    const manifest = linkManifest(runId);
+    if (!seats || typeof seats !== 'object') throw httpError(400, 'Invalid seats', 'linkSeats');
+    const runSlots = slotsOf(manifest);
+    const deps = linkDeps(manifest);
+    const out = {};
+    const missing = [];
+    for (const [slot, v] of Object.entries(seats)) {
+      if (!runSlots.includes(slot)) throw httpError(400, 'Invalid seats', 'linkSeats');
+      const r = resolveSeat(manifest, slot, v?.sha1, v?.crc, deps);
+      out[slot] = { ok: !!r, how: r?.how || null };
+      if (!r) missing.push({ slot, canBuild: needsIdenticalRom(manifest) && !!(baseRomsFor(manifest, deps.lib.roms).length) });
+    }
+    return { seats: out, missing };
+  });
+  // "Pick your copy of FireRed": a library ROM for a partner's seat – taken only when its SHA-1 is the partner's.
+  route('POST', /^\/api\/link\/pick$/, async (req) => {
+    const { runId, slot, sha1, romId } = await readBody(req);
+    const manifest = linkManifest(runId);
+    if (!slotsOf(manifest).includes(slot)) throw httpError(400, 'Invalid seat', 'linkSeats');
+    const deps = linkDeps(manifest);
+    const rom = deps.lib.roms.find((r) => r.id === romId);
+    if (!rom) throw httpError(404, 'File not found', 'noFile');
+    const p = pickSeat(rom, sha1, { dir: deps.dir, extract: deps.extract });
+    if (!p) throw httpError(409, 'Das ist eine andere Fassung des Spiels', 'linkPickDiffers', { slot });
+    return { ok: true };
+  });
+  // "Build Tim's game": a randomized / patched run joined before every player's game was built here – that slot only,
+  // from the run's own base ROM, patch, settings and seed.
+  route('POST', /^\/api\/link\/build$/, async (req) => {
+    const { runId, slot } = await readBody(req);
+    const manifest = linkManifest(runId);
+    if (!slotsOf(manifest).includes(slot)) throw httpError(400, 'Invalid seat', 'linkSeats');
+    let body;
+    try {
+      body = partnerBuildRequest(manifest, slot, scanLibrary(loadConfig()));
+    } catch (e) {
+      if (e.code !== 'no-rom' && e.code !== 'no-patch') throw e;
+      throw httpError(409, 'The base game of this run is missing from the library', e.code === 'no-patch' ? 'linkBuildNoPatch' : 'linkBuildNoRom');
+    }
+    if (building.has(manifest.id)) throw httpError(409, 'Dieser Run wird gerade gebaut', 'runBuilding');
+    building.add(manifest.id);
+    try {
+      const log = [];
+      const built = await buildRun({ ...body, identity: { id: manifest.id, room: manifest.room, secret: manifest.secret }, config: loadConfig() }, (l) => log.push(l));
+      return { ok: true, sha1: built.outputs?.[slot]?.sha1 || null, log };
+    } finally {
+      building.delete(manifest.id);
+    }
+  });
+  route('POST', /^\/api\/link\/start$/, async (req) => {
+    const { runId, local, seats, delay, rtc, state } = await readBody(req);
+    const manifest = linkManifest(runId);
+    const system = manifest.game?.system;
+    if (!LINK_SYSTEMS.includes(system)) throw httpError(400, 'Linking isn’t available for this system yet', 'linkSystem');
+    // (a ROM hack whose link was never checked – Pokémon Quetzal: shared/link.mjs linkUnavailable)
+    if (linkUnavailable(manifest.game) === 'hack') throw httpError(400, 'Linking isn’t available for this ROM hack', 'linkHack');
+    const runSlots = slotsOf(manifest);
+    if (!Array.isArray(seats) || seats.length < 2 || seats.length > MAX_LINK_SEATS) throw httpError(400, 'Invalid seats', 'linkSeats');
+    if (new Set(seats.map((s) => s?.slot)).size !== seats.length || !seats.every((s) => runSlots.includes(s?.slot))) throw httpError(400, 'Invalid seats', 'linkSeats');
+    const localIndex = seats.findIndex((s) => s.slot === local);
+    if (localIndex < 0) throw httpError(400, 'Invalid seat', 'linkSeats');
+    const deps = linkDeps(manifest);
+    const out = seats.map((s, i) => {
+      const r = resolveSeat(manifest, s.slot, s.sha1, s.crc, deps);
+      if (!r) throw httpError(409, 'This player’s game is missing here', 'linkRomMissing', { slot: s.slot });
+      let save = null;
+      if (i === localIndex) { // our own save: from disk, never from the page
+        const p = defaultSavePath(manifest, s.slot);
+        save = p && existsSync(p) ? readFileSync(p) : null;
+      } else if (typeof s.save === 'string' && s.save) save = Buffer.from(s.save, 'base64');
+      // (a rejoin starts from the session's state – the saves are inside it; the local one is still checked)
+      if (save && typeof s.saveSha1 === 'string' && s.saveSha1 && createHash('sha1').update(save).digest('hex') !== s.saveSha1.toLowerCase()) {
+        throw httpError(409, 'The save file is damaged', 'linkSaveDiffers', { slot: s.slot });
+      }
+      // the player's running game (docs/MULTIPLAYER.md › "Seamless"): the fast player's save state, deflated – every
+      // peer starts that seat from exactly these bytes (checked by SHA-1), not from the battery save
+      let st = null;
+      if (typeof s.state === 'string' && s.state) {
+        try {
+          st = inflateRawSync(Buffer.from(s.state, 'base64'), { maxOutputLength: MAX_STATE });
+        } catch {
+          throw httpError(409, 'The save state is damaged', 'linkStateDiffers', { slot: s.slot });
+        }
+        if (typeof s.stateSha1 !== 'string' || createHash('sha1').update(st).digest('hex') !== s.stateSha1.toLowerCase()) throw httpError(409, 'The save state is damaged', 'linkStateDiffers', { slot: s.slot });
+      }
+      // a Game Boy seat's console, as its player announced it (every peer gets the same list – gbModel's values)
+      // (the seat's own announcement first: in a Blue ↔ Yellow session the peers' own games differ, the list must not)
+      const model = system === 'gb' || system === 'gbc' ? (s.model === 'cgb' || s.model === 'dmg' ? s.model : system === 'gbc' ? 'cgb' : 'dmg') : null;
+      return { rom: r.path, save, state: st, model };
+    });
+    let stateBytes = null;
+    if (typeof state === 'string' && state) {
+      stateBytes = Buffer.from(state, 'base64');
+      if (stateBytes.length > MAX_STATE) throw httpError(413, 'The save state is too large', 'saveTooLarge');
+    }
+    const savePath = defaultSavePath(manifest, local);
+    // the save as it was before the session: what a session that falls out of step goes back to (/api/link/restore).
+    // Read before the session starts – and a rejoin (the session's state given) keeps the one its session began with:
+    // the save on disk holds the session's own in-game saves by then
+    const earlier = stateBytes && savePath ? [native.current, native.lastLink].find((c) => c?.link && c.preLinkFor && sameFile(c.preLinkFor, savePath)) : null;
+    const preLink = stateBytes ? earlier?.preLink || null : savePath && existsSync(savePath) ? readFileSync(savePath) : null;
+    const id = await native.startLink({
+      host: linkTool(), system, seats: out, local: localIndex, delay, rtc, key: `${manifest.id}:${local}`, state: stateBytes,
+      saveFile: savePath ? { path: savePath, runId: manifest.id } : null,
+    });
+    Object.assign(native.current, { preLink, preLinkFor: savePath || null });
+    return { id, system, local: localIndex, seats: seats.length };
+  });
+  // A session that fell out of step: the run's save goes back to what it was before the session (both players do it,
+  // so nobody keeps a Pokémon the other didn't lose); the session's last save stays next to it as a backup.
+  route('POST', /^\/api\/link\/restore$/, async (req) => {
+    const { runId, id, slot } = await readBody(req);
+    const manifest = linkManifest(runId);
+    const p = slotsOf(manifest).includes(slot) ? defaultSavePath(manifest, slot) : null;
+    if (!p) throw httpError(400, 'Invalid seat', 'linkSeats'); // (checked before the session is stopped)
+    // (only the save the session played: another run's or player's never gets this session's earlier save)
+    const own = native.current?.id === id ? native.current : native.lastLink?.id === id ? native.lastLink : null;
+    if (own && own.preLinkFor && !sameFile(own.preLinkFor, p)) throw httpError(400, 'Invalid seat', 'linkSeats');
+    const sess = native.linkRestore(id);
+    if (!sess) throw httpError(404, 'No link session', 'noNativeSession');
+    let backup = null;
+    if (existsSync(p)) {
+      backup = `${p.replace(/\.[^./\\]+$/, '')}.link-${new Date().toISOString().replace(/[:.]/g, '-')}.sav`;
+      writeFileAtomic(backup, readFileSync(p));
+    }
+    const restored = !!sess.preLink;
+    if (sess.preLink) writeFileAtomic(p, sess.preLink);
+    sess.preLink = null; // (done: the save isn't kept in memory any longer)
+    return { ok: true, restored, backup: backup ? basename(backup) : null };
   });
   route('POST', /^\/api\/native\/stop$/, async (req) => {
     const { id } = await readBody(req);
@@ -1651,6 +2084,14 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
     return azaharBridge().status();
   });
   // The mGBA script lives in a hidden folder on Windows (%APPDATA%) – show it instead of making people type the path.
+  // the backup from before this major version (Settings › About): its folder, as the config names it – no path from the page
+  route('POST', /^\/api\/backup\/reveal$/, () => {
+    const b = loadConfig().upgradeBackups?.[majorOf(liveRuns.souldewVersion())];
+    const dir = b?.name && /^pre-[\w.-]+$/.test(b.name) ? join(DATA_DIR, 'backups', b.name) : null;
+    if (!dir || !existsSync(dir)) throw httpError(404, 'The backup folder is gone', 'backupGone');
+    revealInFileManager(dir);
+    return { ok: true };
+  });
   route('POST', /^\/api\/live\/reveal$/, () => {
     if (!existsSync(live.luaScriptPath())) throw httpError(404, 'The mGBA script is missing', 'scriptMissing');
     revealInFileManager(live.luaScriptPath());
@@ -1791,8 +2232,9 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
       // the open stream API has its own rules (localhost pages or the token, CORS, read-only): server/lib/streamapi.mjs
       if ((path === '/api/v1' || path.startsWith('/api/v1/')) && await streamHub.handle(req, res, path, url)) return;
       if (path.startsWith('/api/')) {
-        // Origin / Sec-Fetch-Site / x-soullink checks (server/lib/guard.mjs) – before any API route, SSE included.
-        const denied = apiRequestError(req, server.address()?.port) || privateRequestError(req, path);
+        // Origin / Sec-Fetch-Site / x-soullink checks (server/lib/guard.mjs) – before any API route, SSE included – and,
+        // in the desktop app, the window's per-launch secret for the account and souldew+ routes.
+        const denied = apiRequestError(req, server.address()?.port) || privateRequestError(req, path) || rendererSecretError(req, path, rendererSecret);
         if (denied) return send(res, 403, { error: denied });
       }
       const overlayEvents = path.match(/^\/api\/runs\/(current|[a-f0-9]{8})\/overlay\/events$/);
@@ -1831,6 +2273,10 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
           if (!file) return send(res, 400, { error: 'bad name', code: 'badRequest' });
           return serveFile(res, file, url.searchParams.get('inline') ? {} : { 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` }, req.method === 'HEAD');
         }
+        // (awaited: a rejection must reach the catch below – an un-awaited one is an unhandled rejection, which leaves the
+        // request without an answer in the app and ends the server of the browser build)
+        if (path === '/api/account/avatar') return await accounts.avatar(req, res, url);
+        if (path === '/api/plus/previews/file' && req.method === 'GET') return await servePreview(plusPreviews, res, url);
         if (path === '/api/library/patched' && req.method === 'GET') {
           const r = preparePatchedRom(url.searchParams.get('romId'), url.searchParams.get('patchId'), () => {}, loadConfig());
           return serveFile(res, r.path);
@@ -1917,6 +2363,8 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
         res.writeHead(302, { Location: src, 'Cache-Control': 'no-store' });
         return res.end();
       }
+      // the system browser's way back after "Sign in with Discord" (a navigation from the accounts service, not the app)
+      if (path === '/auth/done') return await accounts.authDone(req, res, url);
       if (VENDOR[path]) return serveFile(res, VENDOR[path]);
       if (path === '/live/soullink.lua') {
         // embeds the live bridge token – PRIVATE_GETS (app header or same-origin), not a typed URL / other program
@@ -1932,7 +2380,10 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
       const f = safeJoin(WEB_DIR, page);
       return f ? serveFile(res, f, pageHeaders(f)) : send(res, 400, 'bad path'); // CSP for .html pages
     } catch (e) {
-      console.error(`[${req.method} ${path}]`, e.message);
+      // (the account's routes carry user / invite ids: logged without them – and their errors are expected answers)
+      if (path.startsWith('/api/account')) {
+        if (!e.status || e.status >= 500) console.error(`[${req.method} /api/account/…]`, e.code || e.name);
+      } else console.error(`[${req.method} ${path}]`, e.message);
       if (e.details?.stderr) console.error(String(e.details.stderr).slice(-4000));
       if (res.headersSent) return res.destroy();
       return send(res, e.status || 500, errorBody(e));
@@ -1940,6 +2391,7 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
   });
 
   server.on('close', () => {
+    accounts.close();
     ctr.stop();
     azahar?.stop();
     streamHub.close();
@@ -1959,7 +2411,9 @@ export function startServer({ port = 7373, host = '127.0.0.1', background = true
         // what an interrupted copy / unpack / upload left in the library folder (souldew closed meanwhile)
         setTimeout(() => removeStaleParts(), 2000).unref?.();
       }
-      resolvePromise({ server, port: actual, url: `http://localhost:${actual}` });
+      if (!deferAccount) setTimeout(() => accounts.loadSession(), 0).unref?.();
+      // goOffline: the desktop app awaits it (bounded) before it quits – friends see the player go offline at once
+      resolvePromise({ server, port: actual, url: `http://localhost:${actual}`, goOffline: () => accounts.goOffline(), loadAccount: () => accounts.loadSession() });
     });
   });
 }
@@ -2001,6 +2455,9 @@ export function readDoc(runId) {
  * name in run.json that would leave the run's folder.
  */
 export function defaultSavePath(manifest, slot) {
+  // Play together (shared/playtogether.mjs › save model): the slot plays the library game's own battery save
+  const lib = runMode(manifest) === 'together' ? manifest?.outputs?.[slot]?.library : null;
+  if (lib !== undefined && lib !== null) return okLibraryId(lib) && manifest.outputs[slot].rom ? librarySavePath(lib) : null;
   const rom = manifest?.outputs?.[slot]?.rom;
   if (typeof rom !== 'string' || !/\.(nds|gba|gbc|gb|sgb)$/i.test(rom)) return null;
   return runPath(manifest.id, rom.replace(/\.(nds|gba|gbc|gb|sgb)$/i, '.sav'));

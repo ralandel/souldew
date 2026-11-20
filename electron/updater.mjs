@@ -1,5 +1,6 @@
 // Update check and install for the desktop app (main process). Checks the feed at start and every few
-// hours, pushes its state to the window ('update' channel) and does the download / install on request.
+// hours – unless Settings › About "Check for updates automatically" is off (config.json updateCheck: false; then only
+// "Check for updates" asks) – pushes its state to the window ('update' channel) and does the download / install on request.
 // The platform work itself is in update-core.mjs: macOS swaps the .app bundle, Windows runs the NSIS installer,
 // Linux replaces the AppImage file.
 import { app, ipcMain, shell } from 'electron';
@@ -11,6 +12,7 @@ import {
   feedKeyPolicy, fetchFeed, downloadFile, verifyFile, bundleFromExe, canReplace, cleanupStaging, stageFromDmg, swapBundle,
   nsisInstallDir, launchInstaller, windowsInstallPlan, cleanupWorkDir,
   appImageFromEnv, appImageStagedPath, canReplaceAppImage, makeExecutable, swapAppImage, cleanupAppImageStaging, appImageRelaunch,
+  scheduleUpdateChecks,
 } from './update-core.mjs';
 import { EDITION } from '../shared/edition.mjs';
 
@@ -34,10 +36,11 @@ function readUpdatesConfig() {
 const assetName = (u) => basename(u.asset?.name || '') || (WIN ? winAssetName(u.version, process.arch) : LINUX ? linuxAssetName(u.version, process.arch) : dmgAssetName(u.version));
 
 /**
- * @param {{ send: Function, trusted: (e: Electron.IpcMainInvokeEvent) => boolean }} opts
+ * @param {{ send: Function, trusted: (e: Electron.IpcMainInvokeEvent) => boolean, autoCheck?: () => boolean }} opts
  *   `trusted` decides per IPC call whether the sender is the app's main frame on the app origin.
+ *   `autoCheck` is asked before every automatic check (the setting in config.json); a manual check always runs.
  */
-export function setupUpdater({ send, trusted = () => false }) {
+export function setupUpdater({ send, trusted = () => false, autoCheck = () => true }) {
   const current = app.getVersion();
   const cfg = readUpdatesConfig();
   // SLS_UPDATE_FEED overrides the feed for testing – only while developing (`npm run app`): an installed app
@@ -326,9 +329,6 @@ export function setupUpdater({ send, trusted = () => false }) {
     return shell.openPath(download);
   });
 
-  if (feedUrl) {
-    setTimeout(() => check(), FIRST_CHECK);
-    setInterval(() => check(), CHECK_EVERY);
-  }
+  if (feedUrl) scheduleUpdateChecks({ check: () => check(), enabled: autoCheck, first: FIRST_CHECK, every: CHECK_EVERY });
   return { check };
 }

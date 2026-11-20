@@ -1,5 +1,6 @@
 import { html, useState, useRef, useEffect } from '/vendor/htm-preact.mjs';
-import { useApp, Sprite } from '../lib/ui.mjs';
+import { useApp, Sprite, openExternal } from '../lib/ui.mjs';
+import { LINKS } from '../lib/links.mjs';
 import { Icon, AppMark } from '../lib/icons.mjs';
 import { LANGS, t, setLang, currentLang } from '../lib/i18n.mjs';
 import { api } from '../lib/api.mjs';
@@ -8,8 +9,9 @@ import { addGamesFlow, DropZone, DiscoverModal, discoverLabel } from './library.
 import { ThemePicker, usePads, FAMILY_NAMES, PAD_POS } from './settings.mjs';
 
 /**
- * Welcome tour, once: language → name → how a SoulLink works (and the solo Nuzlocke) → look & accessibility →
- * controls → games → how to start (new run / join / just play). It ends where the chosen path begins; the "First steps" checklist
+ * Welcome tour, once: language → name → how a SoulLink works (and the solo Nuzlocke) → look & accessibility (and the
+ * two things souldew sends by itself – "playing now", the update check – with the privacy policy) → controls → games →
+ * how to start (new run / join / just play). It ends where the chosen path begins; the "First steps" checklist
  * (firststeps.mjs) takes over from there.
  */
 export function Onboarding({ onDone }) {
@@ -20,6 +22,10 @@ export function Onboarding({ onDone }) {
   const [theme, setTheme] = useState(cfg.theme || 'classic');
   const [anim, setAnim] = useState(cfg.bootAnimation !== false);
   const [sounds, setSounds] = useState(cfg.sounds !== false);
+  // what souldew sends by itself (docs/PRIVACY.md) – as config.json has it (on Windows the installer's page may have
+  // changed it already), saved at once like the colour scheme
+  const [presence, setPresence] = useState(cfg.presence !== false);
+  const [updateCheck, setUpdateCheck] = useState(cfg.updateCheck !== false);
   const [controls, setControls] = useState(cfg.controls || null);
   const [discover, setDiscover] = useState(false);
   const [, force] = useState(0);
@@ -40,7 +46,7 @@ export function Onboarding({ onDone }) {
   const save = (patch) => api.post('/api/config', patch).catch(() => {});
 
   const finish = async (path) => {
-    await api.post('/api/config', { onboarded: true, playerName: name.trim(), lang: currentLang(), theme, bootAnimation: anim, sounds, controls });
+    await api.post('/api/config', { onboarded: true, playerName: name.trim(), lang: currentLang(), theme, bootAnimation: anim, sounds, controls, presence, updateCheck });
     await reloadStatus();
     onDone();
     if (path === 'host') navigate('soullink', { new: '' });
@@ -92,6 +98,12 @@ export function Onboarding({ onDone }) {
       <div class="stack-s">
         <label class="check"><input type="checkbox" checked=${anim} onChange=${(e) => setAnim(e.target.checked)} /><span>${t('set.boot', 'Play animations (start-up, inserting the cartridge)')}</span></label>
         <label class="check"><input type="checkbox" checked=${sounds} onChange=${(e) => setSounds(e.target.checked)} /><span>${t('set.soundsAll', 'Sounds on this computer (start-up chime, catches, deaths, badges, pings)')}</span></label>
+      </div>
+      <div class="stack-s onb-online">
+        <span class="small muted">${t('onb.onlineText', 'souldew collects no personal data. Only what is ticked here goes out by itself – you can switch it off here or later in Settings.')}
+          ${' '}<a href=${LINKS.privacyPolicy} onClick=${(e) => { e.preventDefault(); openExternal(LINKS.privacyPolicy); }}>${t('onb.privacyLink', 'Privacy policy')}</a></span>
+        <label class="check"><input type="checkbox" checked=${presence} onChange=${(e) => { setPresence(e.target.checked); save({ presence: e.target.checked }); }} /><span>${t('set.presence', 'Count me in “playing now” (anonymous)')}</span></label>
+        ${window.sls?.update && html`<label class="check"><input type="checkbox" checked=${updateCheck} onChange=${(e) => { setUpdateCheck(e.target.checked); save({ updateCheck: e.target.checked }); }} /><span>${t('upd.auto', 'Check for updates automatically')}</span></label>`}
       </div>
     </div>` },
     { id: 'controls', label: t('onb.sControls', 'Controls'), body: html`<div class="stack-l">

@@ -1,0 +1,88 @@
+/* Settings (views/settings.mjs): a sticky bar with the tabs and the search, one short page per section. */
+
+.settings .topbar { margin-bottom: 0; }
+
+/* sticky bar: the frame's own top colour, so it is invisible until content slides under it */
+.set-bar { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 16px; margin: 0 -36px 18px; padding: 16px 36px 12px;
+  background: linear-gradient(var(--bg-top, #1c1b21) 84%, transparent); }
+.app-native .set-bar { padding-top: 28px; } /* stuck, the tabs stay clear of the window's drag strip */
+html.platform-win32 .app-native .set-bar { padding-top: 40px; }
+/* whatever gets the focus (Tab, the controller) scrolls into view below the bar, not under it */
+.main:has(.set-bar), html:has(.set-bar) { scroll-padding-top: 96px; }
+.app-native .main:has(.set-bar) { scroll-padding-top: 108px; }
+html.platform-win32 .app-native .main:has(.set-bar) { scroll-padding-top: 120px; }
+.set-tabs { margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 0 1 auto; }
+.set-tabs::-webkit-scrollbar { display: none; }
+.set-tabs button { flex: none; }
+.set-tabs button.dim { opacity: .4; }
+
+/* the search: the app's input as a pill, with its lens and a key hint */
+.set-search { display: flex; align-items: center; gap: 8px; flex: 0 1 280px; min-width: 150px; margin-left: auto; height: 38px; padding: 0 10px 0 13px;
+  border-radius: 999px; background: var(--sk-field, #121116); border: 1px solid var(--sk-line, #0b0a0e); box-shadow: var(--lt-inset, inset 0 1px 2px #0007); color: var(--ink-3); cursor: text; }
+.set-search:focus-within { border-color: var(--focus, var(--crs)); color: var(--ink-2); }
+.set-search > svg { flex: none; display: block; position: relative; top: 1px; } /* measured: the lens sat 0.6 px (bbox) / 1.3 px (ink) above the pill's centre */
+.set-search input[type='search'] { flex: 1; min-width: 0; width: auto; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.set-search input[type='search']:focus { outline: none; }
+.set-search input::-webkit-search-cancel-button { filter: grayscale(1) brightness(1.4); cursor: pointer; }
+.set-key { flex: none; display: inline-flex; align-items: center; justify-content: center; height: 20px; padding: 0 7px; border-radius: 6px; border: 1px solid var(--edge);
+  background: transparent; color: var(--ink-3); font-family: var(--font-body); font-size: 11px; font-weight: 500; line-height: 1; letter-spacing: .02em; }
+.set-count { flex: none; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* hits per tab */
+.set-n { display: inline-block; min-width: 18px; margin-left: 7px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--warn) 26%, var(--shell-3));
+  color: var(--warn-ink); font-family: var(--font-body); font-size: 11px; font-weight: 600; line-height: 17px; text-align: center; vertical-align: 1px; }
+
+/* the sections: one shown at a time; searching shows every section with hits, each under its name */
+.set-content { display: flex; flex-direction: column; gap: 22px; }
+.set-off, .set-miss { display: none !important; }
+.set-searching .set-elsewhere, .set-searching .set-legal { display: none; }
+.set-sec-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; }
+.set-sec-title { font-size: 24px; font-weight: 600; }
+.set-sec-head .btn { margin-left: auto; }
+.set-empty { padding: 28px; text-align: center; align-items: center; }
+::highlight(set-hit) { background-color: color-mix(in srgb, var(--warn) 38%, transparent); color: var(--ink); }
+
+/* one setting: what a deep link scrolls to and marks for a moment */
+.set-item { scroll-margin: 120px 0 40px; border-radius: var(--r-m); outline: 1.5px solid transparent; outline-offset: 10px; }
+.set-item.set-flash { animation: set-flash 1.8s ease-out; }
+@keyframes set-flash { /* a soft tint 10px around the setting and a thin focus-colour line at its edge */
+  0%, 35% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--focus, var(--crs)) 10%, transparent); background: color-mix(in srgb, var(--focus, var(--crs)) 10%, transparent);
+    outline-color: color-mix(in srgb, var(--focus, var(--crs)) 75%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; background: transparent; outline-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .set-item.set-flash { animation: none; outline-color: var(--focus, var(--crs)); } }
+
+.set-note { margin-top: -6px; }
+.set-elsewhere { display: flex; gap: 8px; align-items: center; color: var(--ink-3); padding-top: 12px; border-top: 1px solid #0f0e12; }
+.set-elsewhere svg { flex: none; display: block; position: relative; top: 1px; } /* measured 0.7–1.1 px above the text line's centre */
+.set-elsewhere a { color: var(--ink-2); }
+.set-elsewhere a:hover { color: var(--ink); }
+html[data-theme='contrast'] .set-elsewhere { border-top-color: var(--edge); }
+
+/* Controls: keyboard and controller side by side when there is room – both tables are narrow */
+/* (the keyboard's table has three columns and the shortcuts' rows – 2.8.3 – four slot keys in a row: the wider one) */
+.set-controls { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; align-items: stretch; }
+.set-controls .ctl-slots { flex-wrap: nowrap; }
+.set-controls > .set-item > .panel { height: 100%; }
+@media (max-width: 1240px) { .set-controls { grid-template-columns: minmax(0, 1fr); } }
+.set-searching .set-controls { grid-template-columns: minmax(0, 1fr); } /* results: one under the other, like every other hit */
+
+@media (max-width: 1100px) {
+  .set-bar { gap: 10px; }
+  .set-search { flex-basis: 220px; }
+  .set-key { display: none; }
+}
+@media (max-width: 860px) {
+  .set-bar { margin: 0 -16px 14px; padding-left: 16px; padding-right: 16px; flex-wrap: wrap; }
+  .set-tabs { max-width: 100%; }
+  .set-search { flex: 1 1 100%; margin-left: 0; }
+}
+
+/* Settings › Account › Signed-in devices (web/views/settings/account.mjs Sessions) */
+.acct-sessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.acct-sessions li { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--r-m); border: 1px solid var(--edge); }
+.acct-sessions b { font-weight: 600; }
+
+/* Interface size (views/settings/general.mjs UiScaleSetting): the sizes as one pill row, never broken inside "125 %" */
+div.field.ui-scale { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.ui-scale-seg button { padding: 6px 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-scale .warn-text { color: var(--warn-ink); }

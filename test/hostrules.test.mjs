@@ -43,7 +43,9 @@ const build = (o = {}) => buildRun({ romId: ROM, randomize: false, config: {}, p
 /** The host's own rules – every rule off its default. */
 const MINE = {
   typeClause: 'party', dupes: 'both', missedDupes: true, failKillsPair: false, shinyClause: false, gifts: 'free', levelCaps: false,
-  cheats: true, lives: 3, livesPool: 'player', typeHelp: false, autoAssign: false, autoDeath: false, startAtBalls: false,
+  cheats: true, cheatSet: 'balls,money', lives: 3, livesPool: 'player', typeHelp: false, autoAssign: false, autoDeath: false, startAtBalls: false,
+  linkTrades: 'off', linkBattles: 'on', linkBattleDeaths: true, linkWagers: 'off', linkWagerCap: 5000, itemGifts: 'off', raids: 'off', raidDeaths: false,
+  saveImports: true,
 };
 
 function mkDoc(by, runId = 't') {
@@ -82,6 +84,9 @@ const slEditors = (value, n, disabled) => (onChange) => [
   UI.TypeHelpRule({ value: value.typeHelp, onChange: (v) => onChange({ typeHelp: v }), locked: disabled }),
   UI.LivesRule({ value: value.lives, pool: value.livesPool, players: n, onChange, variant: 'wizard', disabled }),
   UI.SoulLinkAuto({ value, onChange, players: n, disabled }),
+  UI.LinkRules({ value, onChange, disabled }), // (3.0: trades and battles between the players – the games that link)
+  UI.RaidRules({ value, onChange, disabled }), // (3.0: raids – one shared HP pool against a trainer)
+  UI.GiftRule({ value, onChange, disabled }), // (3.0: gifts between the players – every game)
   UI.BallsRule({ value: value.startAtBalls, onChange: (v) => onChange({ startAtBalls: v }), players: n, disabled }),
 ];
 
@@ -95,11 +100,11 @@ test('every SoulLink rule: the list is the defaults’ (no rule missed), the wiz
   assert.equal(DEFAULT_RULES.startAtBalls, false, 'a run from before keeps counting from the start');
   assert.deepEqual(Object.keys(H.soulLinkRulesFrom(null)), H.SOULLINK_RULE_KEYS);
   for (const n of [2, 3, 4]) {
-    const keys = patchKeys(slEditors({ ...H.soulLinkDefaults(), lives: 3 }, n, false));
+    const keys = patchKeys(slEditors({ ...H.soulLinkDefaults(), lives: 3, cheats: true }, n, false));
     assert.deepEqual([...keys].sort(), [...H.SOULLINK_RULE_KEYS].sort(), `${n} players: a control for every rule`);
     // read-only (a player who isn't the host): nothing is sent, every control is disabled
-    assert.equal(patchKeys(slEditors({ ...H.soulLinkDefaults(), lives: 3 }, n, true)).size, 0);
-    const controls = elements(slEditors({ ...H.soulLinkDefaults(), lives: 3 }, n, true)(() => {})).filter((el) => ['button', 'input'].includes(el.type));
+    assert.equal(patchKeys(slEditors({ ...H.soulLinkDefaults(), lives: 3, cheats: true }, n, true)).size, 0);
+    const controls = elements(slEditors({ ...H.soulLinkDefaults(), lives: 3, cheats: true }, n, true)(() => {})).filter((el) => ['button', 'input'].includes(el.type));
     assert.ok(controls.length > 15 && controls.every((el) => el.props.disabled), 'every control is disabled');
   }
 });
@@ -178,7 +183,10 @@ test('the join page shows the run’s rules before joining', () => {
   assert.ok(join.slice(at).includes("<${RulesSummary} rules=${rulesWithDefaults(pack.rules, 'soullink')} players=${slots.length} />"));
   const shown = text(UI.RulesSummary({ rules: rulesWithDefaults(MINE, 'soullink'), players: 2 }));
   for (const s of ['Type rule', 'Per player', 'Dupes clause', 'For both · fled ones count too', 'Missed encounter costs the pair', 'Shiny clause',
-    'Gifts & eggs', 'Free extra', 'Level caps', 'Cheats (Rare Candies, Max Repels)', 'Allowed', 'Lives', '3 per player', 'Type matchup help']) assert.ok(shown.includes(s), s);
+    'Gifts & eggs', 'Free extra', 'Level caps', 'Cheats', 'Poké Balls and Ultra Balls, Money', 'Lives', '3 per player', 'Type matchup help']) assert.ok(shown.includes(s), s);
+  // every cheat: "Allowed"; a run from before 3.0: its two
+  assert.ok(text(UI.RulesSummary({ rules: rulesWithDefaults({ ...MINE, cheatSet: 'all' }, 'soullink'), players: 2 })).includes('Allowed'));
+  assert.ok(text(UI.RulesSummary({ rules: rulesWithDefaults({ ...MINE, cheatSet: undefined }, 'soullink'), players: 2 })).includes('Rare Candies, Max Repels'));
   const plain = text(UI.RulesSummary({ rules: rulesWithDefaults({}, 'soullink'), players: 4 }));
   for (const s of ['Across all teams', 'Missed encounter costs the group', 'Count as the area']) assert.ok(plain.includes(s), s);
 });
@@ -318,6 +326,44 @@ test('clocks a day or more apart: the host’s changes still reach everyone, and
   assert.ok(unguarded.entries.rules.t <= Date.now() + DAY);
 });
 
+test('a signed host entry beats any unsigned rules entry, whatever the timestamps (the same millisecond, a clock ahead)', async () => {
+  const m = await build({ rules: MINE });
+  const signed = signRules(structuredClone(m), { ...MINE, dupes: 'player' }, { after: m.rules.rev });
+  for (const ahead of [0, 1, 60000]) {
+    // the partner's computer holds an unsigned entry (its own edit, or one from before it knew the key) for the very
+    // millisecond the host signs for – or later – and from a device id that wins the tie
+    const partner = mkDoc('zzzz-partner', m.id);
+    partner.merge({ rules: { v: { ...MINE, dupes: 'both' }, t: signed.rev + ahead, by: 'zzzz-partner' } }, null, { own: true });
+    partner.hostKey = m.hostKey;
+    partner.guard = WH.hostGuard(partner, m.id);
+    partner.outranks = WH.hostOutranks(partner);
+    partner.merge({ rules: { v: signed, t: signed.rev, by: 'aaaa-host' } });
+    await settle();
+    assert.equal(R.rules(partner, m).dupes, 'player', `the host's signed rules (unsigned entry ${ahead} ms ahead)`);
+    assert.ok(H.signedFor(partner.entries.rules.v, partner.entries.rules.t));
+    // and an unsigned entry can't push them out again – not from the link, not written on this computer
+    partner.merge({ rules: { v: { ...MINE, dupes: 'both' }, t: signed.rev + 120000, by: 'zzzz-partner' } });
+    partner.set('rules', { ...MINE, dupes: 'both' });
+    await settle();
+    assert.equal(R.rules(partner, m).dupes, 'player');
+  }
+  // a forged signature still doesn't get in that way
+  const partner = mkDoc('zzzz-partner', m.id);
+  partner.merge({ rules: { v: { ...MINE, dupes: 'both' }, t: signed.rev, by: 'zzzz-partner' } }, null, { own: true });
+  partner.hostKey = m.hostKey;
+  partner.guard = WH.hostGuard(partner, m.id);
+  partner.outranks = WH.hostOutranks(partner);
+  partner.merge({ rules: { v: { ...signed, sig: randomBytes(64).toString('base64url') }, t: signed.rev, by: 'aaaa-host' } });
+  await settle();
+  assert.equal(R.rules(partner, m).dupes, 'both');
+  // without the host's key (a solo run, a run whose host is still on 2.8.1): the newest entry, as before
+  const solo = mkDoc('zzzz-partner', m.id);
+  solo.outranks = WH.hostOutranks(solo);
+  solo.merge({ rules: { v: { ...MINE, dupes: 'both' }, t: signed.rev + 5, by: 'zzzz-partner' } });
+  solo.merge({ rules: { v: signed, t: signed.rev, by: 'aaaa-host' } });
+  assert.equal(solo.get('rules').dupes, 'both');
+});
+
 test('the server signs only on the host’s computer; a joined run learns a key once, never another', async () => {
   const { startServer } = await import('../server/app.mjs');
   const { server, url } = await startServer({ port: 0, background: false });
@@ -411,6 +457,7 @@ test('every change of the host goes to the log, in clear words', () => {
   R.logRulesChange(d, PAIR, 'p1', before, rulesWithDefaults(MINE, 'soullink'));
   assert.deepEqual(R.feedList(d).map((f) => `${f.type} ${f.slot} ${f.text}`).sort(), [
     'cheat p1 allowed cheats for this run',
+    'cheat p1 set the cheats allowed for this run: Poké Balls and Ultra Balls, Money',
     'rule p1 set the lives to 3 per player',
     'rule p1 set “Dupes clause” to For both for everyone',
     'rule p1 set “Gifts & eggs” to Free extra for everyone',
@@ -419,8 +466,12 @@ test('every change of the host goes to the log, in clear words', () => {
     'rule p1 turned off “A missed encounter costs the whole pair” for everyone',
     'rule p1 turned off “Check level caps” for everyone',
     'rule p1 turned off “Enter new catches automatically” for everyone',
+    'rule p1 turned off “Gifts between us” for everyone',
     'rule p1 turned off “Shiny clause: shinies may always be caught and stay unlinked” for everyone',
+    'rule p1 turned off “Trades between us (link)” for everyone',
+    'rule p1 turned on “Allow importing a save file” for everyone',
     'rule p1 turned on “Fled or knocked-out encounters count as dupes” for everyone',
+    'rule p1 turned on “Losing a link battle counts as deaths” for everyone',
     'rule p1 turned the type matchup help off for everyone',
   ].sort());
   // no change, no line; a group of 4 has its own words
@@ -447,8 +498,8 @@ test('the board: the host changes the rules, everyone else sees them read-only w
   assert.match(board, /<\$\{HostRulesNote\} host=\$\{hostName\} mine=\$\{mine\} players=\$\{n\} \/>/);
   for (const part of ['<${SoulLinkRules} value=${r} onChange=${set} players=${n} disabled=${locked} />', 'disabled=${locked}\n',
     '<${SoulLinkAuto} value=${r} onChange=${set} players=${n} solo=${solo} disabled=${locked} />']) assert.ok(board.includes(part), part);
-  // the play view's rules drawer is the same tab
-  assert.match(src('web/views/play.mjs'), /RulesTab=\$\{RulesTab\}/);
+  // the play view's rules drawer is the same tab (a Play together's: its choices – views/playtogether.mjs)
+  assert.match(src('web/views/play.mjs'), /RulesTab=\$\{isRun && isTogether\(manifest\) \? ChoicesTab : RulesTab\}/);
   assert.match(text(UI.HostRulesNote({ host: 'Lou', mine: false })), /Set by the host · Lou created this run and sets the rules for everyone – only Lou can change them/);
   assert.match(text(UI.HostRulesNote({ host: 'Lou', mine: true })), /You’re the host/);
 });

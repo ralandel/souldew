@@ -1,0 +1,37 @@
+/* "What's new in 3.0" (web/views/whatsnew.mjs): the cards inside the app's own dialog – its colours come from the
+   dialog, so every theme and souldew+ skin carries over. The picture is a screenshot of the app (dark by nature, like a
+   screen), framed so it sits well on light skins too. */
+dialog.modal:has(.wn) { width: min(640px, calc(100vw - 32px)); }
+.wn { display: flex; flex-direction: column; gap: 14px; }
+.wn-media {
+  margin: 0; aspect-ratio: 7 / 4; border-radius: var(--r-l); overflow: hidden;
+  max-height: max(140px, calc(76vh - 212px)); /* a short window: the picture gives way (cropped), the line never scrolls away */
+  border: 1px solid var(--sk-line, var(--edge)); background: var(--shell);
+  box-shadow: 0 1px 0 #ffffff0a inset, 0 12px 30px -18px #000;
+  animation: wn-in .24s ease-out;
+}
+.wn-media img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center top; user-select: none; }
+.wn-text { display: flex; flex-direction: column; gap: 4px; min-height: 66px; }
+.wn-text h3 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 17px; }
+.wn-icon {
+  flex: none; width: 28px; height: 28px; border-radius: var(--r-m); display: grid; place-items: center;
+  color: var(--tri); background: color-mix(in srgb, var(--tri) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tri) 30%, transparent);
+}
+.wn-text p { margin: 0 0 0 38px; line-height: 1.45; }
+.wn-dots { display: flex; align-items: center; margin-right: auto; }
+.wn-dots button { width: 18px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; place-items: center; }
+.wn-dots button::before { content: ''; width: 7px; height: 7px; border-radius: 999px; background: var(--edge-hi); transition: width .2s ease, background-color .2s ease; }
+.wn-dots button.on { width: 30px; }
+.wn-dots button.on::before { width: 20px; background: var(--tri); }
+.wn-dots button:hover::before { background: var(--ink-3); }
+.wn-dots button.on:hover::before { background: var(--tri); }
+.wn-dots button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 999px; }
+@keyframes wn-in { from { opacity: 0; transform: translateY(6px) scale(.99); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .wn-media { animation: none; }
+  .wn-dots button::before { transition: none; }
+}
+@media (max-width: 560px) {
+  .wn-dots { display: none; }
+}

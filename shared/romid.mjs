@@ -61,6 +61,19 @@ export function identifyRom(head, ext = '') {
   return null;
 }
 
+/**
+ * The catalog ROM hack an identified ROM names in its header (`romTitle`, with the base game's code where the hack kept
+ * it – `romCode`): Pokémon Quetzal says "PKM QUETZAL" and Emerald's BPEE in every version, so it is recognised without
+ * a known checksum. → the hack or null.
+ */
+export function matchHackHeader(rom, catalog) {
+  const title = String(rom?.title || '').trim().toUpperCase();
+  if (!title) return null;
+  const code = String(rom.code || '').trim().toUpperCase();
+  return (catalog?.hacks || []).find((h) => h.romTitle && String(h.romTitle).toUpperCase() === title && (!rom.system || h.system === rom.system)
+    && (!h.romCode || String(h.romCode).toUpperCase() === code)) || null;
+}
+
 /** Match an identified ROM against the catalog (by CRC first, then serial/title). */
 export function matchCatalog(rom, catalog) {
   if (!catalog?.games) return null;

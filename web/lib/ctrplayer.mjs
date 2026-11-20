@@ -11,6 +11,7 @@ import { cheatRegions } from '/shared/live/cheats.mjs';
 import { CTR_LAYOUTS, ctrLayout, ctrTouchAt, blackPicture } from '/shared/ctrlayout.mjs';
 import { CTR_BIT, ctrInput } from '/shared/ctrinput.mjs';
 import { RomMusic } from '/lib/rommusic.mjs';
+import { sharpScale } from '/lib/pixelscale.mjs';
 
 const q = new URLSearchParams(location.search);
 const MSG = { VIDEO: 2, AUDIO: 3, MEM: 4, STATE: 5, LOG: 6, EVENT: 7, FFSOUND: 8, ROMFS: 9, ROMDATA: 10, SFX: 11 };
@@ -21,6 +22,7 @@ const st = {
   id: null, ready: false, paused: false, speed: 1, volume: 1, frames: 0, fps: 0, title: null, width: 400, height: 480,
   mem: [], watching: '', liveMemory: false, error: null, log: [], renderer: null, turboAudio: 'music',
   hostFrame: 0, hostFrames: false, hostSpeed: 0, // the host's count of emulated frames and its real speed (stats event)
+  scale: 1, // the internal resolution the host draws at (the server's answer to start: Settings › Play › 3DS resolution)
   sfxCore: false, sfxWant: false, // the core can leave the music out of its sound (sound effects in fast-forward) / asked
 };
 const waiters = { state: [], loaded: [], written: new Map() }; // written: write id → resolve
@@ -102,14 +104,15 @@ let layoutId = CTR_LAYOUTS.includes(q.get('layout')) ? q.get('layout') : 'tb';
 // "Smooth picture" (the play view's screen layout menu): the screens scaled with linear filtering instead of crisp
 // pixels – both where the page draws a screen smaller or larger (the layouts) and where the frame scales the canvas
 let smooth = q.get('smooth') === '1';
+// (the canvas's own scaling follows in layout(): smooth then means no whole-number prescale either)
 function applyFilter() {
-  canvas.style.imageRendering = smooth ? 'auto' : 'pixelated';
   if (!gl || !tex) return;
   const f = smooth ? gl.LINEAR : gl.NEAREST;
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
 }
+let wholePixels = q.get('px') === 'whole'; // Settings › "Whole pixels only" (lib/pixelscale.mjs)
 function initGl() {
   const vs = '#version 300 es\nin vec2 p;in vec2 t;out vec2 uv;void main(){uv=t;gl_Position=vec4(p,0.,1.);}';
   const fs = '#version 300 es\nprecision mediump float;in vec2 uv;uniform sampler2D s;uniform bool bgra;out vec4 o;void main(){vec4 c=texture(s,uv);o=vec4(bgra?c.bgr:c.rgb,1.);}';
@@ -147,17 +150,24 @@ const arrangement = (w, h) => ctrLayout(layoutId, w, h);
 
 let pendingFrame = null;
 let lastFrame = null;
+// the arranged picture's size in the core's pixels and the whole factor it is drawn at
+const pic = { w: 0, h: 0, pre: 1 };
 function drawFrame() {
   const f = pendingFrame || lastFrame;
   pendingFrame = null;
   if (!f || !gl) return;
   lastFrame = f;
   const lay = arrangement(f.w, f.h);
-  if (canvas.width !== lay.width || canvas.height !== lay.height) {
-    canvas.width = lay.width;
-    canvas.height = lay.height;
-    gl.viewport(0, 0, lay.width, lay.height);
+  if (pic.w !== lay.width || pic.h !== lay.height) {
+    pic.w = lay.width;
+    pic.h = lay.height;
     layout();
+  }
+  // the canvas holds the arranged picture blown up by a whole number (lib/pixelscale.mjs)
+  if (canvas.width !== lay.width * pic.pre || canvas.height !== lay.height * pic.pre) {
+    canvas.width = lay.width * pic.pre;
+    canvas.height = lay.height * pic.pre;
+    gl.viewport(0, 0, canvas.width, canvas.height);
   }
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, f.w, f.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, f.px);
   gl.uniform1i(swizzleLoc, f.bgra ? 1 : 0);
@@ -178,6 +188,23 @@ function drawFrame() {
   gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
   gl.clear(gl.COLOR_BUFFER_BIT);
   for (let i = 0; i < lay.quads.length; i++) gl.drawArrays(gl.TRIANGLE_STRIP, i * 4, 4);
+  streamFrame();
+}
+
+// The partners' video (captureStream) at the picture's own size, as before the sharp scaling: the bigger drawing buffer
+// would only cost upload and encoder time. Drawn only while someone watches.
+let streamCanvas = null;
+function streamFrame() {
+  if (!streamCanvas) return;
+  const w = pic.w || canvas.width;
+  const h = pic.h || canvas.height;
+  if (streamCanvas.width !== w || streamCanvas.height !== h) {
+    streamCanvas.width = w;
+    streamCanvas.height = h;
+  }
+  const x = streamCanvas.getContext('2d');
+  x.imageSmoothingEnabled = false; // a whole factor down: the game's pixels exactly
+  x.drawImage(canvas, 0, 0, w, h);
 }
 function onVideo(p) {
   const v = new DataView(p.buffer, p.byteOffset, 8);
@@ -223,15 +250,31 @@ function watchBlack(px, w, h) {
   post({ type: 'emu-black', seconds: Math.round(black.ms / 1000), renderer: st.renderer, title: st.title, frames: st.hostFrame || st.frames, liveMemory: st.liveMemory });
 }
 
-// keep the picture's proportions in the frame (the page decides the frame's size)
+// the picture as big as the frame allows, its proportions kept (the page decides the frame's size): pixels blown up by a
+// whole number with hard edges, the rest smoothed – or whole multiples only (Settings) – lib/pixelscale.mjs
 function layout() {
   const box = document.body.getBoundingClientRect();
-  const k = Math.min(box.width / canvas.width, box.height / canvas.height) || 1;
-  canvas.style.width = `${Math.floor(canvas.width * k)}px`;
-  canvas.style.height = `${Math.floor(canvas.height * k)}px`;
+  const src = pic.w ? pic : { w: canvas.width, h: canvas.height };
+  const sharp = sharpScale(src, { w: box.width, h: box.height }, devicePixelRatio || 1, { whole: wholePixels });
+  // "Smooth picture" (the play view's 3DS menu): linear filtering all the way – no crisp whole-number prescale
+  const s = smooth ? { ...sharp, pre: 1, smooth: true } : sharp;
+  canvas.style.width = `${s.w}px`;
+  canvas.style.height = `${s.h}px`;
+  canvas.style.imageRendering = s.smooth ? 'auto' : 'pixelated';
+  if (pic.w && s.pre !== pic.pre) {
+    pic.pre = s.pre;
+    drawFrame(); // the new buffer size, with the last picture
+  }
 }
 addEventListener('resize', layout);
 new ResizeObserver(layout).observe(document.body);
+// the window moved to a screen with another pixel density: the whole factor changes, the frame's size doesn't
+(function watchDensity() {
+  matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', () => {
+    layout();
+    watchDensity();
+  }, { once: true });
+})();
 layout();
 
 // ---- sound: the host's samples through souldew's turbo mixer (lib/native-audio-worklet.mjs, as the fast player) -----
@@ -430,14 +473,15 @@ function onFfSound(p) {
 
 // ---- memory (the regions the live reader needs – and the bag for the cheats – ten times a second) ---------------------
 let addresses = null;
-let extraRegions = []; // __emu.watch(): more regions on top of the game's (diagnostics, research)
+let extraRegions = []; // __emu.watch(): more regions on top of the game's (the bag's search, diagnostics, research)
+/** Tell the host what to read; → the regions asked for (at most 16 – the game's own first). */
 async function watchFor(titleId) {
   try {
     addresses ||= await fetch('/shared/data/addresses.json').then((r) => r.json());
     const entry = titleId ? findEntry(addresses, { platform: '3ds', titleId }) : null;
     const regions = [...(entry ? [...regionsFor(entry), ...cheatRegions(entry)] : []), ...extraRegions].slice(0, 16);
     const sig = regions.map((r) => `${r.addr}:${r.len}`).join();
-    if (sig === st.watching) return;
+    if (sig === st.watching) return regions;
     st.watching = sig;
     const b = new Uint8Array(4 + regions.length * 8);
     const v = new DataView(b.buffer);
@@ -447,23 +491,43 @@ async function watchFor(titleId) {
       v.setUint32(8 + i * 8, r.len, true);
     });
     cmd(CMD.WATCH, b);
+    return regions;
   } catch (e) {
     st.log.push(`watch: ${e.message}`);
+    return null;
   }
 }
+// waiting for the first memory message that has every one of some regions (__emu.watch) – (unmapped ones come empty)
+const memWaiters = new Set(); // { want: Set of region addresses, done }
 function onMem(p) {
   const v = new DataView(p.buffer, p.byteOffset, p.length);
   const n = v.getUint32(0, true);
   const out = [];
+  const asked = new Set();
   let o = 4;
   for (let i = 0; i < n && o + 8 <= p.length; i++) {
     const addr = v.getUint32(o, true);
     const len = v.getUint32(o + 4, true);
     o += 8;
+    asked.add(addr);
     if (len) out.push({ addr, b: p.slice(o, o + len) });
     o += len;
   }
   st.mem = out;
+  for (const w of memWaiters) if ([...w.want].every((a) => asked.has(a))) w.done(true);
+}
+function memFor(regions, ms = 3000) {
+  if (!regions.length) return Promise.resolve(true);
+  return new Promise((res) => {
+    const w = { want: new Set(regions.map((r) => r.addr >>> 0)) };
+    const timer = setTimeout(() => w.done(false), ms);
+    w.done = (ok) => {
+      memWaiters.delete(w);
+      clearTimeout(timer);
+      res(ok);
+    };
+    memWaiters.add(w);
+  });
 }
 function read(addr, len) {
   for (const { addr: a, b } of st.mem) if (addr >= a && addr + len <= a + b.length) return b.subarray(addr - a, addr - a + len);
@@ -523,7 +587,10 @@ function onEvent(p) {
     startAudio(e.sampleRate);
     // a second "loaded" with another renderer: the server started the host again with a safer one (renderer "auto",
     // server/lib/ctrrenderer.mjs) – the play view says so
-    if (e.renderer && st.renderer && e.renderer !== st.renderer) post({ type: 'emu-renderer', from: st.renderer, to: e.renderer });
+    if (e.renderer && st.renderer && e.renderer !== st.renderer) {
+      post({ type: 'emu-renderer', from: st.renderer, to: e.renderer });
+      st.scale = 1; // (the safer renderer always starts at 1×: server/lib/ctr.mjs)
+    }
     if (e.renderer) st.renderer = e.renderer;
   } else if (e.event === 'title') {
     st.title = e.titleId;
@@ -786,11 +853,16 @@ function startPads() {
 // ---- window.__emu: what the Play view uses (see player.html) ----------------------------------------------------------
 async function snapshot({ maxW = 192, type = 'image/jpeg', quality = 0.5 } = {}) {
   if (!st.ready) return null;
-  const k = Math.min(1, maxW / canvas.width);
+  // at the arranged picture's own size at most (the canvas holds it blown up by a whole number)
+  const w0 = pic.w || canvas.width;
+  const h0 = pic.h || canvas.height;
+  const k = Math.min(1, maxW / w0);
   const c = document.createElement('canvas');
-  c.width = Math.round(canvas.width * k);
-  c.height = Math.round(canvas.height * k);
-  c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+  c.width = Math.round(w0 * k);
+  c.height = Math.round(h0 * k);
+  const x = c.getContext('2d');
+  x.imageSmoothingEnabled = k < 1;
+  x.drawImage(canvas, 0, 0, c.width, c.height);
   return new Promise((res) => c.toBlob(res, type, quality));
 }
 
@@ -848,6 +920,8 @@ window.__emu = {
   frames: () => (st.hostFrames ? st.hostFrame : st.frames),
   fastForward: () => st.speed > 1,
   ffRatio: () => (st.speed > 1 ? st.speed : 3),
+  /** The internal resolution this game runs with (1–3): the play view's hint when it holds back fast-forward (lib/ffhint.mjs). */
+  scale: () => st.scale,
   /**
    * A save state. The host copies it between two frames (a 3DS core with souldew-state.patch packs it on a thread
    * meanwhile; an older one packs it right there – 0.4 s without sound on a Windows PC): the sound may run dry for that
@@ -896,7 +970,10 @@ window.__emu = {
   canvas: () => (st.ready ? canvas : null),
   captureStream(fps = 15) {
     try {
-      return st.ready && canvas.captureStream ? canvas.captureStream(fps) : null;
+      if (!st.ready || !canvas.captureStream) return null;
+      streamCanvas ||= document.createElement('canvas');
+      streamFrame();
+      return streamCanvas.captureStream(fps);
     } catch {
       return null;
     }
@@ -963,7 +1040,7 @@ window.__emu = {
     });
   },
   perf: () => ({
-    fps: st.fps, speed: st.hostSpeed, frames: st.hostFrame, shown: st.frames, title: st.title, liveMemory: st.liveMemory, error: st.error, renderer: st.renderer, log: st.log.slice(-20),
+    fps: st.fps, speed: st.hostSpeed, frames: st.hostFrame, shown: st.frames, title: st.title, liveMemory: st.liveMemory, error: st.error, renderer: st.renderer, scale: st.scale, log: st.log.slice(-20),
     picture: { lit: black.lit, blackSeconds: Math.round(black.ms / 1000) }, // (a game that only ever showed black)
     sound: audio.ctx ? { contextRate: audio.ctx.sampleRate, state: audio.ctx.state, baseLatencyMs: +(audio.ctx.baseLatency * 1000).toFixed(1), outputLatencyMs: +((audio.ctx.outputLatency || 0) * 1000).toFixed(1) } : null,
     last: audio.last,
@@ -1004,15 +1081,30 @@ window.__emu = {
     } else if (k === 'ctr_smooth') {
       smooth = !!v;
       applyFilter();
+      layout();
       drawFrame();
     }
   },
   layout: () => layoutId,
-  /** More memory to read (at most 16 regions of 64 KB together with the game's own) – diagnostics and research. */
-  watch(regions = []) {
-    extraRegions = regions.filter((r) => Number.isInteger(r.addr) && Number.isInteger(r.len) && r.len > 0 && r.len <= 65536);
+  /** Settings › "Whole pixels only" switched while playing. */
+  setWholePixels(on) {
+    wholePixels = !!on;
+    layout();
+  },
+  /**
+   * More memory to read (at most 16 regions of 64 KB together with the game's own) – the 3DS bag's search
+   * (shared/live/cheats.mjs locateCtrBag), diagnostics and research; replaces what was asked before. Resolves true
+   * once the host has sent all of them (read() has them then – unmapped ones read null), false when they didn't fit
+   * in or no memory came.
+   */
+  async watch(regions = []) {
+    const want = regions.filter((r) => Number.isInteger(r.addr) && Number.isInteger(r.len) && r.len > 0 && r.len <= 65536);
+    extraRegions = want;
     st.watching = '';
-    return watchFor(st.title && !/^0+$/.test(st.title) ? st.title : null);
+    if (!st.liveMemory || st.ended) return false;
+    const sent = await watchFor(st.title && !/^0+$/.test(st.title) ? st.title : null);
+    if (!sent || want.some((r) => !sent.includes(r))) return false;
+    return memFor(want);
   },
 };
 
@@ -1029,7 +1121,7 @@ async function start() {
   }
   const res = await fetch('/api/ctr/start', {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-soullink': '1' },
-    // (no ?scale=: the server takes Settings › Emulators › "3DS resolution")
+    // (no ?scale=: the server takes Settings › Play › "3DS resolution")
     body: JSON.stringify({ rom: q.get('rom'), key: q.get('key'), ...(q.get('scale') ? { scale: Number(q.get('scale')) } : {}) }),
   });
   const j = await res.json().catch(() => ({}));
@@ -1037,6 +1129,7 @@ async function start() {
   st.id = j.id;
   st.liveMemory = !!j.liveMemory;
   st.renderer = j.renderer || null;
+  st.scale = [1, 2, 3].includes(j.scale) ? j.scale : 1;
   st.update = j.update || null;
   const stop = () => fetch('/api/ctr/stop', { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json', 'x-soullink': '1' }, body: JSON.stringify({ id: st.id }) }).catch(() => {});
   addEventListener('pagehide', stop);

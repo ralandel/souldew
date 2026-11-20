@@ -1,0 +1,250 @@
+/* The big play view (views/play.mjs): the game and its dock (views/playdock.mjs). The dock sits right of a tall picture
+   and under a wide one (lib/playlayout.mjs); play.mjs hands the measured sizes over as --pic-w / --pic-h (the picture),
+   --stage-w (the picture or the game bar, whichever is wider), --dock-h (the bottom dock) and --bar-h (the bar + gap). */
+
+/* ---- the frame -------------------------------------------------------------------------------------------------- */
+.session.full { padding: 14px 16px; gap: 0; }
+.app-native .session.full { padding-top: 30px; }
+.session.full.is-fs, .app-native .session.full.is-fs, html.platform-win32 .app-native .session.full.is-fs { padding: 12px; }
+/* the sidebar folds while the game fills the page: its button sits at the top left (in the app on the row of the window
+   buttons) – the game never goes under it */
+.frame.rail-folded:not(.app-native) .rail-open ~ .main .session.full:not(.is-fs) { padding-left: 58px; }
+.frame.rail-folded.app-native .rail-open ~ .main .session.full:not(.is-fs) { padding-top: 42px; }
+html.platform-win32 .frame.rail-folded.app-native .rail-open ~ .main .session.full:not(.is-fs) { padding-top: 46px; }
+html.platform-linux .frame.rail-folded.app-native .rail-open ~ .main .session.full:not(.is-fs) { padding-top: 54px; }
+
+.session.full .session-body { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr); }
+.session.full.dock-right.sized .session-body { grid-template-columns: var(--stage-w) var(--dock-w, 300px); justify-content: center; }
+.session.full.dock-right.dock-folded .session-body { grid-template-columns: minmax(0, 1fr) 48px; }
+.session.full.dock-right.dock-folded.sized .session-body { grid-template-columns: var(--stage-w) 48px; }
+.session.full.dock-bottom .session-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--dock-h, 196px); }
+.session.full.dock-bottom.sized .session-body { grid-template-rows: calc(var(--pic-h) + var(--bar-h)) var(--dock-h); align-content: center; }
+.session.full.dock-bottom.dock-folded.sized .session-body { grid-template-rows: calc(var(--pic-h) + var(--bar-h)) 48px; }
+/* folded without the picture growing: the same grid as open, the strip at its start – nothing moves */
+.session.full.dock-right.dock-keep.sized .session-body { grid-template-columns: var(--stage-w) var(--dock-w, 300px); }
+.session.full.dock-bottom.dock-keep.sized .session-body { grid-template-rows: calc(var(--pic-h) + var(--bar-h)) var(--dock-h); }
+.dock-keep .dock.folded.right { justify-self: start; }
+.dock-keep .dock.folded.bottom { align-self: start; }
+
+/* the picture with the game bar right under it, together in the middle of the stage */
+.session.full .session-stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 0; }
+.session.full.sized .session-screen { flex: none; width: var(--pic-w); height: var(--pic-h); }
+.session.full:not(.sized) .session-screen { align-self: stretch; }
+
+/* ---- the dock --------------------------------------------------------------------------------------------------- */
+.dock { min-width: 0; min-height: 0; display: flex; gap: 10px; }
+.dock-sec { display: flex; flex-direction: column; gap: 10px; flex: none; min-width: 0; border-radius: var(--r-l); }
+.dock-head { display: flex; align-items: center; gap: 2px; min-height: 30px; flex: none; min-width: 0; }
+.dock-title { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.dock-title b { font-family: var(--font-pixel); font-size: 15px; font-weight: 400; color: var(--ink); }
+.dock-title .save-age { margin-left: 0; font-size: 11.5px; }
+.dock-head .btn.icon { width: 28px; height: 28px; min-width: 28px; padding: 0; display: grid; place-items: center; }
+.dock-head .btn.small { padding: 4px 9px; }
+.dock-head .dock-fold { color: var(--ink-2); }
+.dock-head .dock-fold:hover { color: var(--ink); }
+.dock-screen { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+
+/* on the right: one column that scrolls, the sections on top of each other */
+.dock.right { flex-direction: column; overflow-y: auto; overflow-x: hidden; padding-right: 2px; }
+.dock.right .dock-sec.team { flex: none; }
+/* wide: two columns, each scrolls on its own – the partners' games in the second */
+.dock.right.wide { flex-direction: row; overflow: hidden; padding-right: 0; gap: 12px; }
+.dock-col { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; overflow-x: hidden; width: 300px; flex: none; }
+.dock-col.side { flex: 1; width: auto; }
+
+/* at the bottom: the sections side by side, as tall as the dock (each scrolls on its own); the row scrolls sideways */
+.dock.bottom { flex-direction: row; align-items: stretch; overflow-x: auto; overflow-y: hidden; }
+.dock.bottom .dock-sec { height: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; }
+.dock.bottom .dock-sec.place { width: 260px; gap: 8px; }
+.dock.bottom .dock-sec.battle { width: 300px; }
+.dock.bottom .dock-sec.team { flex: 1 1 0; min-width: 300px; overflow: hidden; }
+.dock.bottom .dock-sec.team .dock-screen { flex: 1; min-height: 0; padding: 8px 10px 6px; }
+.dock.bottom .dock-sec.partners { overflow: hidden; flex: 0 1 auto; min-width: 0; }
+.dock.bottom .dock-head { min-height: 28px; }
+.dock.bottom .dock-title { flex-direction: row; align-items: baseline; gap: 8px; }
+.dock.bottom .dock-title .save-age { display: none; }
+.dock.bottom .loc-sign { flex: none; }
+/* a solo team: the six in two rows */
+.dock.bottom .team-list { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; background: none; border: 0; }
+.dock.bottom .team-list .tl-head { grid-column: 1 / -1; }
+
+/* "Show" from the attention card: the place lights up for a moment */
+.dock-flash { animation: dock-flash 1.6s ease-out; }
+@keyframes dock-flash { 0%, 30% { box-shadow: 0 0 0 2px var(--tri), 0 0 18px color-mix(in srgb, var(--tri) 40%, transparent); } 100% { box-shadow: 0 0 0 2px transparent; } }
+
+/* folded: a slim strip – one button per section (with its dot), the partners' initials */
+.dock.folded { box-sizing: border-box; align-items: center; gap: 4px; padding: 6px; border-radius: 14px; background: var(--sk-well, #141318); box-shadow: var(--lt-inset, inset 0 1px 2px #0008); }
+.dock.folded.right { flex-direction: column; align-self: start; width: 48px; }
+.dock.folded.bottom { flex-direction: row; justify-self: center; height: 48px; }
+.dock-btn, .dock-who { position: relative; flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px;
+  background: none; color: var(--ink-2); cursor: pointer; font: inherit; }
+.dock-btn:hover, .dock-who:hover { background: var(--shell-3); color: var(--ink); }
+.dock-btn:focus-visible, .dock-who:focus-visible { outline: 2px solid var(--crs); outline-offset: 1px; }
+.dock-unfold { color: var(--ink); background: var(--shell-3); }
+.dock-btn[class*='dot-']::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 2px #141318; }
+.dock-btn.dot-live::after { background: var(--tri); }
+.dock-btn.dot-warn::after { background: var(--warn); }
+.dock-btn.dot-bad::after { background: var(--cir); }
+.dock-who { font-family: var(--font-pixel); font-size: 14px; letter-spacing: -0.5px; }
+.dock-who.who-p2 { color: var(--p2); } .dock-who.who-p3 { color: var(--p3); } .dock-who.who-p4 { color: var(--p4); }
+.dock-who.who-p5 { color: var(--p5); } .dock-who.who-p6 { color: var(--p6); } .dock-who.who-p7 { color: var(--p7); } .dock-who.who-p8 { color: var(--p8); }
+.dock-who::after { content: ''; position: absolute; bottom: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); box-shadow: 0 0 0 2px #141318; }
+.dock-who.on::after { background: var(--tri); }
+.dock-sep { flex: none; background: var(--edge-hi); }
+.dock.folded.right .dock-sep { width: 20px; height: 1px; margin: 3px 0; }
+.dock.folded.bottom .dock-sep { width: 1px; height: 20px; margin: 0 3px; }
+
+/* ---- who is playing (LiveStatus) – also the place for the coming multiplayer status bar -------------------------- */
+.live-status { display: flex; flex-direction: column; gap: 4px; min-width: 0; position: relative; z-index: 1; }
+.live-me { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.live-me .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-others { display: flex; flex-wrap: wrap; gap: 2px 12px; min-width: 0; }
+.live-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; }
+.live-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14ch; }
+.dock.bottom .live-status { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 16px; }
+
+/* ---- partner tiles ---------------------------------------------------------------------------------------------- */
+.ptiles { display: grid; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.ptiles.bottom { display: flex; gap: 8px; height: 100%; }
+.pt { display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; background: #141318; border: 1px solid var(--edge-hi); border-radius: var(--r-l); overflow: hidden;
+  box-shadow: inset 0 1px 0 #ffffff0a; user-select: none; }
+.pt-head { flex: none; box-sizing: border-box; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 9px; min-width: 0; color: var(--ink-2); font-size: 12px; line-height: 1; }
+.pt-head .ps-name { font-size: 12.5px; font-weight: 400; }
+.pt-screen { position: relative; margin: 0 6px 6px; border-radius: 6px; background: #000; overflow: hidden; aspect-ratio: var(--ar, 1.5); box-shadow: inset 0 0 0 1px #000, 0 0 0 1px #ffffff08; }
+.pt-screen img, .pt-screen video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #000; pointer-events: none; image-rendering: pixelated; }
+.ptiles.bottom { min-width: 0; }
+.ptiles.bottom .pt { height: 100%; flex: 0 1 auto; min-width: 96px; width: calc((var(--dock-h, 196px) - 34px) * var(--ar, 1.5) + 14px); }
+.ptiles.bottom .pt-screen { flex: 1; min-height: 0; aspect-ratio: auto; }
+.pt { container-type: inline-size; }
+@container (max-width: 120px) { .pt .ps-age { display: none; } }
+.pt-away { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ptiles.bottom .pt-away { justify-content: flex-end; padding-bottom: 2px; }
+
+/* ---- "something happened": the card over the top edge of the game ------------------------------------------------ */
+.session-stage { position: relative; }
+.attn { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 9; width: min(520px, calc(100% - 24px)); box-sizing: border-box; overflow: hidden;
+  display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--sk-field, #141318) 94%, transparent);
+  border: 1px solid var(--edge-hi); border-left: 3px solid var(--cir); box-shadow: 0 18px 44px #000c; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  animation: attn-in .28s cubic-bezier(.2, .8, .2, 1); }
+.attn.catch { border-left-color: var(--tri); }
+.attn.cap { border-left-color: var(--warn); }
+.attn.battle { border-left-color: var(--crs); }
+.attn-ico { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: color-mix(in srgb, var(--cir) 16%, transparent); color: var(--bad-ink); }
+.attn.catch .attn-ico { background: color-mix(in srgb, var(--tri) 16%, transparent); color: var(--ok-ink); }
+.attn.cap .attn-ico { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn-ink); }
+.attn.battle .attn-ico { background: color-mix(in srgb, var(--crs) 16%, transparent); color: var(--crs); }
+.attn-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.attn-text b { font-size: 14px; font-weight: 600; color: var(--ink); }
+.attn-text span { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attn .attn-show { flex: none; }
+/* how long it stays: a thin line that runs out (stops while the pointer is on the card) */
+.attn-time { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: color-mix(in srgb, var(--ink) 22%, transparent); transform-origin: left; animation: attn-time linear forwards; }
+.attn:hover .attn-time { animation-play-state: paused; }
+@keyframes attn-in { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes attn-time { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* ---- this computer is too slow: a chip in the dock, the details on demand ----------------------------------------- */
+.slow-chip-wrap { position: relative; flex: none; }
+.slow-chip { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 4px 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--warn) 12%, var(--shell-2));
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); color: var(--warn-ink); font-size: 12.5px; }
+.slow-chip svg { flex: none; }
+.slow-chip-main { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slow-chip-main u { text-underline-offset: 2px; }
+/* (as wide as the chip in the side dock – wider, the dock cut it off on the left; free-standing over the game at the bottom) */
+.slow-pop { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0; box-shadow: 0 18px 44px #000c; }
+.dock.bottom .slow-pop { position: fixed; top: auto; right: auto; bottom: calc(var(--dock-h, 196px) + 24px); left: 24px; width: min(420px, 80vw); }
+.slow-pop b { color: var(--ink); }
+
+/* ---- the first time the sidebar folds for the game: how it comes back ---------------------------------------------- */
+.rail-hint { position: fixed; top: 54px; left: 12px; z-index: 58; display: flex; align-items: center; gap: 10px; max-width: 340px; padding: 10px 10px 10px 14px; border-radius: 12px;
+  background: var(--sk-field, #18171c); border: 1px solid var(--edge-hi); box-shadow: var(--lt-pop-shadow, 0 14px 34px #000b); color: var(--ink-2); font-size: 13px; line-height: 1.4; animation: attn-pop .2s ease-out; }
+.rail-hint::before { content: ''; position: absolute; top: -6px; left: 22px; width: 10px; height: 10px; background: var(--sk-field, #18171c); border-left: 1px solid var(--edge-hi); border-top: 1px solid var(--edge-hi); transform: rotate(45deg); }
+.app-native .rail-hint { top: 46px; left: 74px; }
+html.platform-win32 .app-native .rail-hint { left: 6px; }
+@keyframes attn-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* ---- the linked groups along the bottom dock (session-info.mjs GroupTrack) ----------------------------------------- */
+.gstrip-wrap { position: relative; min-width: 0; flex: 1; min-height: 0; display: flex; }
+.gstrip { display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; scroll-behavior: auto; min-width: 0; flex: 1; padding: 2px 2px 8px; scrollbar-width: thin; }
+.gstrip-wrap.fade-l .gstrip { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px); mask-image: linear-gradient(to right, transparent 0, #000 28px); }
+.gstrip-wrap.fade-r .gstrip { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 28px); mask-image: linear-gradient(to left, transparent 0, #000 28px); }
+.gstrip-wrap.fade-l.fade-r .gstrip { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); }
+.gstrip-arrow { position: absolute; top: 50%; z-index: 2; display: grid; place-items: center; width: 26px; height: 44px; margin-top: -26px; padding: 0; border: 1px solid var(--edge-hi);
+  border-radius: 10px; background: color-mix(in srgb, var(--sk-field, #141318) 92%, transparent); color: var(--ink); box-shadow: var(--lt-pop-shadow, 0 6px 16px #000a); cursor: pointer; }
+.gstrip-arrow.l { left: -4px; } .gstrip-arrow.r { right: -4px; }
+.gstrip-arrow.l svg { transform: rotate(90deg); } .gstrip-arrow.r svg { transform: rotate(-90deg); }
+.gstrip-arrow:hover { background: var(--shell-3); }
+.gtrack-sum { color: var(--lcd-4); white-space: nowrap; }
+.gtrack-empty { position: relative; z-index: 1; }
+.gwho { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-family: var(--font-pixel); font-size: 11px; line-height: 1; color: #121116; position: relative; z-index: 1; }
+.gwho.who-bg-p1 { background: var(--p1); } .gwho.who-bg-p2 { background: var(--p2); } .gwho.who-bg-p3 { background: var(--p3); } .gwho.who-bg-p4 { background: var(--p4); }
+.gwho.who-bg-p5 { background: var(--p5); } .gwho.who-bg-p6 { background: var(--p6); } .gwho.who-bg-p7 { background: var(--p7); } .gwho.who-bg-p8 { background: var(--p8); }
+.gmon { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.gmon-top { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.gmon-name { font-family: var(--font-pixel); font-size: 11.5px; font-weight: 400; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.gmon-lv { flex: none; margin-left: auto; font-size: 10.5px; color: var(--ink-2); }
+.gmon-sub { font-size: 10.5px; color: var(--ink-3); line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gmon .hp { height: 4px; margin-top: 0; }
+.gtag { flex: none; margin-left: auto; padding: 0 6px; border-radius: 999px; font-size: 10px; line-height: 15px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.gtag.here { background: var(--tri); color: #0d1a14; }
+.gtag.latest { background: color-mix(in srgb, var(--crs) 80%, #000); color: #fff; }
+
+/* the tracker table: players as rows (names once, on the left), groups as columns with a link line through each */
+.gtable { position: relative; z-index: 1; display: flex; flex: 1; min-height: 0; gap: 6px; }
+.gt-names { flex: none; display: grid; grid-template-rows: 22px repeat(var(--n), 34px); row-gap: 3px; padding-top: 2px; max-width: 120px; }
+.gt-corner { display: flex; align-items: center; }
+.gt-name { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; }
+.gt-name b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.gt-col { position: relative; flex: none; width: 138px; display: grid; grid-template-rows: 22px repeat(var(--n), 34px); row-gap: 3px; padding: 0 5px; border-radius: 9px; background: var(--shell-2);
+  border: 1px solid var(--edge); box-sizing: border-box; }
+.gt-head { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 11px; color: var(--ink); font-weight: 500; }
+.gt-head svg { flex: none; color: var(--tri); }
+.gt-area { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-head .gtag { padding: 0 4px; font-size: 9px; }
+/* the link: a line down the column through every member's bead */
+.gt-col::before { content: ''; position: absolute; left: 9px; top: 36px; bottom: 16px; border-left: 2px solid var(--tri); opacity: .75; }
+.gt-cell { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; padding-left: 13px; }
+.gt-bead { position: absolute; left: 0; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 0 2px var(--shell-2); z-index: 1; }
+.gt-cell .sprite img { width: 30px; height: 30px; margin: -2px -3px; }
+.gt-cell .gmon-name { font-size: 10.5px; }
+.gt-cell.open .gt-bead, .gt-cell.failed .gt-bead { background: var(--shell-2); box-shadow: 0 0 0 2px var(--acc); width: 8px; height: 8px; margin-top: -4px; left: 1px; }
+.gt-cell.open .gmon-sub, .gt-cell.failed .gmon-sub { padding: 3px 6px; border: 1px dashed var(--edge-hi); border-radius: 6px; }
+.gt-cell.failed .gmon-sub { border-style: solid; border-color: color-mix(in srgb, var(--cir) 35%, transparent); color: var(--bad-ink); }
+.gt-cell.boxed .sprite, .gt-cell.boxed .gmon { opacity: .6; }
+.gt-cell.fnt { background: color-mix(in srgb, var(--cir) 12%, transparent); border-radius: 6px; }
+.gt-cell.dead .sprite img { filter: grayscale(1) brightness(.75); }
+.gt-cell.dead .gmon-name { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--cir) 70%, transparent); }
+.gt-col.waiting::before { border-left-style: dashed; border-color: var(--warn); }
+.gt-col.waiting .gt-head svg { color: var(--warn); }
+.gt-col.dead { background: color-mix(in srgb, var(--cir) 9%, var(--shell-2)); border-color: color-mix(in srgb, var(--cir) 35%, transparent); }
+.gt-col.dead::before { border-left-style: dashed; border-color: var(--cir); }
+.gt-col.dead .gt-head, .gt-col.dead .gt-head svg { color: var(--bad-ink); }
+.gt-col.dead .gt-bead { box-shadow: 0 0 0 2px color-mix(in srgb, var(--cir) 9%, var(--shell-2)); }
+.gt-col.failed { opacity: .8; }
+.gt-col.failed::before { border-left-style: dotted; border-color: var(--ink-3); }
+.gt-col.marked { border-color: color-mix(in srgb, var(--tri) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tri) 45%, transparent), 0 0 16px color-mix(in srgb, var(--tri) 18%, transparent); }
+.gt-col.marked.dead { border-color: color-mix(in srgb, var(--cir) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--cir) 45%, transparent); }
+.gt-names .gwho { width: 16px; height: 16px; font-size: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .attn, .rail-hint, .dock-flash { animation: none; }
+  .attn-time { display: none; }
+}
+.gstrip:focus-visible { outline: 2px solid var(--crs); outline-offset: 2px; border-radius: 10px; }
+
+/* ---- a link session (views/linkplay.mjs LinkBar): in the dock while the game is big, over the game when it asks and
+   the dock is folded ------------------------------------------------------------------------------------------------ */
+.link-bar.inline { position: static; transform: none; z-index: auto; max-width: none; box-shadow: none; flex-wrap: wrap; align-items: flex-start; gap: 8px; padding: 10px; }
+.link-bar.inline > svg { flex: none; margin-top: 2px; color: var(--tri); }
+.link-bar.inline > .grow { flex: 1 1 calc(100% - 30px); min-width: 0; line-height: 1.35; }
+.link-bar.inline > .btn { flex: none; }
+.link-bar.inline > .btn:first-of-type { margin-left: 24px; }
+.link-bar.inline[data-phase='invited'], .link-bar.stage[data-phase='invited'] { border-color: color-mix(in srgb, var(--tri) 55%, var(--edge-hi)); }
+.dock.bottom .dock-sec.link { width: 280px; }
+.link-bar.stage { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10; width: min(560px, calc(100% - 24px)); max-width: none; box-sizing: border-box;
+  border-left: 3px solid var(--tri); box-shadow: 0 18px 44px #000c; animation: attn-pop .2s ease-out; }
+.link-bar.stage ~ .attn { top: 84px; }
+/* the Shared World switch at the end of the live status (bottom dock: on the same row, to the right) */
+.live-status .world-toggle { align-self: flex-start; margin-left: -4px; font-size: 12.5px; }
+.dock.bottom .live-status .world-toggle { margin-left: auto; align-self: center; }
+@media (prefers-reduced-motion: reduce) { .link-bar.stage { animation: none; } }

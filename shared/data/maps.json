@@ -123,6 +123,15 @@
    "musicSize": 2,
    "musicSource": "pokeemerald.sym \"03000f48 sCurrentMapMusic\""
   },
+  "emerald_de": {
+   "gen": 3,
+   "kind": "gen3",
+   "mapHeaderAddr": "0x02037318",
+   "source": "gMapHeader 0x02037318: the English Emerald’s – the German ROM’s 142 load sites of gMapHeader name it (literal-pool alignment with the English ROM, see addresses.json emerald_de); checked live in the German Emerald (Oldale Town, Route 101)",
+   "musicAddr": "0x03000F48",
+   "musicSize": 2,
+   "musicSource": "sCurrentMapMusic 0x03000F48: the English Emerald’s – 48 load sites in the German ROM name it (literal-pool alignment)"
+  },
   "firered_us": {
    "gen": 3,
    "kind": "gen3",

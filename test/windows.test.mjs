@@ -404,7 +404,7 @@ test('Mac wording only where the page picks texts by platform', () => {
   const macish = Object.keys(en).filter((k) => /⌘|⇧|⌥|\bMacs?\b|Finder|macOS|Applications|Apple|disk image|Library folder/.test(en[k]));
   assert.deepEqual(macish.sort(), [...SWITCHED, ...MAC_STATES].sort());
   const root = fileURLToPath(new URL('../web/', import.meta.url));
-  const files = ['app.mjs', ...readdirSync(join(root, 'views')).map((f) => `views/${f}`), ...readdirSync(join(root, 'lib')).map((f) => `lib/${f}`)];
+  const files = ['app.mjs', ...readdirSync(join(root, 'views'), { recursive: true }).filter((f) => f.endsWith('.mjs')).map((f) => `views/${f}`), ...readdirSync(join(root, 'lib'), { recursive: true }).filter((f) => f.endsWith('.mjs')).map((f) => `lib/${f}`)];
   for (const f of files) {
     const src = readFileSync(join(root, f), 'utf8');
     for (const key of SWITCHED) {

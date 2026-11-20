@@ -18,6 +18,7 @@ import { romCaps } from '../../shared/live/romcaps.mjs';
 import { gbWramShift } from '../../shared/live/romwram.mjs';
 import { findEntry } from '../../shared/live/parse.mjs';
 import { identifyRom } from '../../shared/romid.mjs';
+import { isQuetzal } from '../../shared/live/quetzal.mjs';
 import { crc32 } from '../../shared/checksum.mjs';
 import { resolveId } from './library.mjs';
 import { isCtrExt } from '../../shared/romid.mjs';
@@ -25,7 +26,7 @@ import { identifyCtr } from '../../shared/ctr.mjs';
 import { ctrZonePlaces } from '../../shared/live/ctrzones.mjs';
 import { musicIndex } from '../../shared/ctr/musicindex.mjs';
 
-const VERSION = 24; // bump when romData() / ctrData() change what they find or the shape of the result (13: types and level caps from the ROM, 14: 3DS zone tables, 15: their header, 16: Gen 3 hacks with moved RAM, badge flags by the leaders' order, 17: Black/White zone headers, 18: catch rates with the types, the Game Boy enemy's status / catch rate / battle type moved with a hack's RAM, 19: the Game Boy map headers, Gen 3 map headers, Black 2/White 2 zone headers – the place sign checks the game's copy of the current map's header against them, 20: Yellow's map headers (249 maps) and its memory table entry found from its ROM header, 21: Gen 5 forms' types, 22: a 3DS game's music streams – shared/ctr/musicindex.mjs, 23: GBA species' abilities and the ability names – romtypes.mjs gbaAbilities, 24: an expanded GBA engine's species after a gap of left-out ones and its Megas / Primal forms – romspecies.mjs gen3Forms)
+const VERSION = 25; // bump when romData() / ctrData() change what they find or the shape of the result (13: types and level caps from the ROM, 14: 3DS zone tables, 15: their header, 16: Gen 3 hacks with moved RAM, badge flags by the leaders' order, 17: Black/White zone headers, 18: catch rates with the types, the Game Boy enemy's status / catch rate / battle type moved with a hack's RAM, 19: the Game Boy map headers, Gen 3 map headers, Black 2/White 2 zone headers – the place sign checks the game's copy of the current map's header against them, 20: Yellow's map headers (249 maps) and its memory table entry found from its ROM header, 21: Gen 5 forms' types, 22: a 3DS game's music streams – shared/ctr/musicindex.mjs, 23: GBA species' abilities and the ability names – romtypes.mjs gbaAbilities, 24: an expanded GBA engine's species after a gap of left-out ones and its Megas / Primal forms – romspecies.mjs gen3Forms, 25: Pokémon Quetzal – its own party struct (`layout3`), place names, item names and one species table, not two)
 const memo = new Map(); // ROM id → { result, failedAt? }
 /** A scan that failed is tried again after this long (a file a scanner held, a drive that slept). */
 const RETRY_FAILED_MS = (process.env.NODE_TEST_CONTEXT && Number(process.env.SLS_ROMDATA_RETRY_MS)) || 30000;
@@ -97,7 +98,10 @@ export function romData(u8, sharedDir) {
   // the header (system, game code, title): which memory table entry reads it (shared/live/features.mjs)
   const h = identifyRom(u8.subarray(0, 0x200));
   const header = h?.system ? { system: h.system, code: h.code || '', title: h.title || '' } : null;
-  return { data, species, wram: vanilla ? null : gbShift(u8, o), gbMaps: gbMaps(u8, o), types, caps, capsWhy: caps ? null : c.why || null, ...own, header, vanilla };
+  // an engine whose party struct isn't the base game's (Pokémon Quetzal: 104 bytes – shared/live/quetzal.mjs): the live
+  // readers convert it (parse.mjs LiveTables.withRom)
+  const layout3 = isQuetzal(header) ? 'quetzal' : null;
+  return { data, species, wram: vanilla ? null : gbShift(u8, o), gbMaps: gbMaps(u8, o), types, caps, capsWhy: caps ? null : c.why || null, ...own, header, vanilla, layout3 };
 }
 
 /**
@@ -188,7 +192,7 @@ export function ctrData(file) {
 export const isCtrFile = (file) => Boolean(file) && isCtrExt(extname(file).slice(1));
 
 /** What romDataFor finds when there's nothing to find – also the list of fields the disk cache must give back. */
-export const ROMDATA_NONE = Object.freeze({ data: null, species: null, wram: null, gbMaps: null, types: null, caps: null, capsWhy: null, items: null, moves: null, header: null, vanilla: null, music: null });
+export const ROMDATA_NONE = Object.freeze({ data: null, species: null, wram: null, gbMaps: null, types: null, caps: null, capsWhy: null, items: null, moves: null, header: null, vanilla: null, music: null, layout3: null });
 /** A disk-cache entry back into romDataFor's result (every field of ROMDATA_NONE – a missing one would be lost on the
  * next start, as the own types of Too Many Types were). */
 export const fromRomCache = (v) => Object.fromEntries(Object.keys(ROMDATA_NONE).map((k) => [k, v[k] ?? null]));

@@ -112,7 +112,7 @@ Every data endpoint takes `?lang=en|de|fr|es|it` for Pokémon, item and place na
 
 Field notes:
 
-- `run.mode`: `soullink` (2–4 players) or `nuzlocke` (one player). `run.gen`: 1–5. `run.status`: `null` while the
+- `run.mode`: `soullink` (2–4 players), `nuzlocke` (one player) or `together` (3.0, Play together: 2–4 players in their own games, no challenge – no encounters, deaths or a status; teams, badges and the log as usual). `run.gen`: 1–5. `run.status`: `null` while the
   run is on, else `{ state: "failed" | "won" | "ended", reason, at, by }` – `reason` when souldew ended it: `wipe`,
   `blackout`, `deathless` or `lives`.
 - `run.rules`: the run's rules with souldew's defaults filled in (SoulLink: `typeClause`, `dupes`, `shinyClause`,
@@ -145,7 +145,7 @@ Field notes:
   With the rule "a missed encounter costs the whole pair/group" off (`run.rules.failKillsPair: false`), the
   others' catches of a `failed` area stay usable – `results` shows whose they are.
 - `graveyard[]`: dead links, newest first, with the killer when souldew saw the battle.
-- `feed[]`: the 20 newest log entries (`catch`, `death`, `badge`, `evolve`, …).
+- `feed[]`: the 20 newest log entries (`catch`, `death`, `badge`, `evolve`, …). A `linkBattle` entry also has `winners`, `losers`, `draw`, `battles` and `wager` (as the `link-battle` event), a `raid` entry `won`, `players`, `mvp`, `survivors`, `ms` and `size` (as the `raid` event).
 - Times are milliseconds since 1970 (`Date.now()`).
 
 ## Live events (Server-Sent Events)
@@ -179,6 +179,8 @@ needed; `hello` with `run: null` means there is no run any more. Every event's d
 | `battle-end` | `slot, kind, species, name` |
 | `legendary` | Same as `encounter`, for a wild legendary or mythical |
 | `coffee` | The coffee pop-up (below) |
+| `link-battle` | `winners: [slots], losers: [slots], draw, battles, wager` – a link battle between the players (3.0) once every player's souldew read the same result; `wager`: the in-game money (₽) the losers paid, 0 for none |
+| `raid` | `won, players: [slots], mvp, survivors: [slots], ms, size` – a raid is over (3.0): the players fought one trainer with a shared HP pool; `mvp`: who took the most off the pool, `survivors`: whose team still stood, `ms`: how long it took, `size`: the trainer's Pokémon |
 
 `mon` is `{ slot, key, species, name, nickname, level, shiny, sprites }`.
 

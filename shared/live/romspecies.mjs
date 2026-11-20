@@ -57,6 +57,9 @@ export function gen3SpeciesNames(rom, charset) {
       for (let i = 1; o + (i + 1) * stride <= rom.length; i++) {
         const s = decode(rom, o + i * stride, stride, table);
         if (!okName(s)) break;
+        // a second table right behind this one (Pokémon Quetzal keeps another copy of its 1,528 names there): its
+        // "??????????" head ends this one – its Pokémon would be read as species the game doesn't have
+        if (names.length > 1 && s === '??????????' && decode(rom, o + (i + 1) * stride, stride, table) === names[0]) break;
         names.push(s);
       }
       if (names.length >= 380 && (!found || names.length > found.names.length - 1)) found = { offset: o, stride, names: ['', ...names] };
@@ -350,10 +353,43 @@ export function gen3ItemNames(rom, charset) {
       if (!best || names.length > best.names.length) best = { offset: o, names };
       o += 44 * names.length - 4;
     }
-    return best;
+    return best || itemNameArray(rom, table, Q);
   } catch {
     return null;
   }
+}
+
+/**
+ * Item names kept apart from the item data, in an array of their own (Pokémon Quetzal): 20 bytes per name, zero after
+ * the terminator, "????????" for item 0, then "Poké Ball", "Great Ball", "Ultra Ball", "Master Ball" … – the item
+ * number is the index (measured: the Poké Balls in its bag are item 1). Quetzal keeps one array per language, English
+ * first (then Spanish, Portuguese …, some longer): the first one found is the game's. → { offset, names } or null.
+ */
+const ITEM_NAME = 20;
+function itemNameArray(rom, table, Q) {
+  for (let o = 0; o + ITEM_NAME * 300 <= rom.length; o += 4) {
+    if (rom[o] !== Q || rom[o + 8] !== 0xff) continue;
+    let k = 1;
+    while (k < 8 && rom[o + k] === Q) k++;
+    if (k < 8 || !rom.subarray(o + 9, o + ITEM_NAME).every((b) => b === 0)) continue;
+    const names = [''];
+    let bad = 0;
+    for (let i = 1; i < 4096 && o + (i + 1) * ITEM_NAME <= rom.length; i++) {
+      const e = o + i * ITEM_NAME;
+      const slot = rom.subarray(e, e + ITEM_NAME);
+      // (the next language's array starts with its own "????????")
+      if (slot[0] === Q && slot[7] === Q && slot[8] === 0xff) break;
+      const end = slot.indexOf(0xff);
+      // an unused item number is all zeros (Quetzal's TM51 … between TM50 and the items after them)
+      const s = slot.every((b) => b === 0) ? '' : end >= 0 && slot.subarray(end + 1).every((b) => b === 0) ? terminated(rom, e, ITEM_NAME, table) : null;
+      bad = s === null ? bad + 1 : 0;
+      if (bad > 8) break;
+      names.push(s);
+    }
+    while (names.length > 1 && !names[names.length - 1]) names.pop();
+    if (names.length >= 300) return { offset: o, names };
+  }
+  return null;
 }
 
 /**

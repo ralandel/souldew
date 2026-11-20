@@ -1,6 +1,6 @@
 {
   "name": "souldew-renaissance",
-  "version": "2.8.3-r.3",
+  "version": "3.0.0-r.1",
   "private": true,
   "description": "souldew Renaissance – a souldew build for big groups: Pokémon SoulLinks and Nuzlockes with a built-in emulator, live sync through its own server and a game library",
   "license": "GPL-3.0-or-later",
@@ -24,9 +24,9 @@
     "jre:linux": "node scripts/fetch-jre.mjs x64",
     "ctr": "node scripts/build-ctr.mjs",
     "native": "node scripts/build-native.mjs",
-    "dist": "node scripts/fetch-jre.mjs arm64 && node scripts/build-ctr.mjs --check && node scripts/build-native.mjs --check && CUSTOM_DMGBUILD_PATH=scripts/dmgbuild-wrapper.mjs electron-builder --mac dmg --arm64",
-    "dist:win": "node scripts/fetch-jre.mjs x64 && node scripts/build-ctr.mjs --check && node scripts/build-native.mjs --check && electron-builder --win nsis --x64",
-    "dist:linux": "node scripts/fetch-jre.mjs x64 && node scripts/build-ctr.mjs --check && node scripts/build-native.mjs --check && electron-builder --linux AppImage deb --x64",
+    "dist": "node scripts/check-pinned-keys.mjs && node scripts/fetch-jre.mjs arm64 && node scripts/build-ctr.mjs --check && node scripts/build-native.mjs --check && CUSTOM_DMGBUILD_PATH=scripts/dmgbuild-wrapper.mjs electron-builder --mac dmg --arm64",
+    "dist:win": "node scripts/check-pinned-keys.mjs && node scripts/fetch-jre.mjs x64 && node scripts/build-ctr.mjs --check && node scripts/build-native.mjs --check && electron-builder --win nsis --x64",
+    "dist:linux": "node scripts/check-pinned-keys.mjs && node scripts/fetch-jre.mjs x64 && node scripts/build-ctr.mjs --check && node scripts/build-native.mjs --check && electron-builder --linux AppImage deb --x64",
     "release": "node scripts/release.mjs",
     "matrix": "node scripts/rom-matrix.mjs --live"
   },
@@ -125,6 +125,7 @@
           "to": "tools/native/darwin-arm64",
           "filter": [
             "retrohost*",
+            "linkhost*",
             "*_libretro.*",
             "SOURCES.txt",
             "LICENSE-*"
@@ -180,6 +181,7 @@
           "to": "tools/native/win32-x64",
           "filter": [
             "retrohost*",
+            "linkhost*",
             "*_libretro.*",
             "SOURCES.txt",
             "LICENSE-*"
@@ -247,6 +249,7 @@
           "to": "tools/native/linux-x64",
           "filter": [
             "retrohost*",
+            "linkhost*",
             "*_libretro.*",
             "SOURCES.txt",
             "LICENSE-*"

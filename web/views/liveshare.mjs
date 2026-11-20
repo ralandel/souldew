@@ -1,5 +1,5 @@
 // "Share to Discord" (Live runs): the button on big moments, "Post to the Hall of Fame" after a won run and the block
-// in Settings › Discord.
+// in Settings › Online › Discord.
 // The page never holds the Discord token – it asks the local server (web/lib/liveshare.mjs → /api/liveruns).
 import { html, useState, useEffect } from '/vendor/htm-preact.mjs';
 import { useApp, openExternal } from '../lib/ui.mjs';
@@ -9,6 +9,7 @@ import { api } from '../lib/api.mjs';
 import { normalizeCode } from '/shared/liveruns.mjs';
 import { useLiveRuns, refreshLiveRuns, setLiveRunsState, shareEvent, shareErrorText, endEvent, cardModel } from '../lib/liveshare.mjs';
 import { renderCardPng } from '../lib/livecard.mjs';
+import { settingsLink } from '../lib/settingsindex.mjs';
 import { spriteUrl } from '../lib/data.mjs';
 import { EDITION } from '/shared/edition.mjs';
 
@@ -63,7 +64,7 @@ export function ShareButton({ event, small = false }) {
     </span>`;
   }
   if (err?.error === 'token') {
-    return html`<button class=${cls} onClick=${() => navigate('settings')} title=${shareErrorText(err)}><${DiscordGlyph} />${t('live.connectAgain', 'Connect again')}</button>`;
+    return html`<button class=${cls} onClick=${() => navigate('settings', settingsLink('discord'))} title=${shareErrorText(err)}><${DiscordGlyph} />${t('live.connectAgain', 'Connect again')}</button>`;
   }
   const blocked = err && ['blocked', 'not-member'].includes(err.error);
   const hint = event.kind === 'victory' ? t('hof.hint', 'Posts your winning team in #hall-of-fame on the souldew Discord.') : t('live.shareHint', 'Posts a card of this moment in #live-runs on the souldew Discord.');
@@ -150,10 +151,9 @@ export function HallOfFame({ status, compact = false, onLeave }) {
           <${Trophy} />${busy ? t('live.sharing', 'Sharing …') : err?.error === 'rate' ? t('live.retryIn', 'Try again in {n} min', { n: Math.max(1, Math.ceil((err.retryAfter || 60) / 60)) }) : t('hof.post', 'Post to the Hall of Fame')}</button>`
       : html`<button class="btn ghost small" onClick=${() => {
         onLeave?.();
-        navigate('settings');
-        setTimeout(() => document.getElementById('set-discord')?.scrollIntoView({ block: 'start' }), 150);
+        navigate('settings', settingsLink('discord'));
       }}>${t('hof.connect', 'Connect Discord …')}</button>`;
-  const hintText = t('hof.connectHint', 'To share it, link souldew once: type /live connect in the souldew Discord and enter the code in Settings › Discord › Live runs.');
+  const hintText = t('hof.connectHint', 'To share it, link souldew once: type /live connect in the souldew Discord and enter the code in Settings › Online › Discord.');
   if (compact) {
     return html`<div class="hof-inline">
       ${action}
@@ -172,7 +172,7 @@ export function HallOfFame({ status, compact = false, onLeave }) {
   </div>`;
 }
 
-/** Settings › Discord › Live runs: link with the code from /live connect, see the account and today's posts, unlink. */
+/** Settings › Online › Discord (live runs): link with the code from /live connect, see the account and today's posts, unlink. */
 export function LiveRunsSettings() {
   if (!LIVE_RUNS) return null;
   const { toast } = useApp();

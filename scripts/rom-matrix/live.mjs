@@ -117,6 +117,8 @@ async function runOne(url, t) {
     const died = new Promise((_, rej) => win.webContents.once('render-process-gone', (_e, d) => rej(new Error(`renderer gone: ${d.reason}`))));
     const out = await Promise.race([win.webContents.executeJavaScript(`window.__rm.run(${JSON.stringify({ plan: t.plan, romSrc: rom, timeoutMs: job.timeoutMs || 600000, attempt: job.attempt || 1 })})`), died]);
     Object.assign(res, out);
+    // which player ran it (the fast player's core, or "souldew engine (…)" – the matrix compares the two)
+    res.player = await win.webContents.executeJavaScript('window.__emu?.perf?.().info?.core || null').catch(() => null);
     for (const s of out.shots || []) {
       const p = join(job.outDir, `${t.key}-${s.name}.png`);
       writeFileSync(p, Buffer.from(s.png, 'base64'));

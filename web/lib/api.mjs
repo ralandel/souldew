@@ -13,6 +13,8 @@ async function request(method, url, body) {
   if (!res.ok) {
     const err = new Error(serverErrorText(data && typeof data === 'object' ? data : {}, res.status));
     err.code = data?.code;
+    err.vars = data?.vars;
+    err.status = res.status;
     // diagnostics: which call failed and how (the randomizer's stack frames among it – vars.trace, server/lib/toolchain.mjs)
     // (a file error also which file, reading or writing, and the free space then – toolchain.mjs ioFailure)
     const io = data?.vars?.where !== undefined ? { where: data.vars.where, op: data.vars.op ?? null, free: data.vars.free ?? null } : {};
@@ -26,7 +28,8 @@ export const api = {
   get: (url) => request('GET', url),
   post: (url, body = {}) => request('POST', url, body),
   put: (url, body) => request('PUT', url, body),
-  del: (url) => request('DELETE', url),
+  del: (url, body) => request('DELETE', url, body),
+  patch: (url, body) => request('PATCH', url, body),
 };
 
 /** Server-sent events with auto-reconnect (EventSource does that natively). */

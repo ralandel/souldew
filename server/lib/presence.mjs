@@ -4,7 +4,7 @@
 // is on (config.presence !== false), the local server sends the bot one small JSON every minute:
 //   POST <the bot>/presence  { sid, system, mode, v }   (the bot = LIVE_RUNS_URL, server/lib/liveruns.mjs)
 //   sid    a random id made when the game starts – new for every game, never written to disk, tied to nothing
-//   system gb | gba | nds | 3ds          mode solo | nuzlocke | soullink          v the app version
+//   system gb | gba | nds | 3ds          mode solo | nuzlocke | soullink | together    v the app version
 // and { sid, stop: true } when the game closes, the setting is switched off or the app quits. No name, no account,
 // no game title, no run data, no ROM, no file path. When the bot can't be reached nothing happens (no retries, no
 // error, no log line) – the next heartbeat simply tries again.
@@ -12,13 +12,16 @@ import { randomBytes } from 'node:crypto';
 import { liveBases, souldewVersion } from './liveruns.mjs';
 
 export const SYSTEMS = { gb: 'gb', gbc: 'gb', gba: 'gba', nds: 'nds', '3ds': '3ds' };
-export const MODES = ['solo', 'nuzlocke', 'soullink'];
+export const MODES = ['solo', 'nuzlocke', 'soullink', 'together'];
 export const EVERY_MS = 60_000; // what the page uses; the bot may answer a longer `every`
 const MIN_GAP_MS = 30_000; // the same heartbeat again sooner (a reload, two pages) is not sent
 const QUIET_MS = 3 * 60_000; // no word from the page this long (crashed, closed): the game counts as closed
 const TIMEOUT_MS = 8000;
 
-/** The page's report → { system, mode } or null (not a game souldew counts). */
+/**
+ * The page's report → { system, mode } or null (not a game souldew counts). A Play together game is counted as
+ * 'together' (the bot takes it since 19 Nov 2026).
+ */
 export function presenceOf(body) {
   const system = SYSTEMS[body?.system];
   const mode = MODES.includes(body?.mode) ? body.mode : null;

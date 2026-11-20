@@ -18,6 +18,7 @@ import { TurboMixer } from '../web/lib/turboaudio.mjs';
 import { parseRomfs, romReadPayload, bestLag, RomMusic } from '../web/lib/rommusic.mjs';
 import { cciWithRomfs, romfsLevel3 } from './fixtures/ctr.mjs';
 import { makeCstm, makeBcsar, makeAdts, ciaAround, refDsp, rng } from './fixtures/rommusic.mjs';
+import { fileURLToPath } from 'node:url';
 
 const reader = (u8) => (o, n) => (o >= u8.length ? new Uint8Array(0) : u8.subarray(o, Math.min(u8.length, o + n)));
 
@@ -873,7 +874,7 @@ test('the music log: a stream that restarts on every read is told once, then sum
 // with the priming taken off (decodeAac).
 const ffmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 function aacPaths() {
-  const src = new URL('./fixtures/rommusic-music.aac', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  const src = fileURLToPath(new URL('./fixtures/rommusic-music.aac', import.meta.url));
   const dec = (args) => {
     const r = spawnSync('ffmpeg', ['-v', 'error', '-i', src, ...args, '-f', 'f32le', '-ac', '2', '-'], { maxBuffer: 64 << 20 });
     assert.equal(r.status, 0, String(r.stderr));

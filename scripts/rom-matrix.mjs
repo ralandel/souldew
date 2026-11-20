@@ -25,8 +25,18 @@
 //   --states      keep each game's save state after its plan (<out>/shots/<key>.state)
 //   --battery     keep each game's battery save after its plan (<out>/shots/<key>.sav – never commit it)
 //   --native      play in the fast player (playernative.html – the native host, tools/native) instead of player.html
+//   --engine      the fast player on the souldew engine (Settings › "souldew engine (beta)": the link host plays the
+//                 game) – implies --native; each result says which player ran it ("player")
 //   --plan <json> play this plan file instead of the game's own (with --only: a probe for one game)
 //   --saves <dir> where saves for the plans that start from one are, too: <patch or ROM name>.sav or <hack id>.sav
+//   --cheats      the play screen's cheats instead of the whole plan: the plan up to its first team (its first check of
+//                 a party), then every cheat of shared/live/cheats.mjs with every amount, each checked through a read
+//                 of its own (page.mjs `cheats` step; the results under "cheats" in live.json – which games get onto
+//                 the checked lists in cheats.mjs). `--cheat-steps <json>`: steps to run after it (open the bag …);
+//                 `--cheats-at <check>`: after that check of the plan instead (one out of battle: afterbattle …);
+//                 `--cheats-busy` (Gen 3): first a cheat with the start menu open – refused ('busy'), nothing written.
+//                 In the fast player (--native) each write is confirmed by the host and read back after e.fresh(), as
+//                 the play screen does ("fast" in the result)
 // Zipped ROMs are unpacked one at a time when they are needed and deleted again right after (a DS ROM is up to 512 MB);
 // the same ROM found twice (the same CRC32) is checked once.
 // A plan with "save": true starts from a save instead of a new game: <name>.sav next to the patch (or the ROM) of the
@@ -51,7 +61,7 @@ const opt = (n, d = null) => {
 };
 // ROM folders (or single files): every argument that is neither an option nor an option's value (any order – `npm run
 // matrix -- <dir>` puts them after --live)
-const VALUED = new Set(['--only', '--out', '--tools', '--attempts', '--plan', '--saves']);
+const VALUED = new Set(['--only', '--out', '--tools', '--attempts', '--plan', '--saves', '--cheat-steps', '--cheats-at']);
 const sources = [];
 for (let i = 0; i < args.length; i++) {
   if (VALUED.has(args[i])) i++;
@@ -331,8 +341,9 @@ async function runLive(list) {
     return near.find((f) => f && existsSync(f)) || null;
   };
   const override = opt('plan') ? JSON.parse(readFileSync(resolve(opt('plan')), 'utf8')) : null;
+  const cheatSteps = opt('cheat-steps') ? JSON.parse(readFileSync(resolve(opt('cheat-steps')), 'utf8')) : [];
   const jobs = list.map((r) => {
-    const plan = override || planFor(r);
+    const plan = flag('cheats') ? cheatPlan(override || planFor(r), cheatSteps, opt('cheats-at'), flag('cheats-busy')) : override || planFor(r);
     if (plan?.save && !saveFor(r)) {
       r.liveResult = { skipped: `the plan starts from a save: put one next to the ${r.patch ? 'patch' : 'ROM'} (${basename(r.patch || r.name, extname(r.patch || r.name))}.sav)` };
       return null;
@@ -343,7 +354,7 @@ async function runLive(list) {
   if (!jobs.length) return;
   const dataDir = join(out, 'data');
   mkdirSync(dataDir, { recursive: true });
-  writeFileSync(join(dataDir, 'config.json'), JSON.stringify({ onboarded: true, lang: 'en', playerName: 'Matrix', libraryFolders: [...sources.map((p) => (statSync(p).isDirectory() ? p : dirname(p))), work] }));
+  writeFileSync(join(dataDir, 'config.json'), JSON.stringify({ onboarded: true, lang: 'en', playerName: 'Matrix', libraryFolders: [...sources.map((p) => (statSync(p).isDirectory() ? p : dirname(p))), work], nativeEngine: flag('engine') }));
   const electron = (await import('electron')).default;
   log(`live: ${jobs.length} game(s) in souldew's emulator …`);
   const all = [];
@@ -354,7 +365,7 @@ async function runLive(list) {
     rmSync(resultFile, { force: true });
     materialize(r); // (one big ROM on disk at a time: unpacked or patched for its run, deleted after it)
     const job = {
-      dataDir, outDir: join(out, 'shots'), resultFile, show: flag('show'), native: flag('native'), battery: flag('battery'), saveStates: flag('states'), timeoutMs: 60 * 60000,
+      dataDir, outDir: join(out, 'shots'), resultFile, show: flag('show'), native: flag('native') || flag('engine'), battery: flag('battery'), saveStates: flag('states'), timeoutMs: 60 * 60000,
       targets: [{ key, file: r.file, system: r.system, core: plan.core || '', ...(plan.save ? { save: saveFor(r) } : {}), plan: { ...plan, header: r.header, gameId: r.gameId || r.base?.gameId || null } }],
     };
     writeFileSync(join(out, 'job.json'), JSON.stringify(job));
@@ -387,6 +398,18 @@ async function runLive(list) {
     log(`    party ${mark(L.party)} items ${mark(L.items)} place ${mark(L.place)} battle ${mark(L.battle)} catch ${mark(L.catch)} types ${mark(L.types)} cap ${mark(L.cap)}${L.error ? ` – ${L.error}` : ''}`);
   }
   writeFileSync(join(out, 'live.json'), JSON.stringify(all, null, 1));
+}
+
+/**
+ * --cheats: the plan up to its first check whose expectation is a team (its starter – or, from a save, the team it
+ * loads), then the cheats step and `extra` steps; the rest of the plan is left out. null: no such check.
+ */
+function cheatPlan(plan, extra = [], name = null, busy = false) {
+  if (!plan) return null;
+  const at = plan.steps.findIndex((s) => s.do === 'check' && (name ? s.name === name : plan.expect?.[s.name]?.party));
+  if (at < 0) return null;
+  const exp = plan.expect?.[plan.steps[at].name];
+  return { ...plan, steps: [...plan.steps.slice(0, at + 1), { do: 'cheats', ...(busy ? { busy: true } : {}) }, ...extra], expect: exp ? { [plan.steps[at].name]: exp } : {} };
 }
 
 /** Checks the plan's expectations against what the live readers saw. */
@@ -465,6 +488,13 @@ function judge(r, plan, x) {
       verdict.battle = verdict.battle === false ? false : ok;
       verdict.notes.push(`${c.name}: battle ${b?.enemy ? `${b.kind} ${b.enemy.name} Lv${b.enemy.level} ${b.enemy.hp}/${b.enemy.maxHp}` : 'none'}`);
     }
+  }
+  // --cheats: every cheat with every amount, as the page's step checked it
+  const ch = (x.log || []).find((l) => l.do === 'cheats')?.result;
+  if (ch) {
+    verdict.cheats = ch;
+    const ids = Object.entries(ch.cheats).filter(([, v]) => !v.skipped);
+    verdict.notes.push(`cheats (${ch.layout}${ch.checked ? ', checked' : ''}${ch.fast ? ', fast player' : ''}): ${ids.map(([id, v]) => `${id} ${v.ok ? 'ok' : 'FAILED'}`).join(', ') || 'none'}${ch.busy ? `; busy ${ch.busy.ok ? 'ok' : 'FAILED'}` : ''}`);
   }
   return verdict;
 }

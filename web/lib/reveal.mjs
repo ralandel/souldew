@@ -127,10 +127,17 @@ export class DeathReveal {
     };
     const shownBattle = battle && (battle.active || battle.actives)
       ? { ...battle, ...(battle.active ? { active: mask(battle.active) } : {}), ...(battle.actives ? { actives: battle.actives.map(mask) } : {}),
-        ...(battle.party ? { party: battle.party.map((b) => {
-          const m = list.find((x) => x?.pid !== undefined && x.pid === b.pid);
-          return m && this.holds.has(m.key) ? { ...b, hp: hp(m.key, b.hp) } : b;
-        }) } : {}) }
+        ...(battle.party ? { party: (() => {
+          // by PID – the n-th of a PID in the copy is the n-th of it in the team: two clones share one (as
+          // shared/live/parse.mjs battleTwins)
+          const seen = new Map();
+          return battle.party.map((b) => {
+            const n = seen.get(b.pid) || 0;
+            seen.set(b.pid, n + 1);
+            const m = list.filter((x) => x?.pid !== undefined && x.pid === b.pid)[n];
+            return m && this.holds.has(m.key) ? { ...b, hp: hp(m.key, b.hp) } : b;
+          });
+        })() } : {}) }
       : battle;
     return { party: shownParty, battle: shownBattle, held: this.held };
   }

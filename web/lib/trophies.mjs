@@ -5,6 +5,7 @@ import { useState, useEffect } from '/vendor/htm-preact.mjs';
 import { api } from './api.mjs';
 import { levelCap } from './run.mjs';
 import { mySlotIn } from './restart.mjs';
+import { setEarnedTrophies } from './cosmetics/state.mjs';
 
 let state = null;
 let inflight = null;
@@ -16,7 +17,14 @@ let lastSync = 0;
 /** At most one sync this often while a game runs (the run doc changes several times a minute). */
 const MIN_GAP = 5000;
 
-const notify = () => subs.forEach((fn) => fn(state));
+const notify = () => {
+  // the earned cosmetics (the Summit Dawn banner, the handheld's earned stickers) are owned with their trophy
+  setEarnedTrophies(earnedTrophies());
+  subs.forEach((fn) => fn(state));
+};
+
+/** The trophy ids this computer has earned (a Set), or null before the first sync. */
+export const earnedTrophies = () => (state ? new Set((state.achievements || []).filter((a) => a.ok).map((a) => a.id)) : null);
 
 /** Send what is pending and take the new picture; fresh unlocks go to the toast listeners. */
 export function syncTrophies() {

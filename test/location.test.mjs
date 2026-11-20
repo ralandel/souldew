@@ -144,7 +144,8 @@ test('fuzz: garbage RAM, short reads and throwing readers never throw', () => {
     for (const read of readers) {
       for (let i = 0; i < 60; i++) {
         const r = readLocation(maps, id, read);
-        if (r) {
+        if (r?.link) assert.ok(r.id === `link:${r.link}` && [1, 2, 3, 4].includes(r.gen), JSON.stringify(r)); // a link room (3.0): no place of the region
+        else if (r) {
           assert.ok(Number.isInteger(r.id) && [1, 2, 3, 4].includes(r.gen), JSON.stringify(r));
           assert.equal(typeof locationLabel(r.gen, r.id, tables, 'de'), 'string');
         }

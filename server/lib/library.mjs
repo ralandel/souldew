@@ -9,7 +9,7 @@ import { listZip, readZipEntry, extractZipEntry, entryFileName, freeBytes, infla
 import { APP_ROOT, DATA_DIR, DEV, LIBRARY_DIR, SHARED_DIR } from './paths.mjs';
 import { crc32Hex } from '../../shared/checksum.mjs';
 import { writeFileAtomic, httpError, safeFileName, isInside, samePath, renameRetry } from './fsutil.mjs';
-import { identifyRom, matchCatalog, ROM_EXTENSIONS, PATCH_EXTENSIONS, CTR_EXTENSIONS, isCtrExt } from '../../shared/romid.mjs';
+import { identifyRom, matchCatalog, matchHackHeader, ROM_EXTENSIONS, PATCH_EXTENSIONS, CTR_EXTENSIONS, isCtrExt } from '../../shared/romid.mjs';
 import { identifyCtr, identifyCtrBytes } from '../../shared/ctr.mjs';
 import { gameTitleIdOf, updateStatus, pickUpdate } from '../../shared/ctr/update.mjs';
 import { wasPicked, insideAny } from './grants.mjs';
@@ -288,10 +288,11 @@ function unpackError(e, name, size, dir) {
 function describeRom(info, cat) {
   const m = matchCatalog(info, cat);
   // a ROM that was patched before it was added (Too Many Types from a download site): its CRC32 is a known version
-  // of a hack – the run gets the hack, not only the base game it shares its header with. A 3DS game has no CRC32: a
-  // hack shipped as an already-built game (Rising Ruby) is known by its contents' fingerprint (shared/ctr.mjs).
-  const hack = info.crc ? (cat.hacks || []).find((h) => (h.romCrc32 || []).includes(info.crc))
-    : info.fingerprint ? ctrHackOf(info.fingerprint, cat) : null;
+  // of a hack – the run gets the hack, not only the base game it shares its header with. A hack that names itself in
+  // the header (Pokémon Quetzal: "PKM QUETZAL" with Emerald's code) is that hack in every version. A 3DS game has no
+  // CRC32: a hack shipped as an already-built game (Rising Ruby) is known by its contents' fingerprint (shared/ctr.mjs).
+  const hack = (info.crc ? (cat.hacks || []).find((h) => (h.romCrc32 || []).includes(info.crc)) : null)
+    || (info.fingerprint ? ctrHackOf(info.fingerprint, cat) : null) || matchHackHeader(info, cat);
   return { ...info, gameId: m?.game?.id || null, exact: !!m?.exact, hackId: hack?.id || null };
 }
 

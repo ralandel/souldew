@@ -184,7 +184,7 @@ test('the 3DS player sends the capped Circle Pad and reads the half-tilt key and
 test('Help › Controls & shortcuts and Settings show the half tilt, in all five languages', () => {
   assert.match(read('web/views/guide.mjs'), /k\('sneak'\)/);
   assert.match(read('web/views/guide.mjs'), /sneak: t\('ctl\.sneak', 'Circle Pad: half tilt \(sneak\)'\)/);
-  assert.match(read('web/views/settings.mjs'), /'3ds': '3DS'/);
+  assert.match(read('web/views/settings/controls.mjs'), /'3ds': '3DS'/);
   for (const lang of ['en', 'de', 'fr', 'es', 'it']) {
     const j = JSON.parse(read(`web/i18n/${lang}.json`));
     for (const k of ['ctl.sneak', 'ctl.sneakHint', 'keys.sneak', 'pad.sneak']) assert.ok(j[k] && j[k].trim(), `${lang}: ${k}`);

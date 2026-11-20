@@ -20,6 +20,7 @@ import { ctrFileReport } from './ctr.mjs';
 import { packFormatOf } from '../../shared/runpack.mjs';
 import { isHostKey } from '../../shared/hostrules.mjs';
 import { signRules, isHostComputer } from './hostkey.mjs';
+import { TOGETHER_SYSTEMS, libraryIdOf, okLibraryId } from '../../shared/playtogether.mjs';
 
 /** Runs from before 1–4 players were always a pair – the default where no slots are passed (shared/slots.mjs). */
 const PAIR = ['p1', 'p2'];
@@ -417,7 +418,15 @@ async function buildInto(opts, onLog, onProgress, bridge) {
   const identity = opts.identity;
   const existing = readManifest(identity.id);
   const { mode, slots, players } = runPlayers(opts, existing);
-  const buildFor = [].concat(opts.buildFor || slots).filter((s) => slots.includes(s));
+  const together = mode === 'together';
+  // Play together (shared/playtogether.mjs › save model): this computer's player plays their own library game with its
+  // own battery save – exactly one slot per computer (two slots here would share one library save), never randomized,
+  // never shiny-patched, the ROM byte for byte the library's
+  if (together) {
+    opts = { ...opts, randomize: false, shiny: null, sharedSeed: false, seeds: {}, values: {}, introSave: false };
+    if (opts.buildFor && [].concat(opts.buildFor).length > 1) throw httpError(400, 'Play together builds only your own game', 'togetherOneSlot');
+  }
+  const buildFor = [].concat(opts.buildFor || (together ? slots.slice(0, 1) : slots)).filter((s) => slots.includes(s));
   if (!buildFor.length) throw httpError(400, 'No valid player to build', 'noBuildPlayer');
   const dir = runDir(identity.id);
   mkdirSync(dir, { recursive: true });
@@ -429,6 +438,7 @@ async function buildInto(opts, onLog, onProgress, bridge) {
   // 3DS: without the randomizer the game file is linked/copied as it is (1–4 GB); randomized, UPR ZX rebuilds it as
   // one .cxi per player (server/lib/ctrrando.mjs)
   const ctr = patched.system === '3ds';
+  if (together && !TOGETHER_SYSTEMS.includes(patched.system)) throw httpError(400, 'Play together needs a game that can link (Game Boy, Game Boy Advance or DS)', 'togetherSystem');
   // a cut-off copy of a 3DS game (server/lib/ctrcheck.mjs): neither randomized nor linked into a run
   if (ctr && ctrFileReport(patched.path).integrity?.state === 'damaged') throw httpError(409, 'This 3DS game file is incomplete', 'ctrIncomplete');
   const manifest = {
@@ -458,11 +468,13 @@ async function buildInto(opts, onLog, onProgress, bridge) {
     rules: stripLocalRules(opts.rules || existing?.rules || null), // the Discord webhook lives in the local config
     // the host – the player of the computer that creates a SoulLink (a new attempt: whoever started it); it signs the
     // rules (shared/hostrules.mjs – the key is made below, once the folder exists)
-    ...(mode === 'soullink' && !existing && slots.includes(opts.host) ? { host: opts.host } : {}),
-    // another shiny rate (Gen 3–5 originals): patched into every player's game below, after the randomizer
-    shiny: cleanShiny(opts.shiny !== undefined ? opts.shiny : existing?.shiny),
-    // outputs of slots the run no longer has (a rebuild with fewer players) would be offered for download
-    outputs: Object.fromEntries(Object.entries(existing?.outputs || {}).filter(([s]) => slots.includes(s))),
+    ...((mode === 'soullink' || together) && !existing && slots.includes(opts.host) ? { host: opts.host } : {}),
+    // another shiny rate (Gen 3–5 originals): patched into every player's game below, after the randomizer – never in
+    // Play together (the player's own game)
+    shiny: together ? null : cleanShiny(opts.shiny !== undefined ? opts.shiny : existing?.shiny),
+    // outputs of slots the run no longer has (a rebuild with fewer players) would be offered for download (Play
+    // together: only this computer's own slot – the one being built – ever has a game here)
+    outputs: Object.fromEntries(Object.entries(existing?.outputs || {}).filter(([s]) => slots.includes(s) && (!together || buildFor.includes(s)))),
     warnings: [],
   };
 
@@ -544,7 +556,7 @@ async function buildInto(opts, onLog, onProgress, bridge) {
       rmSync(dataOut, { force: true });
       rmSync(logOut, { force: true });
     } else {
-      copyFileSync(patched.path, romOut);
+      copyFileSync(patched.path, romOut, fsConstants.COPYFILE_FICLONE); // (a clone where the disk can: a DS game is up to 512 MB per player)
       rmSync(dataOut, { force: true });
       rmSync(logOut, { force: true });
     }
@@ -579,10 +591,15 @@ async function buildInto(opts, onLog, onProgress, bridge) {
       ...(fingerprint ? { fingerprint } : {}),
       builtAt: new Date().toISOString(),
       expectedSha1: opts.expectedOutputs?.[slot]?.sha1 || null,
-      ...(expectedFingerprint ? { expectedFingerprint } : {}),
+      ...(expectedFingerprint && !together ? { expectedFingerprint } : {}),
+      // Play together: the library game this slot plays – its battery save is this slot's save (server/app.mjs
+      // defaultSavePath), so the progress is one and the same in the library and in the run
+      ...(together && okLibraryId(libraryIdOf(opts.romId, opts.patchId)) ? { library: libraryIdOf(opts.romId, opts.patchId) } : {}),
     };
-    if (manifest.outputs[slot].expectedSha1 || expectedFingerprint) {
-      manifest.outputs[slot].matchesFriend = manifest.outputs[slot].expectedSha1 ? manifest.outputs[slot].expectedSha1 === sha1 : expectedFingerprint === fingerprint;
+    // (a Play together's games may differ – nothing to match against the host's)
+    if (together) manifest.outputs[slot].expectedSha1 = null;
+    if (manifest.outputs[slot].expectedSha1 || manifest.outputs[slot].expectedFingerprint) {
+      manifest.outputs[slot].matchesFriend = manifest.outputs[slot].expectedSha1 ? manifest.outputs[slot].expectedSha1 === sha1 : manifest.outputs[slot].expectedFingerprint === fingerprint;
       // Only randomized or patched runs need byte-identical ROMs – a plain run may use another release of the game,
       // or the other title of its pair (SoulSilver in a HeartGold run).
       const mustMatch = needsIdenticalRom(manifest);

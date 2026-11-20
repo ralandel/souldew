@@ -50,17 +50,23 @@ export const EDITION = Object.freeze({
   liveRunsUrl: null,
   /** The anonymous "playing now" heartbeat to that bot (server/lib/presence.mjs). false: never sent, setting hidden. */
   presence: false,
+  /** The souldew account (3.0: Discord sign-in, friends, friend invites, souldew+) – the official accounts service
+   *  (accounts.souldew.app). false: never contacted; Sign in, Settings › Account and the friends features hide. Invite
+   *  codes work without it. */
+  accounts: false,
 
   /** Public addresses shown in the app (shared/links.mjs). */
   links: {
     // the original author's – souldew Renaissance is built on their work
     coffee: 'https://buymeacoffee.com/souldew',
+    membership: 'https://buymeacoffee.com/souldew/membership',
     github: 'https://github.com/ralandel/souldew',
     issues: 'https://github.com/ralandel/souldew/issues',
     releases: 'https://github.com/ralandel/souldew/releases',
     streamApiDocs: 'https://github.com/ralandel/souldew/blob/main/docs/STREAM_API.md',
     privacy: 'https://github.com/ralandel/souldew/blob/main/docs/PRIVACY.md',
     privacyDocs: 'https://github.com/ralandel/souldew/blob/main/docs/PRIVACY.md',
+    privacyPolicy: 'https://github.com/ralandel/souldew/blob/main/docs/PRIVACY.md',
   },
 });
 

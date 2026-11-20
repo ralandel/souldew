@@ -81,9 +81,9 @@ test('a run with a shiny rate travels in the pack format 2.7.4 refuses; this app
     const any = await post({ pack: pack({ id: 'd1b2c3d4', format: PACK_FORMAT_SHINY_ANY, minVersion: '2.8.1', shiny: { rate: 100, trainers: false } }) });
     assert.equal(any.status, 200);
     assert.deepEqual(any.body.shiny, { rate: 100, trainers: false }, 'a custom rate arrives as it is');
-    const later = await post({ pack: pack({ id: 'c1b2c3d4', format: 'soullink-studio/run-pack@5', minVersion: '3.1.0' }) });
+    const later = await post({ pack: pack({ id: 'c1b2c3d4', format: 'soullink-studio/run-pack@6', minVersion: '3.1.0' }) });
     assert.deepEqual([later.status, later.body.code, later.body.vars?.version], [400, 'packNewer', '3.1.0']);
-    const unnamed = await post({ pack: pack({ id: 'c1b2c3d4', format: 'soullink-studio/run-pack@5', minVersion: '../x' }) });
+    const unnamed = await post({ pack: pack({ id: 'c1b2c3d4', format: 'soullink-studio/run-pack@6', minVersion: '../x' }) });
     assert.deepEqual([unnamed.status, unnamed.body.code], [400, 'packNewerAny']);
   } finally {
     server.close();

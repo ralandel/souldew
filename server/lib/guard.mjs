@@ -47,6 +47,10 @@ export const PRIVATE_GETS = [
   /^\/api\/saves\/(solo|solo\/download|states|state|state\/thumb)$/,
   /^\/api\/(stream|status|events)$/,
   /^\/live\/soullink\.lua$/,
+  // the souldew account: profile, friends, invites, entitlements (and the avatars, which an <img> loads same-origin)
+  /^\/api\/account(\/.*)?$/,
+  // souldew+: the account's encrypted pack and the dev pack's key
+  /^\/api\/plus\/(pack\/meta|pack\/file|dev\/access|dev\/key)$/,
 ];
 
 /**
@@ -61,4 +65,34 @@ export function privateRequestError(req, path) {
   const h = req.headers || {};
   if (h['x-soullink'] === '1' || h['sec-fetch-site'] === 'same-origin') return null;
   return 'App request required';
+}
+
+/** The renderer secret's cookie (set by electron/main.mjs into the app window's own cookie jar – never served by HTTP). */
+export const RENDERER_COOKIE = 'sls_rt';
+/** Routes that act as the signed-in souldew account or touch its souldew+ pack: only the app window may call them. */
+const RENDERER_ONLY = /^\/api\/(account|plus)(\/|$)/;
+
+/**
+ * The desktop app's third gate: the static `x-soullink` header keeps websites out, but any other program on this
+ * computer (another user's on a shared machine) can send it too. The account and souldew+ routes therefore also need a
+ * per-launch random secret that only the app window has: electron/main.mjs makes it, sets it as an HttpOnly,
+ * SameSite=Strict cookie in the window's session and hands it to the server – nothing ever serves it, so a program that
+ * only talks HTTP to 127.0.0.1 can't learn it. Without a secret (the browser build `npm start`, tests) this gate is off.
+ * Returns null or a reason (→ 403).
+ */
+export function rendererSecretError(req, path, secret) {
+  if (!secret || !RENDERER_ONLY.test(path)) return null;
+  const got = cookieValue(req.headers?.cookie, RENDERER_COOKIE);
+  if (!got || got.length !== secret.length) return 'App window required';
+  let diff = 0;
+  for (let i = 0; i < got.length; i++) diff |= got.charCodeAt(i) ^ secret.charCodeAt(i);
+  return diff === 0 ? null : 'App window required';
+}
+
+function cookieValue(header, name) {
+  for (const part of String(header || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
+  }
+  return null;
 }

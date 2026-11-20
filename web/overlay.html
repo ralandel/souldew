@@ -597,12 +597,13 @@
       const solo = S.mode === 'nuzlocke';
       const aliveL = solo ? L.alive : slots.length > 2 || S.slots.length > 2 ? L.aliveGroups : L.alivePairs;
       const badgeSlots = slots.filter((s) => Number.isInteger(c.badges[s]));
-      const tiles = [
+      // Play together (no challenge): nothing is alive, dead or caught for a run – only the badges
+      const tiles = S.mode === 'together' ? [] : [
         ['alive', '♥', c.alive, aliveL], ['dead', CROSS, c.dead, L.dead], ['caught', '◓', c.caught, L.caught],
       ];
       // four places from the start – the badges tile turns up in its own once the game reports badges; with
       // several players it is wider (a number per player)
-      const cols = `repeat(3, minmax(0, 1fr)) minmax(0, ${slots.length > 1 && opt.layout !== 'v' ? 0.7 + 0.45 * slots.length : 1}fr)`;
+      const cols = `${tiles.length ? `repeat(${tiles.length}, minmax(0, 1fr)) ` : ''}minmax(0, ${slots.length > 1 && opt.layout !== 'v' ? 0.7 + 0.45 * slots.length : 1}fr)`;
       wrap.innerHTML = `<div class="counters ${opt.layout}" style="--cols:${cols}">${tiles.map(([k, ic, n, l]) => shell(`tile ${k}`, `<span class="ic">${ic}</span><span class="n num${lastCounts[k] !== undefined && lastCounts[k] !== n ? ' bump' : ''}">${n}</span><span class="l">${esc(l)}</span>`)).join('')}
         ${badgeSlots.length ? shell('tile badges', `<span class="ic">★</span>${badgeSlots.length === 1 ? `<span class="n num">${c.badges[badgeSlots[0]]}</span>`
           : `<span class="per">${badgeSlots.map((s) => `<span style="--acc:${acc(s)}"><i>${esc(nameOf(s))}</i> <span class="num">${c.badges[s]}</span></span>`).join('')}</span>`}<span class="l">${esc(L.badges)}</span>`) : fixed ? '<span></span>' : ''}</div>`;
@@ -649,9 +650,9 @@
       wrap.innerHTML = shell(`stats ${opt.layout}`, `<span class="run">${MARK}<b>${esc(S.name)}</b></span><span class="sep"></span>
         ${times.length ? `<span class="it pt">${times.length === 1 ? `<span class="num">${times[0][1]}</span> ${esc(L.playTime)}` : times.map(([s, x]) => `<span style="--acc:${acc(s)}"><i>${esc(nameOf(s))}</i><span class="num">${x}</span></span>`).join('')}</span><span class="sep"></span>` : ''}
         ${badges.length ? `<span class="it badges"><span class="num">★ ${Math.max(...badges)}</span> ${esc(L.badges)}</span>` : ''}
-        <span class="it alive"><span class="num">${c.alive}</span> ${esc(solo ? L.alive : S.slots.length > 2 ? L.aliveGroups : L.alivePairs)}</span>
+        ${S.mode === 'together' ? '' : `<span class="it alive"><span class="num">${c.alive}</span> ${esc(solo ? L.alive : S.slots.length > 2 ? L.aliveGroups : L.alivePairs)}</span>
         <span class="it dead"><span class="num">${c.dead}</span> ${esc(L.dead)}</span>
-        <span class="it"><span class="num">${c.caught}</span> ${esc(L.caught)}</span>`);
+        <span class="it"><span class="num">${c.caught}</span> ${esc(L.caught)}</span>`}`);
     }
 
     // ---- the fixed box (issue: overlays grew with the team) ----

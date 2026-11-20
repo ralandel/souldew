@@ -9,21 +9,21 @@ import { moveInfo, effectiveness } from '../shared/typechart.mjs';
 const src = (f) => readFileSync(new URL(`../web/views/${f}`, import.meta.url), 'utf8');
 const MOVES = JSON.parse(readFileSync(new URL('../shared/data/moves.json', import.meta.url), 'utf8'));
 
-test('battle helper left or right of the game and folded in, remembered per profile (#10)', () => {
+test('battle helper folded in or not, remembered per profile (#10) – in the play view\'s dock', () => {
   const panel = src('session-info.mjs');
-  // remembered in this profile, left and unfolded by default, anything else read as the default
+  // remembered in this profile, unfolded by default, anything else read as the default
   assert.match(panel, /const PANEL_KEY = 'sl-battle-panel';/);
-  assert.match(panel, /const PANEL_DEFAULT = \{ side: 'left', collapsed: false, hits: false \};/);
-  assert.match(panel, /side: v\?\.side === 'right' \? 'right' : 'left', collapsed: v\?\.collapsed === true/);
+  assert.match(panel, /const PANEL_DEFAULT = \{ collapsed: false, hits: false \};/);
+  assert.match(panel, /return \{ collapsed: v\?\.collapsed === true, hits: v\?\.hits === true \};/);
   assert.match(panel, /localStorage\.setItem\(PANEL_KEY, JSON\.stringify\(next\)\)/);
-  // two buttons on the panel: move it to the other side, fold it in / out
-  assert.match(panel, /onClick=\$\{\(\) => onPrefs\(\{ side: other \}\)\}/);
+  // one button on the panel: fold it in / out (the dock is its one place – no left / right any more)
   assert.match(panel, /aria-expanded=\$\{!collapsed\} onClick=\$\{\(\) => onPrefs\(\{ collapsed: !collapsed \}\)\}/);
-  // the play view hands the choice over and places the panel by it
+  assert.doesNotMatch(panel, /onPrefs\(\{ side/);
+  // the play view hands the choice over and puts the panel in the dock's battle section
   const play = src('play.mjs');
   assert.match(play, /const \[panelPrefs, setPanelPrefs\] = useBattlePanelPrefs\(\);/);
-  assert.match(play, /const panelSide = panelPrefs\.side === 'right' \? 'right' : 'left';/);
-  assert.match(play, /side=\$\{panelSide\} collapsed=\$\{panelPrefs\.collapsed\} onPrefs=\$\{setPanelPrefs\}/);
+  assert.match(play, /collapsed=\$\{panelPrefs\.collapsed\} onPrefs=\$\{setPanelPrefs\}/);
+  assert.match(play, /\{ id: 'battle', label: t\('battle\.title', 'Battle'\), icon: 'bolt', node: battleEl/);
 });
 
 test('the battle helper, team and savestates judge by the running game\'s generation, not the system\'s', () => {

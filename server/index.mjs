@@ -6,8 +6,18 @@ import { startServer } from './app.mjs';
 
 const port = Number(process.env.PORT || 7373);
 try {
-  const { url } = await startServer({ port });
+  const { url, goOffline } = await startServer({ port });
   console.log(`\n  souldew is running at ${url}\n  (Ctrl+C stops the server)\n`);
+  // Ctrl+C / kill: the souldew account says "offline" first (bounded), so friends don't see this computer for 3 minutes
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.once(sig, () => {
+      const t = setTimeout(() => process.exit(0), 2000);
+      goOffline().catch(() => {}).finally(() => {
+        clearTimeout(t);
+        process.exit(0);
+      });
+    });
+  }
   if (!process.env.NO_OPEN) {
     const opener = process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
     try {

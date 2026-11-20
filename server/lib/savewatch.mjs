@@ -1,10 +1,15 @@
 // Watches the emulator's battery save and emits parsed snapshots (debounced, retrying on
-// half-written files). Polling (fs.watchFile) is used on purpose: emulators rewrite saves in
-// place or via temp-file swaps, which native fs.watch reports inconsistently across platforms.
+// half-written files). Polling is used on purpose: emulators rewrite saves in place or via
+// temp-file swaps, which native fs.watch reports inconsistently across platforms. The polling is
+// souldew's own, not fs.watchFile: watchFile takes what it compares against from its first stat,
+// which runs later on libuv's thread pool – a save written between watch() and that stat (a busy
+// moment: the app starting, an emulator just launched, a full thread pool) became the baseline and
+// was never reported. Here the baseline is taken at once, when the watch starts.
 //
 // A run's save can turn up in more than one place – melonDS writes `<ROM name>.sav` next to the ROM, or into the save
 // folder set in its own settings – so a watch may follow several paths: whichever was written last is the one read.
-import { watchFile, unwatchFile, statSync, readFileSync, existsSync } from 'node:fs';
+import { statSync, readFileSync, existsSync } from 'node:fs';
+import { stat as statAsync } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHgssSave } from '../../shared/gen4save.mjs';
 import { findEntry, readSaveFile, LiveTables } from '../../shared/live/parse.mjs';
@@ -35,6 +40,16 @@ const stamp = (p) => {
   try {
     const s = statSync(p);
     return { size: s.size, mtimeMs: s.mtimeMs };
+  } catch {
+    return null;
+  }
+};
+
+/** What a poll compares (or null: no file): its size, times and inode – a temp file swapped in is another inode. */
+const fingerprint = (s) => (s ? `${s.size}:${s.mtimeMs}:${s.ctimeMs}:${s.ino}` : null);
+const fingerprintNow = (p) => {
+  try {
+    return fingerprint(statSync(p));
   } catch {
     return null;
   }
@@ -82,30 +97,43 @@ export class SaveWatcher {
     const list = [...new Set([].concat(paths).filter((p) => typeof p === 'string' && p))];
     this.unwatch(runId);
     if (!list.length) return this.status(runId);
-    const w = { paths: list, path: list[0], timer: null, lastHash: null, lastAt: null, readAt: null, last: null, error: null, errorCode: null, retries: 0, settles: 0, listeners: new Map() };
+    const w = { paths: list, path: list[0], timer: null, lastHash: null, lastAt: null, readAt: null, last: null, error: null, errorCode: null, retries: 0, settles: 0, seen: new Map(), poller: null, polling: false };
     this.watches.set(runId, w);
-    for (const p of list) {
-      const onChange = (curr, prev) => {
-        // (a file that disappears – an emulator swapping in its temp file – reports a zeroed stat: the swap's second
-        // half comes as a change of its own)
-        if (!curr.mtimeMs && !curr.size && prev.mtimeMs) return;
-        clearTimeout(w.timer);
-        w.retries = w.settles = 0; // a new write gets its own mid-write retries
-        // melonDS rewrites the file ~2–3 s after the game stops writing; wait for it to settle.
-        w.timer = setTimeout(() => this.read(runId), this.settleMs);
-      };
-      w.listeners.set(p, onChange);
-      watchFile(p, { interval: this.interval }, onChange);
-    }
-    if (list.some((p) => existsSync(p))) this.read(runId);
+    // every place as it is right now: anything written from here on – even this very moment – differs from it
+    for (const p of list) w.seen.set(p, fingerprintNow(p));
+    w.poller = setInterval(() => this.poll(runId, w), this.interval);
+    if (list.some((p) => w.seen.get(p))) this.read(runId);
     return this.status(runId);
+  }
+
+  /** Looks at every place once: a file that is new or changed since the last look gets read once it has settled. */
+  async poll(runId, w) {
+    if (w.polling) return; // (a slow disk: the last look hasn't finished)
+    w.polling = true;
+    try {
+      const now = await Promise.all(w.paths.map((p) => statAsync(p).then(fingerprint, () => null)));
+      if (this.watches.get(runId) !== w) return; // unwatched meanwhile
+      let changed = false;
+      w.paths.forEach((p, i) => {
+        // (a file that disappears – an emulator swapping in its temp file – is no change: the swap's second half is)
+        if (now[i] && now[i] !== w.seen.get(p)) changed = true;
+        w.seen.set(p, now[i]);
+      });
+      if (!changed) return;
+      clearTimeout(w.timer);
+      w.retries = w.settles = 0; // a new write gets its own mid-write retries
+      // melonDS rewrites the file ~2–3 s after the game stops writing; wait for it to settle.
+      w.timer = setTimeout(() => this.read(runId), this.settleMs);
+    } finally {
+      w.polling = false;
+    }
   }
 
   unwatch(runId) {
     const w = this.watches.get(runId);
     if (!w) return;
     clearTimeout(w.timer);
-    for (const [p, l] of w.listeners) unwatchFile(p, l);
+    clearInterval(w.poller);
     this.watches.delete(runId);
   }
 

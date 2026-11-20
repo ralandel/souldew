@@ -12,6 +12,17 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { registerHooks } from 'node:module';
+
+// 3.0: the players' modules import further modules by their server paths (/lib/…, /shared/…) – resolved to the files here
+const ROOT = new URL('../', import.meta.url).href;
+registerHooks({
+  resolve(spec, ctx, next) {
+    if (spec.startsWith('/shared/')) return next(ROOT + spec.slice(1), ctx);
+    if (spec.startsWith('/lib/')) return next(`${ROOT}web${spec}`, ctx);
+    return next(spec, ctx);
+  },
+});
 
 const LIB = new URL('../web/lib/', import.meta.url);
 const TMP = mkdtempSync(join(tmpdir(), 'sls-controls-live-'));
@@ -53,6 +64,9 @@ const config = { lang: 'en', controls: null, pads: null }; // nothing saved: the
 
 const page = new EventTarget();
 Object.assign(globalThis, {
+  // (3.0's players watch the screen's pixel density: lib/pixelscale.mjs)
+  matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+  devicePixelRatio: 1,
   location: { search: '?system=nds&rom=%2From&key=k&name=Platinum', origin: 'http://127.0.0.1' },
   document: Object.assign(any(), { visibilityState: 'visible', getElementById: () => any(), body: any(), documentElement: any() }),
   window: globalThis,

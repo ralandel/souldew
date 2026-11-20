@@ -5,7 +5,11 @@
 // "Fast player" off gives the browser emulator; with --broken (Game Boy core replaced by junk) that a core which can't
 // start falls back to the browser emulator by itself.
 //
-//   node scripts/native-e2e.mjs <rom-dir> [--out <dir>] [--only <text>] [--off] [--broken] [--show]
+// With --engine the fast player is the souldew engine (Settings › "souldew engine (beta)") – each result says which ran
+// ("engine") – and every turbo-sound mode is probed while fast-forwarding (what the mixer plays and how loud: silent,
+// the app is muted).
+//
+//   node scripts/native-e2e.mjs <rom-dir> [--out <dir>] [--only <text>] [--off] [--broken] [--engine] [--modes] [--show]
 //
 // Never commit ROMs or the screenshots.
 import { spawn } from 'node:child_process';
@@ -30,7 +34,7 @@ if (!process.versions.electron) {
   const out = resolve(opt('out', join(tmpdir(), 'souldew-native-e2e')));
   mkdirSync(out, { recursive: true });
   const data = mkdtempSync(join(tmpdir(), 'souldew-e2e-'));
-  writeFileSync(join(data, 'config.json'), JSON.stringify({ onboarded: true, lang: 'de', playerName: 'E2E', libraryFolders: [romDir], bootAnimation: false, sounds: false, nativeCore: !flag('off') }));
+  writeFileSync(join(data, 'config.json'), JSON.stringify({ onboarded: true, lang: 'de', playerName: 'E2E', libraryFolders: [romDir], bootAnimation: false, sounds: false, nativeCore: !flag('off'), nativeEngine: flag('engine') }));
   process.env.SLS_DATA_DIR = data;
   process.env.NO_OPEN = '1';
   if (flag('broken')) {
@@ -40,7 +44,7 @@ if (!process.versions.electron) {
     const tools = join(data, 'bundled');
     mkdirSync(join(tools, 'native', plat), { recursive: true });
     for (const f of readdirSync(src)) copyFileSync(join(src, f), join(tools, 'native', plat, f));
-    writeFileSync(join(tools, 'native', plat, readdirSync(src).find((f) => f.startsWith('gambatte_libretro'))), 'not a library');
+    writeFileSync(join(tools, 'native', plat, readdirSync(src).find((f) => f.startsWith('sameboy_libretro'))), 'not a library');
     process.env.SLS_TOOLS_DIR = tools;
   }
   app.commandLine.appendSwitch('mute-audio');
@@ -79,6 +83,7 @@ if (!process.versions.electron) {
         src = await js("document.querySelector('iframe').getAttribute('src')");
         res.player = /playernative/.test(src) ? 'native' : /player\.html/.test(src) ? 'browser' : src;
         res.core = await frameJs('e.perf?.().core || e.perf?.().pacing?.core || null');
+        res.engine = await frameJs('e.perf?.().info?.engine === true');
         await sleep(4000); // the live reader finds the game
         const measure = async (speed, ms = 3000) => {
           await frameJs(`(e.setSpeed(${speed === Infinity ? 'Infinity' : speed}), true)`);
@@ -94,6 +99,24 @@ if (!process.versions.electron) {
         // while fast-forwarding: what the turbo mixer plays (a loop of the music, the DS song from the ROM, …)
         res.turboAudio = await frameJs('e.audioProbe ? e.audioProbe() : null');
         res.speed.max = await measure(Infinity);
+        if (flag('modes')) { // every turbo-sound mode at 4×: what the mixer plays, and whether sound comes out all the time
+          const probe = async () => { const p = await frameJs('e.audioProbe()'); return { src: p?.playing ?? null, rms: p?.level?.rms ?? 0 }; };
+          res.turboModes = {};
+          await frameJs('(e.setSpeed(1), true)');
+          await sleep(1500);
+          const base = [];
+          for (let i = 0; i < 6; i++) base.push(await probe(), await sleep(250));
+          res.turboModes.normal = { rms: Math.round((base.filter(Boolean).reduce((a, x) => a + x.rms, 0) / 6) * 1e4) / 1e4, silent: base.filter((x) => x && x.rms < 1e-4).length };
+          for (const mode of ['music', 'original', 'plain', 'mute']) {
+            await frameJs(`(e.setTurboAudio(${JSON.stringify(mode)}), e.setSpeed(4), true)`);
+            await sleep(2000);
+            const ps = [];
+            for (let i = 0; i < 12; i++) ps.push(await probe(), await sleep(250));
+            const got = ps.filter(Boolean);
+            res.turboModes[mode] = { src: [...new Set(got.map((x) => x.src))].join('|'), rms: Math.round((got.reduce((a, x) => a + x.rms, 0) / got.length) * 1e4) / 1e4, silentProbes: got.filter((x) => x.rms < 1e-4).length, of: got.length };
+          }
+          await frameJs('(e.setTurboAudio("music"), e.setSpeed(1), true)');
+        }
         await frameJs('(e.setSpeed(1), true)');
         res.live = await js("document.querySelector('.live-state, [data-live]')?.textContent?.trim().slice(0, 80) || null");
         const st = await frameJs('Promise.resolve(e.getState()).then((s) => (s ? s.length : 0))');

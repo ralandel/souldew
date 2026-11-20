@@ -1,8 +1,10 @@
 name: Fast player part (Windows, Linux)
 
-# Builds souldew's fast player part – the native host (native/retro-host) and the libretro cores melonDS DS, mGBA and
-# Gambatte (scripts/build-native.mjs, fixed tags) – for Windows and Linux, as tools/native/<platform>/ artifacts the app
+# Builds souldew's fast player part – the native host (native/retro-host), the libretro cores melonDS DS, mGBA and
+# SameBoy, and the link host (native/link-host: trades and battles between players – mGBA, SameBoy and melonDS's core
+# linked in; scripts/build-native.mjs, fixed tags) – for Windows and Linux, as tools/native/<platform>/ artifacts the app
 # packages bundle (release.yml, windows.yml and linux.yml call this workflow). macOS: `npm run native` on a Mac.
+# The link host needs RGBDS (SameBoy assembles its boot ROM from source): built here from its tag, a build-time tool only.
 # Linux is built on Ubuntu 22.04 (an older glibc – the .so files load on newer systems too); Windows is cross-compiled
 # with MinGW-w64 and linked statically (nothing but Windows' own DLLs), exactly as on a developer's Mac.
 
@@ -41,12 +43,21 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: tools/native/linux-x64
-          key: native-linux-x64-${{ hashFiles('native/retro-host/**', 'native/ctr-host/compat.h', 'native/ctr-host/libretro.h', 'native/ctr-host/ffsound.h', 'scripts/build-native.mjs') }}
+          key: native-linux-x64-${{ hashFiles('native/retro-host/**', 'native/link-host/**', 'native/ctr-host/compat.h', 'native/ctr-host/libretro.h', 'native/ctr-host/ffsound.h', 'scripts/build-native.mjs') }}
       - name: Tools
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends ninja-build gcc-12 g++-12 cmake make git
+      - name: RGBDS (SameBoy's boot ROM for the link host)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y --no-install-recommends bison libpng-dev pkg-config
+          git clone -q --depth 1 --branch v1.0.4 https://github.com/gbdev/rgbds.git "$RUNNER_TEMP/rgbds"
+          # (its Makefile: the CMake build wants CMake 3.24, Ubuntu 22.04 has 3.22)
+          make -C "$RUNNER_TEMP/rgbds" -j"$(nproc)" Q= CC=gcc CXX=g++
+          make -C "$RUNNER_TEMP/rgbds" install PREFIX="$HOME/.local" Q=
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Build the host and the cores
         if: steps.cache.outputs.cache-hit != 'true'
         env:
@@ -54,14 +65,16 @@ jobs:
           CXX: g++-12
         run: |
           node scripts/build-native.mjs
-          strip -s tools/native/linux-x64/*.so tools/native/linux-x64/retrohost
+          strip -s tools/native/linux-x64/*.so tools/native/linux-x64/retrohost tools/native/linux-x64/linkhost
       - run: node scripts/build-native.mjs --check
       - name: The host runs the Game Boy core (test/native.test.mjs – a ROM made by the test)
         run: |
           npm ci --ignore-scripts
           node --test --test-timeout=120000 test/native.test.mjs
+      - name: The link host runs two linked consoles of each system (test/linkhost.test.mjs – ROMs made by the test)
+        run: node --test --test-timeout=120000 test/linkhost.test.mjs
       - name: Only system libraries
-        run: for f in tools/native/linux-x64/*.so tools/native/linux-x64/retrohost; do ldd "$f"; done
+        run: for f in tools/native/linux-x64/*.so tools/native/linux-x64/retrohost tools/native/linux-x64/linkhost; do ldd "$f"; done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: native-linux-x64
@@ -85,7 +98,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: tools/native/win32-x64
-          key: native-win32-x64-${{ hashFiles('native/retro-host/**', 'native/ctr-host/compat.h', 'native/ctr-host/libretro.h', 'native/ctr-host/ffsound.h', 'scripts/build-native.mjs') }}
+          key: native-win32-x64-${{ hashFiles('native/retro-host/**', 'native/link-host/**', 'native/ctr-host/compat.h', 'native/ctr-host/libretro.h', 'native/ctr-host/ffsound.h', 'scripts/build-native.mjs') }}
       - name: Tools
         # only the 64-bit MinGW toolchain (the mingw-w64 metapackage also pulls the 32-bit one: ~290 MB from a mirror
         # that has been crawling: 93 MB took 17 min on 18.11.), with retries and timeouts so a stalled mirror fails over instead of hanging the job
@@ -96,6 +109,16 @@ jobs:
           sudo apt-get $APT update -y
           sudo apt-get $APT install -y --no-install-recommends ninja-build cmake make git \
             gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix binutils-mingw-w64-x86-64 mingw-w64-x86-64-dev
+      - name: RGBDS (SameBoy's boot ROM for the link host)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT install -y --no-install-recommends bison libpng-dev pkg-config
+          git clone -q --depth 1 --branch v1.0.4 https://github.com/gbdev/rgbds.git "$RUNNER_TEMP/rgbds"
+          # (its Makefile: the CMake build wants CMake 3.24, Ubuntu 22.04 has 3.22)
+          make -C "$RUNNER_TEMP/rgbds" -j"$(nproc)" Q= CC=gcc CXX=g++
+          make -C "$RUNNER_TEMP/rgbds" install PREFIX="$HOME/.local" Q=
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Cross-compile the host and the cores (MinGW-w64, posix threads, static)
         if: steps.cache.outputs.cache-hit != 'true'
         env:
@@ -103,12 +126,12 @@ jobs:
           CXX: x86_64-w64-mingw32-g++-posix
         run: |
           node scripts/build-native.mjs --platform win32-x64
-          x86_64-w64-mingw32-strip -s tools/native/win32-x64/*.dll tools/native/win32-x64/retrohost.exe
+          x86_64-w64-mingw32-strip -s tools/native/win32-x64/*.dll tools/native/win32-x64/retrohost.exe tools/native/win32-x64/linkhost.exe
       - name: Complete, and nothing but Windows' own DLLs
         run: |
           node scripts/build-native.mjs --platform win32-x64 --check
-          for f in tools/native/win32-x64/*.dll tools/native/win32-x64/retrohost.exe; do
-            deps=$(x86_64-w64-mingw32-objdump -p "$f" | sed -n 's/.*DLL Name: //p' | grep -viE '^(kernel32|user32|advapi32|ws2_32|iphlpapi|shell32|ole32|winmm|bcrypt|ntdll|msvcrt|api-ms-win-.*)\.dll$' || true)
+          for f in tools/native/win32-x64/*.dll tools/native/win32-x64/retrohost.exe tools/native/win32-x64/linkhost.exe; do
+            deps=$(x86_64-w64-mingw32-objdump -p "$f" | sed -n 's/.*DLL Name: //p' | grep -viE '^(kernel32|user32|advapi32|ws2_32|iphlpapi|shell32|shlwapi|ole32|winmm|bcrypt|ntdll|msvcrt|api-ms-win-.*)\.dll$' || true)
             echo "$f: ${deps:-ok}"
             if [ -n "$deps" ]; then echo "::error::$f needs $deps"; exit 1; fi
           done

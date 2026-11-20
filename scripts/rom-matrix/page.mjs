@@ -419,6 +419,94 @@ function helper() {
           break;
         }
         continue;
+      } else if (s.do === 'cheats') {
+        // every cheat of the play screen (shared/live/cheats.mjs CHEATS) in this game, the way the play screen uses it
+        // (applyCheat – `untried`: also where it isn't checked yet; that's what this step is for), each amount in turn,
+        // checked through a read of its own afterwards: the bag (bagItems) – exactly that many more of the item, in the
+        // pocket it belongs in, nothing else in the bag changed, still there half a second later – and the money
+        await ensureRam();
+        const C = await import('/shared/live/cheats.mjs');
+        team(); // (the DS games find the bag through the party reader's state)
+        const ent = ctx.entry;
+        // (the fast player, as web/views/play.mjs doCheat: the host confirms each write, and the read-back reads the
+        // core's memory after it – e.fresh)
+        const fast = typeof e.fresh === 'function' && typeof e.writeChecked === 'function';
+        const mem = { read: e.read, write: fast ? e.writeChecked : e.write, ...(fast ? { fresh: e.fresh } : {}) };
+        const bag = () => C.bagItems(ent, e.read, ctx.state);
+        const gen = ent?.gen;
+        const count = (b, item) => (b || []).filter((x) => x.item === item).reduce((a, x) => a + x.count, 0);
+        const rest = (b, item) => JSON.stringify((b || []).filter((x) => x.item !== item).map((x) => [x.pocket, x.item, x.count]).sort());
+        const want = (c) => (gen === 1 ? null : c.pocket === 'balls' ? (gen <= 4 ? 'balls' : 'items') : c.pocket === 'items' ? 'items' : gen <= 3 ? 'items' : 'medicine');
+        const res = { entry: ent?.id || null, layout: C.bagLayoutKey(ent), checked: C.checkedLive(ent), moneyChecked: C.moneySupported(ent), fast, cheats: {}, failed: [] };
+        // `s.busy` (Gen 3): with the start menu open a cheat is refused ('busy') and nothing is written; closed again,
+        // the cheats below run as usual
+        if (s.busy && gen === 3) {
+          await press(['START']);
+          await frames(60);
+          const b0 = bag();
+          const m0 = await C.readMoneyFor(ent, e.read, ctx.state, { untried: true });
+          const idle = C.cheatIdle(ent, e.read);
+          const item = await C.applyCheat('rareCandy', ent, mem, ctx.state, { amount: 1, untried: true });
+          const money = await C.applyCheat('money', ent, mem, ctx.state, { amount: 1000, untried: true });
+          await frames(30);
+          const b1 = bag();
+          const m1 = await C.readMoneyFor(ent, e.read, ctx.state, { untried: true });
+          const p = await shot('busy-menu');
+          if (p) shots.push(p);
+          await press(['B']);
+          await frames(90);
+          const idleAfter = C.cheatIdle(ent, e.read);
+          const same = !!b0 && JSON.stringify(b0) === JSON.stringify(b1) && m0 === m1;
+          res.busy = { idle, item, money, same, idleAfter, ok: !idle && item.error === 'busy' && money.error === 'busy' && same && idleAfter };
+          if (!res.busy.ok) res.failed.push('busy');
+        }
+        for (const [id, c] of Object.entries(C.CHEATS)) {
+          if (!C.cheatSupported(ent, id, { untried: true })) {
+            res.cheats[id] = { skipped: 'unsupported' };
+            continue;
+          }
+          const runs = [];
+          if (c.money) {
+            for (const amount of s.money || [1000, 10000, 100000, 'max', 1000]) {
+              const before = await C.readMoneyFor(ent, e.read, ctx.state, { untried: true });
+              const r = await C.applyCheat(id, ent, mem, ctx.state, { amount, untried: true });
+              await frames(30);
+              const after = await C.readMoneyFor(ent, e.read, ctx.state, { untried: true });
+              const ok = r.ok ? r.before === before && r.after === after && after === (amount === 'max' ? C.MONEY_MAX : Math.min(C.MONEY_MAX, before + amount))
+                : r.error === 'max' && before === C.MONEY_MAX && after === before;
+              runs.push({ amount, before, after, r, ok });
+            }
+          } else {
+            const item = c.items[gen];
+            for (const amount of s.amounts || [1, 10, 99, 999, 1]) {
+              const b0 = bag();
+              const r = await C.applyCheat(id, ent, mem, ctx.state, { amount, untried: true });
+              await frames(30);
+              const b1 = bag();
+              const n0 = count(b0, item);
+              const n1 = count(b1, item);
+              const pockets = [...new Set((b1 || []).filter((x) => x.item === item).map((x) => x.pocket))];
+              const cap = gen <= 3 ? 99 : 999;
+              // (a DS bag with nothing in it yet doesn't read as a bag here – bagItems is the gifts' reader –: an empty one before)
+              const ok = (!!b0 || r.before === 0) && !!b1 && rest(b0 || [], item) === rest(b1, item) && (r.ok
+                ? n1 - n0 === r.added && r.after === n1 && n1 === Math.min(cap, n0 + Math.min(999, amount)) && pockets.length === 1 && pockets[0] === want(c)
+                : r.error === 'max' && n0 === cap && n1 === n0);
+              runs.push({ amount, n0, n1, pockets, r, ok });
+            }
+          }
+          res.cheats[id] = { runs, ok: runs.every((x) => x.ok) };
+          if (!res.cheats[id].ok) res.failed.push(id);
+        }
+        // the bag once more after a few seconds of the game running: nothing it took back
+        await frames(300);
+        res.bagAfter = bag();
+        res.moneyAfter = await C.readMoneyFor(ent, e.read, ctx.state, { untried: true });
+        if (gen >= 4) res.where = { saveBase: ctx.state.saveBase || null, partyAddr: ctx.state.partyAddr || null };
+        console.log(`[cheats] ${JSON.stringify({ entry: res.entry, layout: res.layout, failed: res.failed })}`);
+        log.push({ do: 'cheats', result: res, ok: !res.failed.length, required: s.required !== false });
+        const p = await shot('cheats');
+        if (p) shots.push(p);
+        continue;
       } else if (s.do === 'log') {
         log.push({ do: 'log', name: s.name, value: new Function('read', 'place', 'team', 'ctx', `return (${s.expr});`)(e.read, place, team, ctx) });
         continue;

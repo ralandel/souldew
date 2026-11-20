@@ -32,7 +32,7 @@ test('every shortcut has its row in Settings › Controls (and Help) – exactly
   for (const id of HOTKEY_IDS.filter((x) => !/^(save|load)\d$/.test(x))) assert.match(names, new RegExp(`\\b${id}: t\\(`), `${id} has a name`);
   assert.match(names, /\^\(save\|load\)\(\\d\)\$/);
   // Settings and Help draw the table from these rows
-  assert.match(read('web/views/settings.mjs'), /\$\{HOTKEY_ROWS\.map\(\(r\) => \{/);
+  assert.match(read('web/views/settings/controls.mjs'), /\$\{HOTKEY_ROWS\.map\(\(r\) => \{/);
   assert.match(guide, /\.\.\.HOTKEY_ROWS\.map\(/);
   // the controller's shortcuts are shortcuts of the same list
   for (const id of PAD_HOTKEY_IDS) assert.ok(HOTKEY_IDS.includes(id), id);

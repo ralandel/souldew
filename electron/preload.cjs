@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('sls', {
   setMenuLabels: (labels) => ipcRenderer.send('menu-labels', labels || null),
   // Windows: colours of the title bar buttons ({ color, symbolColor } as #rrggbb), matching the colour scheme.
   setTitleBarColors: (colors) => ipcRenderer.send('titlebar-colors', colors || null),
+  // Interface size (Settings › General): show `v` (one of shared/uiscale.mjs UI_SCALES) – or, without it, just ask.
+  // Answers { chosen, applied, fit, display, win }; the window says the same on 'ui-scale' when it changes.
+  uiScale: (v) => (v === undefined ? ipcRenderer.invoke('ui-scale') : ipcRenderer.invoke('ui-scale', v)),
   update: {
     state: () => ipcRenderer.invoke('update-state'),
     check: () => ipcRenderer.invoke('update-check'),
@@ -30,7 +33,7 @@ contextBridge.exposeInMainWorld('sls', {
     showDownload: () => ipcRenderer.invoke('update-show'),
   },
   on: (channel, fn) => {
-    if (!['navigate', 'emu', 'menu', 'update', 'fullscreen'].includes(channel)) return () => {};
+    if (!['navigate', 'emu', 'menu', 'update', 'fullscreen', 'ui-scale'].includes(channel)) return () => {};
     const listener = (e, ...args) => fn(...args);
     ipcRenderer.on(channel, listener);
     return () => ipcRenderer.removeListener(channel, listener);

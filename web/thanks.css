@@ -1,0 +1,141 @@
+/* The Thank you page (web/views/thanks.mjs) and the one-time ask (views/thanksask.mjs). Only the app's own tokens, so
+   every skin colours it and changes no box (test/skin-proof.test.mjs); the tier marks are the one fixed accent each –
+   the souldew+ gold of .plus-box for souldew+ and Legend, the dew blue of Supporter, the warm copper of a coffee. */
+
+.ty-page { --ty-gold: #d9ad4f; --ty-dew: var(--crs); --ty-copper: #c98a55;
+  display: flex; flex-direction: column; gap: 56px; padding-bottom: 24px; }
+.ty-tier-legend { --ty-c: var(--ty-gold); }
+.ty-tier-plus { --ty-c: var(--ty-gold); }
+.ty-tier-supporter { --ty-c: var(--ty-dew); }
+.ty-tier-coffee { --ty-c: var(--ty-copper); }
+
+/* ---- hero ---- */
+.ty-hero { position: relative; display: flex; flex-direction: column; gap: 16px; padding-top: 8px; max-width: 78ch; }
+.ty-h1 { font-size: 38px; line-height: 1.14; max-width: 20ch; }
+.ty-lede { margin: 0; max-width: 60ch; font-size: 16px; line-height: 1.6; color: var(--ink-2); }
+.ty-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin-top: 6px; }
+.ty-total { display: inline-flex; align-items: baseline; gap: 10px; }
+.ty-total b { font-family: var(--font-pixel); font-size: 40px; font-weight: 500; line-height: 1; color: var(--ink); }
+.ty-total span { color: var(--ink-2); font-size: 15px; }
+.ty-live { display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 8px; border-radius: 999px; color: var(--ink-2);
+  background: var(--shell-2); border: 1px solid var(--sk-line, #0f0e12); }
+.ty-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.ty-dot.on { background: var(--tri); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tri) 22%, transparent); }
+.ty-live-off { color: var(--ink-2); }
+
+/* the moment for someone new: next to the live state, after everything else in the row (nothing moves for it) */
+.ty-moment-slot { display: flex; min-width: 0; pointer-events: none; }
+.ty-moment { display: inline-flex; align-items: center; gap: 9px; padding: 8px 14px 8px 9px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  color: var(--ink); background: var(--shell-3); border: 1px solid color-mix(in srgb, var(--ty-c, var(--ty-gold)) 55%, var(--sk-line, #0f0e12));
+  box-shadow: 0 10px 26px -14px #000c; animation: ty-moment 5.2s ease both; }
+.ty-moment-legend, .ty-moment-plus { --ty-c: var(--ty-gold); }
+.ty-moment-supporter { --ty-c: var(--ty-dew); }
+.ty-moment-coffee { --ty-c: var(--ty-copper); }
+@keyframes ty-moment { 0% { opacity: 0; transform: translateY(-6px); } 8%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+
+/* ---- a tier ---- */
+.ty-tier { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.ty-tier-head { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ty-c) 30%, var(--edge)); }
+.ty-tier-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ty-tier-words h2 { font-size: 20px; }
+.ty-mark { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #2b1f05; flex: none;
+  background: var(--ty-c); box-shadow: inset 0 1px 0 #fff6, inset 0 -2px 0 #0003; }
+.ty-mark svg { display: block; }
+.ty-tier-supporter .ty-mark, .ty-moment-supporter .ty-mark { color: #0e1a33; }
+.ty-tier-legend .ty-mark { box-shadow: inset 0 1px 0 #fff8, inset 0 -2px 0 #0003, 0 0 0 2px var(--shell), 0 0 0 3px color-mix(in srgb, var(--ty-gold) 70%, transparent); }
+.ty-count { font-family: var(--font-pixel); font-size: 22px; color: var(--ink-2); min-width: 2ch; text-align: right; }
+
+.ty-cards, .ty-rows, .ty-tags { list-style: none; margin: 0; padding: 0; }
+.ty-cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.ty-cards-plus { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.ty-cards-one { grid-template-columns: minmax(0, 340px); }
+.ty-rows { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.ty-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.ty-person { margin: 0; min-width: 0; }
+.ty-person:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.ty-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ty-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ty-since { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Legend and souldew+: a card on the person's own banner */
+.ty-legend, .ty-plus { position: relative; overflow: hidden; border-radius: var(--r-l); background: var(--shell-2);
+  border: 1px solid color-mix(in srgb, var(--ty-c) 38%, var(--sk-line, #0f0e12)); box-shadow: inset 0 1px 0 #ffffff08, 0 10px 26px -16px #000b; }
+.ty-legend { border-radius: var(--r-xl); }
+.ty-banner { position: relative; height: 64px; overflow: hidden; background: var(--shell-3); }
+.ty-legend .ty-banner { height: 104px; }
+.ty-banner > .cos-banner { height: 100%; }
+/* no banner: a quiet pixel grid in the tier's colour, not an empty box */
+.ty-banner-blank { position: absolute; inset: 0;
+  background-image: radial-gradient(color-mix(in srgb, var(--ty-c) 26%, transparent) 1px, transparent 1.4px); background-size: 8px 8px; background-position: 4px 4px; }
+/* the picture overlaps the banner, the name sits below it (readable on any banner and any skin, like the profile) */
+.ty-id { position: relative; z-index: 1; display: flex; align-items: flex-start; gap: 12px; padding: 0 14px 14px; }
+.ty-legend .ty-id { padding: 0 18px 16px; gap: 14px; }
+.ty-id > .av-wrap { flex: none; margin-top: -22px; }
+.ty-legend .ty-id > .av-wrap { margin-top: -30px; }
+.ty-id .ty-text { padding-top: 8px; }
+.ty-legend .ty-id .ty-text { padding-top: 10px; }
+.ty-legend .ty-name { font-family: var(--font-pixel); font-size: 19px; font-weight: 500; }
+
+/* Supporter: a row with the framed picture */
+.ty-supporter { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-m); background: var(--shell-2);
+  border: 1px solid var(--sk-line, #0f0e12); }
+.ty-supporter > .av-wrap { flex: none; }
+
+/* Coffee: a name tag */
+.ty-coffee { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 12px 5px 10px; border-radius: 999px; font-size: 13.5px;
+  background: var(--shell-2); border: 1px solid color-mix(in srgb, var(--ty-copper) 32%, var(--sk-line, #0f0e12)); }
+.ty-coffee svg { display: block; flex: none; color: var(--ty-copper); }
+.ty-coffee .ty-name { font-weight: 500; }
+
+.ty-more { margin: 0; align-self: flex-start; padding: 6px 12px; border-radius: 999px; font-size: 13px; color: var(--ink-2);
+  border: 1px dashed color-mix(in srgb, var(--ty-c) 45%, var(--edge)); }
+
+/* someone who just arrived: rises in, a ring in their tier's colour fades */
+.ty-fresh { animation: ty-arrive .7s cubic-bezier(.2, .8, .2, 1) both, ty-ring 3.2s ease-out both; }
+@keyframes ty-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ty-ring { 0%, 30% { box-shadow: 0 0 0 2px var(--ty-c); } 100% { box-shadow: 0 0 0 2px transparent; } }
+
+.ty-empty { max-width: 60ch; }
+.ty-empty p { margin: 0; }
+.ty-privacy { margin: -24px 0 0; max-width: 72ch; line-height: 1.5; }
+
+/* ---- the quiet way to help ---- */
+.ty-cta { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 18px 32px; align-items: center; padding: 20px 22px; border-radius: var(--r-xl);
+  background: var(--shell-2); border: 1px solid var(--sk-line, #0f0e12); }
+.ty-cta-words { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ty-cta-words h2 { font-size: 18px; }
+.ty-cta-words p { margin: 0; max-width: 64ch; line-height: 1.5; }
+.ty-cta-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; justify-content: flex-end; }
+.ty-cta-actions a { flex-basis: 100%; text-align: right; }
+
+/* ---- the souldew+ page's way here ---- */
+.plus-thanks-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 16px; color: var(--ink-2); }
+.plus-thanks-link:hover { color: var(--ink); }
+.plus-thanks-link svg { display: block; flex: none; }
+
+/* ---- asking once ---- */
+.ty-ask { display: flex; flex-direction: column; gap: 14px; max-width: 420px; }
+.ty-ask > p { margin: 0; }
+.ty-ask > p:first-child { font-size: 16px; }
+.ty-ask-preview { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--r-l); background: var(--shell); border: 1px solid var(--sk-line, #0f0e12);
+  --ty-gold: #d9ad4f; --ty-dew: var(--crs); --ty-copper: #c98a55; }
+.ty-ask-preview.ty-tier-legend, .ty-ask-preview.ty-tier-plus { --ty-c: var(--ty-gold); }
+.ty-ask-preview.ty-tier-supporter { --ty-c: var(--ty-dew); }
+.ty-ask-preview.ty-tier-coffee { --ty-c: var(--ty-copper); }
+.ty-ask-answers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+.ty-ask-answers .btn { justify-content: center; }
+
+@media (max-width: 860px) {
+  .ty-h1 { font-size: 30px; }
+  .ty-cta { grid-template-columns: minmax(0, 1fr); }
+  .ty-cta-actions { justify-content: flex-start; }
+  .ty-cta-actions a { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ty-moment { animation: ty-moment-still 5.2s linear both; }
+  .ty-fresh { animation: ty-ring 3.2s ease-out both; }
+}
+@keyframes ty-moment-still { 0% { opacity: 0; } 6%, 88% { opacity: 1; } 100% { opacity: 0; } }

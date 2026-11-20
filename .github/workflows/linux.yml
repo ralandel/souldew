@@ -85,7 +85,7 @@ jobs:
         with:
           name: native-linux-x64
           path: tools/native/linux-x64
-      - run: chmod +x tools/native/linux-x64/retrohost && node scripts/build-native.mjs --check
+      - run: chmod +x tools/native/linux-x64/retrohost tools/native/linux-x64/linkhost && node scripts/build-native.mjs --check
 
       - name: Smoke test – `npm run app` from the checkout
         run: xvfb-run -a node scripts/smoke-app.mjs --dev
@@ -104,6 +104,7 @@ jobs:
           printf '%s  %s MB\n' "$appimage" "$(( $(stat -c %s "$appimage") / 1048576 ))" "$deb" "$(( $(stat -c %s "$deb") / 1048576 ))"
           test -x dist/linux-unpacked/souldew-renaissance
           test -x dist/linux-unpacked/resources/tools/jre/linux-x64/bin/java || { echo '::error::JRE not bundled'; exit 1; }
+          test -x dist/linux-unpacked/resources/tools/native/linux-x64/linkhost || { echo '::error::link host not bundled (trades and battles)'; exit 1; }
           test -f dist/linux-unpacked/resources/app/build/icon.png || { echo '::error::window icon not bundled'; exit 1; }
           dpkg-deb --info "$deb"
           dpkg-deb --contents "$deb" | grep -E '/opt/souldew Renaissance/resources/tools/jre/linux-x64/bin/java$'

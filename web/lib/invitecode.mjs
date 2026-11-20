@@ -33,6 +33,11 @@
 //    error replies (denial of service) is always possible on a public broker.
 // Relay only, no Trystero: its room password would be the bare 6-digit code, and the handshake is a few messages.
 //
+// Friend invites (souldew account, web/lib/friendinvite.mjs) use the same handshake with a long code instead: "F" + 22
+// random URL-safe characters (132 bits), delivered by the accounts service to that one friend only – never typed, never
+// shown. Nobody can find that code behind the topic or guess it, so nobody else can even ask to join; the 4 digits
+// then can't catch anybody in the middle and the host's app fills them in itself. The host still decides with "Allow".
+//
 // Wire format, <T> = <edition topicRoot>/invite/v1/<topic id>, rid = the partner's random request id, nothing retained:
 //   req/<rid>    partner → host  JSON { v, key: masked B }               resent until answered
 //   res/<rid>    host → partner  JSON { v, key: masked A } | { v, error }
@@ -48,8 +53,10 @@ export const KDF_ITERATIONS = 1000000;
 const SALT = 'soullink-studio/invite-code@1';
 // The run pack's formats this app reads – shared/runpack.mjs PACK_FORMATS (a test keeps the two the same; a run with
 // another shiny rate has its own, which 2.7.4 refuses – and one with a rate 2.8.0 doesn't know, which 2.8.0 refuses; a
-// run whose TM compatibility follows the TM moves needs 2.8.3). A pack of a later format: "update souldew".
-export const PACK_FORMATS = ['soullink-studio/run-pack@1', 'soullink-studio/run-pack@2', 'soullink-studio/run-pack@3', 'soullink-studio/run-pack@4'];
+// run whose TM compatibility follows the TM moves needs 2.8.3; a Play together needs 3.0.0). A pack of a later format:
+// "update souldew".
+export const PACK_FORMATS = ['soullink-studio/run-pack@1', 'soullink-studio/run-pack@2', 'soullink-studio/run-pack@3', 'soullink-studio/run-pack@4',
+  'soullink-studio/run-pack@5'];
 const packFormatState = (pack) => (PACK_FORMATS.includes(pack?.format) ? 'ok'
   : typeof pack?.format === 'string' && /^soullink-studio\/run-pack@\d{1,4}$/.test(pack.format) ? 'newer' : 'invalid');
 const MAX_FAILS = 3; // wrong key or declined
@@ -102,8 +109,16 @@ export function newCode() {
   return String(n[0] % 1000000).padStart(6, '0');
 }
 
-/** "123 456", "123-456", " 123456 " → "123456"; anything else → null. */
+/** A friend invite's code: "F" + 22 random URL-safe characters (see the threat model above). */
+export function newFriendCode() {
+  const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  return `F${[...crypto.getRandomValues(new Uint8Array(22))].map((b) => abc[b & 63]).join('')}`;
+}
+export const isFriendCode = (c) => typeof c === 'string' && /^F[A-Za-z0-9_-]{22}$/.test(c);
+
+/** "123 456", "123-456", " 123456 " → "123456"; a friend invite's code as it is; anything else → null. */
 export function normalizeCode(s) {
+  if (isFriendCode(String(s ?? '').trim())) return String(s).trim();
   const d = String(s ?? '').replace(/[\s\-–.]/g, '');
   return /^\d{6}$/.test(d) ? d : null;
 }

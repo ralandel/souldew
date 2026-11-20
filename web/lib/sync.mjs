@@ -75,7 +75,17 @@ const SCREEN = {
   // sender: video to at most this many watchers at once – in a big group (up to 7 partners) everybody watching one
   // player would cost that player one upload stream each; more watchers than this get the still pictures instead
   maxVideoWatchers: 3,
+  // sender: video bitrate per watcher – full while one or two watch, then shared so three watchers (a four-player run
+  // where everyone watches everyone) cost about as much upload as two: each player also decodes up to three videos
+  videoBitrate: 400000,
+  videoBudget: 900000,
+  videoMinBitrate: 250000,
 };
+
+/** Video bitrate for each of `n` watchers' peers (bps). */
+export function videoBitrate(n) {
+  return Math.round(Math.max(SCREEN.videoMinBitrate, Math.min(SCREEN.videoBitrate, SCREEN.videoBudget / Math.max(1, n))));
+}
 const FRAME_TYPES = ['image/jpeg', 'image/webp', 'image/png'];
 
 function b64(u8) {
@@ -134,7 +144,7 @@ function relayGroup(clients) {
     },
   };
 }
-const NO_SCREEN ={ known: false, active: false, mode: null, url: null, blob: null, at: 0, since: 0, system: null };
+const NO_SCREEN = { known: false, active: false, held: false, mode: null, url: null, blob: null, at: 0, since: 0, system: null };
 
 /** Message carrying one still picture of the sender's game. */
 export function screenFrame(from, bytes, mime, system, at = Date.now()) {
@@ -204,6 +214,8 @@ export class SyncLink {
     this.seenIds = new Set(); // ids of recent chat/screen messages (they may arrive over P2P and several brokers)
     this.clockOffsets = {}; // slot → our clock minus theirs, from their live messages
     this.clockOffset = 0; // the same for whoever spoke last (older callers)
+    this.linkListeners = new Set(); // link sessions (web/lib/linksession.mjs): fn(msg) per message
+    this.worldListeners = new Set(); // Shared World (web/lib/sharedworld.mjs): fn(msg, via) per presence message
   }
 
   /** The other slots of the run (every other one of ALL_SLOTS when the caller didn't say). */
@@ -304,6 +316,8 @@ export class SyncLink {
       }
       this.trysteroRoom = null;
       this.ops = null;
+      this.linkAct = this.linkBinAct = null;
+      this.worldAct = null;
       this.peers.clear();
       this.peerId = null;
       this._set({ p2p: 'connecting' }); // no direct link to anybody until the room is joined again
@@ -534,9 +548,151 @@ export class SyncLink {
       return changed;
     }
     if (this._dup(msg.mid)) return null; // same chat / screen message over P2P and the relay (or two brokers)
-    if (msg.kind === 'msg') this.onMessage?.(msg);
+    if (msg.kind === 'msg' && msg.payload?.link) this._linkIn(msg.payload.link, null, 'relay');
+    else if (msg.kind === 'msg' && msg.payload?.world) this._worldIn(msg.payload.world, null, 'relay');
+    else if (msg.kind === 'msg') this.onMessage?.(msg);
     else if (typeof msg.kind === 'string' && msg.kind.startsWith('screen-')) this._screenIn(msg);
     return null;
+  }
+
+  // --- link sessions --------------------------------------------------------------
+  /** Messages of link sessions: fn(msg) with msg.from = the sender's slot. Returns the unsubscribe function. */
+  onLink(fn) {
+    this.linkListeners.add(fn);
+    return () => this.linkListeners.delete(fn);
+  }
+
+  /** Is there a live direct (P2P) link to `slot` – what a link session's buttons need? */
+  linkDirect(slot) {
+    return this._p2pSlots().has(slot);
+  }
+
+  /**
+   * How the data channel to `slot` runs: 'direct' (peer to peer, also through a NAT) or 'relayed' (through a TURN
+   * server – still end-to-end encrypted, a little slower), from the connection's selected ICE candidate pair; null when
+   * unknown (no peer, no stats yet).
+   */
+  async linkRoute(slot) {
+    const pcs = this.trysteroRoom?.getPeers?.() || {};
+    for (const peer of this._peersOf(slot)) {
+      const pc = pcs[peer];
+      if (!pc?.getStats) continue;
+      try {
+        const stats = await pc.getStats();
+        const byId = new Map();
+        stats.forEach((r) => byId.set(r.id, r));
+        let pair = null;
+        stats.forEach((r) => {
+          if (r.type === 'transport' && r.selectedCandidatePairId) pair = byId.get(r.selectedCandidatePairId) || pair;
+        });
+        if (!pair) stats.forEach((r) => { if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected)) pair = pair || r; });
+        if (!pair) continue;
+        const types = [byId.get(pair.localCandidateId)?.candidateType, byId.get(pair.remoteCandidateId)?.candidateType];
+        return { route: types.includes('relay') ? 'relayed' : 'direct', rtt: Number.isFinite(pair.currentRoundTripTime) ? Math.round(pair.currentRoundTripTime * 1000) : null };
+      } catch {
+        // a closing connection
+      }
+    }
+    return null;
+  }
+
+  /**
+   * A link-session message to `slots` over the direct link (each peer of each slot). `relayToo`: control messages
+   * (invite, answer, bye) also go over the relay when there is no direct link; buttons never do (60 a second).
+   * Returns true when it went out directly to every slot.
+   */
+  sendLink(msg, slots, { relayToo = false } = {}) {
+    if (this.stopped) return false;
+    const m = { ...msg, from: this.slot, at: Date.now() };
+    let all = true;
+    for (const slot of slots) {
+      const peers = this.linkAct && this.status.p2p === 'connected' ? this._peersOf(slot) : [];
+      if (!peers.length) all = false;
+      for (const target of peers) {
+        try {
+          this.linkAct.send(m, { target })?.catch?.(() => {});
+        } catch (e) {
+          console.warn('link send failed', e);
+        }
+      }
+    }
+    if (!all && relayToo) this.sendMessage({ link: m });
+    return all;
+  }
+
+  /**
+   * A link-session message with a big binary part (a running game's state) to `slots`, over the direct link only: the
+   * bytes go as they are – no base64, no JSON, one transfer Trystero splits into chunks – and arrive as `msg.bin`.
+   * Returns true when it went out to every slot.
+   */
+  sendLinkBinary(msg, bytes, slots) {
+    if (this.stopped || !this.linkBinAct || this.status.p2p !== 'connected') return false;
+    const meta = { msg: { ...msg, from: this.slot, at: Date.now() } };
+    let all = true;
+    for (const slot of slots) {
+      const peers = this._peersOf(slot);
+      if (!peers.length) all = false;
+      for (const target of peers) this.linkBinAct.send(bytes, { target, metadata: meta })?.catch?.((e) => console.warn('link send failed', e));
+    }
+    return all;
+  }
+
+  _linkIn(msg, peerId, via = 'p2p') {
+    if (this.stopped || !msg || typeof msg !== 'object' || typeof msg.from !== 'string' || msg.from === this.slot) return;
+    if (!this.others.includes(msg.from)) return;
+    if (peerId) this._peerSlot(peerId, msg.from);
+    for (const fn of this.linkListeners) {
+      try {
+        fn(msg, via);
+      } catch (e) {
+        console.warn('link listener failed', e);
+      }
+    }
+  }
+
+  // --- Shared World (docs/MULTIPLAYER.md › 9) ---------------------------------------------------------------
+  /** Presence messages of the partners (where they walk in their game): fn(msg, via). Returns the unsubscribe. */
+  onWorld(fn) {
+    this.worldListeners.add(fn);
+    return () => this.worldListeners.delete(fn);
+  }
+
+  /**
+   * A presence message to every other player over the direct link (its own action: never mixed with a link session's
+   * buttons). Returns the slots it reached directly – the caller sends the rest over the relay, much less often
+   * (`relay: true` – a few words through the encrypted relay, see web/lib/sharedworld.mjs SEND).
+   */
+  sendWorld(msg, { relay = false } = {}) {
+    if (this.stopped) return new Set();
+    const m = { ...msg, from: this.slot };
+    const reached = new Set();
+    if (this.worldAct && this.status.p2p === 'connected') {
+      for (const slot of this.others) {
+        for (const target of this._peersOf(slot)) {
+          try {
+            this.worldAct.send(m, { target })?.catch?.(() => {});
+            reached.add(slot);
+          } catch (e) {
+            console.warn('world send failed', e);
+          }
+        }
+      }
+    }
+    if (relay) this.sendMessage({ world: m });
+    return reached;
+  }
+
+  _worldIn(msg, peerId, via = 'p2p') {
+    if (this.stopped || !msg || typeof msg !== 'object' || typeof msg.from !== 'string' || msg.from === this.slot) return;
+    if (!this.others.includes(msg.from)) return;
+    if (peerId) this._peerSlot(peerId, msg.from);
+    for (const fn of this.worldListeners) {
+      try {
+        fn(msg, via);
+      } catch (e) {
+        console.warn('world listener failed', e);
+      }
+    }
   }
 
   _offset(slot, ms) {
@@ -555,13 +711,39 @@ export class SyncLink {
       if (this.stopped) return;
       this.trysteroMod = mod;
       const { joinRoom } = mod;
-      const room = joinRoom({ appId: APP_ID, password: this.secret, ...P2P_CONFIG }, this.room);
+      // ICE: this build's own STUN/TURN (EDITION.iceServers, in P2P_CONFIG). A getIceServers answer (the official app
+      // asks its bot for short-lived TURN credentials) replaces them only when one is wired and answers in time.
+      const ice = this.getIceServers ? await Promise.race([this.getIceServers().catch(() => null), new Promise((r) => setTimeout(() => r(null), 2500))]) : null;
+      if (this.stopped) return;
+      const servers = Array.isArray(ice) ? ice : ice?.iceServers;
+      const turnConfig = Array.isArray(servers) && servers.length ? servers : undefined;
+      // (relayOnly: the server was told to send everything through TURN – a test of the relayed path)
+      const relay = !!ice?.relayOnly && !!turnConfig;
+      const rtcConfig = { ...P2P_CONFIG.rtcConfig, ...(turnConfig ? { iceServers: turnConfig } : {}), ...(relay ? { iceTransportPolicy: 'relay' } : {}) };
+      const room = joinRoom({ appId: APP_ID, password: this.secret, relayConfig: P2P_CONFIG.relayConfig, rtcConfig }, this.room);
       this.trysteroRoom = room;
       const action = room.makeAction('ops');
       this.ops = action;
       // The vendored Trystero passes the sender as { peerId, …metadata } (older builds: the bare id). Without the id
       // no peer ever gets its slot – no per-player direct flags, no video, and a needless room rejoin every 5 min.
       action.onMessage = (data, from) => this._receive(data, 'p2p', typeof from === 'string' ? from : from?.peerId);
+      // link sessions (trades and battles, docs/MULTIPLAYER.md): their own ordered, reliable channel
+      const link = room.makeAction('link');
+      this.linkAct = link;
+      link.onMessage = (data, from) => this._linkIn(data, typeof from === 'string' ? from : from?.peerId);
+      // …and their big binary parts (sendLinkBinary): the message rides along as the transfer's metadata
+      const bin = room.makeAction('linkbin');
+      this.linkBinAct = bin;
+      bin.onMessage = (data, from) => {
+        const msg = from?.metadata?.msg; // (Trystero hands the sender over as { peerId, metadata })
+        if (msg && typeof msg === 'object' && (data instanceof ArrayBuffer || ArrayBuffer.isView(data))) {
+          this._linkIn({ ...msg, bin: data instanceof Uint8Array ? data : new Uint8Array(data.buffer || data, data.byteOffset || 0, data.byteLength) }, from.peerId);
+        }
+      };
+      // Shared World: the partners' positions, 10–15 a second while they walk (web/lib/sharedworld.mjs)
+      const world = room.makeAction('world');
+      this.worldAct = world;
+      world.onMessage = (data, from) => this._worldIn(data, typeof from === 'string' ? from : from?.peerId);
       // One peer per other player – plus possibly the same player in a second window / on a second device. The
       // link counts as connected while any peer that may be a partner is there; ops go to all peers at once.
       room.onPeerJoin = (peerId) => {
@@ -756,14 +938,21 @@ export class SyncLink {
   // stop watching); as soon as one watcher is reachable over the relay only (or asked for pictures because the
   // video never arrived), everybody gets a small encrypted JPEG every 1.5 s instead – one broadcast on our own
   // relay topic (never retained) that every watcher reads. One format for all keeps the sender simple; mixed
-  // links are rare. Paused game / hidden window → the video track is disabled and no pictures are sent.
-  // Viewer: watchPartnerScreen(fn, slot) → fn({ slot, known, active, mode, stream, url, blob, at, since, system }).
+  // links are rare. Hidden window / no game → the video track is disabled and no pictures are sent. A game that is only
+  // paused (the pause button, Shared World's A menu, a rock-paper-scissors round) keeps its picture: the track stays on
+  // (a still canvas sends next to nothing) and the state says `held` – a disabled track would send black frames, and
+  // turning it back on starts the encoder over at a low, blurry quality.
+  // Viewer: watchPartnerScreen(fn, slot) → fn({ slot, known, active, held, mode, stream, url, blob, at, since, system }).
+  // Several at once (one per partner, views/partnerscreen.mjs) is fine: every partner is a peer of its own in the
+  // mesh, so each video arrives on its own connection (peerStreams per slot), and each partner decides video or
+  // pictures for itself – one partner on the relay only sends pictures while the others' videos keep running.
 
   /**
    * @param {object} source
    *   getStream?: () => MediaStream|null|Promise   live video of the game (P2P path)
    *   getSnapshot?: ({ maxW, quality, type }) => Promise<Blob|null>   small still picture (relay path)
-   *   isActive?: () => boolean   false while the game is paused / not running
+   *   isActive?: () => boolean   false while no game is running (nothing to show)
+   *   isPaused?: () => boolean   the game is there but stands still – the picture is kept, the partners see it held
    *   system?: 'nds'|'gba'|'gbc'|'gb'
    */
   startScreenShare(source = {}) {
@@ -828,8 +1017,10 @@ export class SyncLink {
     // throttling) – so in the app only the emulator decides; in a browser a hidden tab really stops.
     let active = typeof document === 'undefined' || !document.hidden || !!globalThis.sls?.native;
     const backgrounded = !active; // tab in the background: the game may well run, there's just no picture
+    let held = false;
     try {
       if (active && s.src.isActive) active = !!s.src.isActive();
+      held = active && !!s.src.isPaused?.();
     } catch {
       active = false; // emulator iframe gone / not ready
     }
@@ -843,12 +1034,14 @@ export class SyncLink {
     if (active && wanted) mode = p2p && s.src.getStream && !s.noStream && (await this._ensureStream(s, targets)) ? 'stream' : 'image';
     if (this.stopped || this.share !== s) return;
     if (s.stream) for (const tr of s.stream.getVideoTracks()) tr.enabled = mode === 'stream';
-    if (mode === 'stream' && s.limited.size < s.streamPeers.size) this._limitBitrate(s);
+    if (mode === 'stream' && (s.limited.size < s.streamPeers.size || s.limitN !== s.streamPeers.size)) this._limitBitrate(s);
     const now = Date.now();
-    if (mode !== s.mode || (wanted && now - s.lastState > SCREEN.wantEvery)) {
+    held = held && !!mode;
+    if (mode !== s.mode || held !== !!s.held || (wanted && now - s.lastState > SCREEN.wantEvery)) {
       s.mode = mode;
+      s.held = held;
       s.lastState = now;
-      await this._screenSend({ kind: 'screen-state', from: this.slot, active: !!mode, mode, system: s.src.system || null, ...(backgrounded ? { paused: true } : {}) });
+      await this._screenSend({ kind: 'screen-state', from: this.slot, active: !!mode, mode, system: s.src.system || null, ...(backgrounded ? { paused: true } : {}), ...(held ? { held: true } : {}) });
     }
     if (mode === 'image') await this._sendFrame(s);
   }
@@ -873,6 +1066,14 @@ export class SyncLink {
         tr.stop();
         stream.removeTrack(tr);
       });
+      // pixel art: keep every pixel sharp and give up frames under load, never the resolution
+      for (const tr of stream.getVideoTracks()) {
+        try {
+          if ('contentHint' in tr) tr.contentHint = 'detail';
+        } catch {
+          // read-only in this browser
+        }
+      }
       s.stream = stream;
     }
     for (const peer of [...s.streamPeers]) {
@@ -903,9 +1104,15 @@ export class SyncLink {
     return !this.stopped && this.share === s;
   }
 
-  // Canvas tracks run at the canvas' full size (often > 1000 px on a retina screen) – cap what goes out.
+  // Canvas tracks run at the canvas' full size (often > 1000 px on a retina screen) – cap what goes out. With more
+  // watchers each one's share gets smaller (videoBitrate) – a change in their number sets every peer again.
   _limitBitrate(s) {
     const track = s.stream?.getVideoTracks()[0];
+    if (s.limitN !== s.streamPeers.size) {
+      s.limitN = s.streamPeers.size;
+      s.limited = new Set();
+    }
+    const maxBitrate = videoBitrate(s.streamPeers.size);
     for (const peer of s.streamPeers) {
       if (s.limited.has(peer)) continue;
       try {
@@ -915,7 +1122,7 @@ export class SyncLink {
         const p = sender.getParameters();
         if (!p.encodings?.length) continue; // not negotiated yet → next tick
         const w = track.getSettings?.().width || 0;
-        Object.assign(p.encodings[0], { maxBitrate: 400000, maxFramerate: 15, scaleResolutionDownBy: Math.max(1, w / 384) });
+        Object.assign(p.encodings[0], { maxBitrate, maxFramerate: 15, scaleResolutionDownBy: Math.max(1, w / 384) });
         s.limited.add(peer);
         sender.setParameters(p).catch(() => s.limited.delete(peer));
       } catch {
@@ -1065,7 +1272,8 @@ export class SyncLink {
     const ps = this.screens[slot] || NO_SCREEN;
     if (msg.kind === 'screen-state') {
       const mode = msg.active ? (msg.mode === 'stream' ? 'stream' : 'image') : null;
-      const patch = { known: true, active: !!msg.active, paused: !msg.active && !!msg.paused, mode, system: typeof msg.system === 'string' ? msg.system : ps.system };
+      // held: the partner's game is paused – their picture stands still but is still theirs (older apps never say so)
+      const patch = { known: true, active: !!msg.active, paused: !msg.active && !!msg.paused, held: !!msg.active && !!msg.held, mode, system: typeof msg.system === 'string' ? msg.system : ps.system };
       if (mode === 'stream' && ps.mode !== 'stream') patch.since = Date.now();
       if (mode !== 'image') Object.assign(patch, { url: null, blob: null });
       this._emitScreen(slot, patch);

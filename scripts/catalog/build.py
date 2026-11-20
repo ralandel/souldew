@@ -57,6 +57,11 @@ for h in H:
     # checksums the library recognises the hack by: its patched ROMs (also what a BPS/UPS patch says it makes) and the patch
     if h.get("romCrc32"): out["romCrc32"]=h["romCrc32"]
     if h.get("patchSha1"): out["patchSha1"]=h["patchSha1"]
+    # a hack that names itself in the ROM header (title, with the base game's code where it kept it): every version of it
+    if h.get("romTitle"): out["romTitle"]=h["romTitle"]
+    if h.get("romCode"): out["romCode"]=h["romCode"]
+    # a randomizer of its own (its new-game options): the new-run wizard points there when UPR ZX can't randomize it
+    if h.get("ownRandomizer"): out["ownRandomizer"]=True
     # sanity: baseCrc32 must be a dump of base game
     if out["baseCrc32"]:
         bg=[g for g in games if g["id"]==h["baseGameId"]][0]

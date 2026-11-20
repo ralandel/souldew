@@ -1,22 +1,18 @@
-// Starting or continuing a game: the module slides into the console's slot and clicks in – the game boots
-// underneath meanwhile (kept invisible until this is over, play.mjs), so it costs no time. A click or key skips
-// it; Settings › "Play animations" turns it off.
+// The free launch animation (2D, as in souldew 2.x): starting or continuing a game, the module slides into the console's
+// slot and clicks in – the game boots underneath meanwhile (kept invisible until this is over, play.mjs), so it costs no
+// time. Since 3.0 it is what plays without a membership (shared/handheld.mjs launchTier 'free'); Supporter and souldew+
+// get your handheld in 3D (views/launchstage.mjs). A click or key skips it; Settings › Play › Launch animation (On /
+// Off) and the general "Play animations" turn it off; with reduced motion it doesn't play (the module still clicks when
+// the game appears). One length – there is no Quick form of it.
 import { html, useEffect, useRef } from '/vendor/htm-preact.mjs';
 import { useApp } from '../lib/ui.mjs';
-import { Cart, coverOf } from './library.mjs';
+import { Cart } from './library.mjs';
+import { insertCover } from './launchstage.mjs';
 import { play, preload } from '../lib/sound.mjs';
 
 const LENGTH = 1500; // ms – matches the keyframes in styles.css (.cart-insert)
 const HOME_AT = 900; // the module is pushed home at 60 % of ci-drop
 const CLICK_LEAD = 68; // the click in cart-insert.wav comes this long after its start
-
-/** The picture on the module: the player's own cover first, then the catalog's (a hack: its base game). */
-export function insertCover(library, target, manifest) {
-  if (target.runId) return coverOf(library, { gameId: target.gameId || manifest?.game?.id, hackId: manifest?.game?.hackId || manifest?.patch?.hackId });
-  const rom = library?.roms?.find((r) => r.id === target.params?.rom);
-  const hackId = target.params?.patch ? library?.patches?.find((p) => p.id === target.params.patch)?.hackId : null;
-  return coverOf(library, { gameId: target.gameId, hackId, rom });
-}
 
 /** sound: the app's sounds setting (the click is an app sound – the game's volume doesn't turn it down) */
 export function CartInsert({ target, color, sound = true, onDone }) {

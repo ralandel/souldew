@@ -6,6 +6,7 @@ import { slotsOf } from '/shared/slots.mjs';
 import { speciesCeiling } from '/shared/live/romspecies.mjs';
 import { setTypeChart } from '/shared/typechart.mjs';
 import { formTypes, formSpriteId, formKind } from '/shared/forms.mjs';
+import { gbItemKey } from '/shared/giftitems.mjs';
 
 let P = null;
 let CATALOG = { games: [], hacks: [] };
@@ -126,6 +127,23 @@ export function itemName(id, gen, lang = currentLang()) {
   return key ? items.names?.[lang]?.[key] || items.names?.en?.[key] || '' : '';
 }
 
+/** An item's name by its PokeAPI identifier ('master-ball') in the app's language – '' when unknown. */
+export function itemNameByKey(key, lang = currentLang()) {
+  const names = P?.items?.names;
+  return (key && (names?.[lang]?.[key] || names?.en?.[key])) || '';
+}
+
+/**
+ * An item's name for a gift between players (web/lib/together.mjs): Gen 3–7 as itemName, Gen 1/2 for the items a gift
+ * may be (shared/giftitems.mjs – their PokeAPI identifier, the same names). '' when unknown.
+ */
+export function giftItemName(id, gen, lang = currentLang()) {
+  if (gen >= 3) return itemName(id, gen, lang);
+  const key = gbItemKey(gen, id);
+  const items = P?.items;
+  return key ? items?.names?.[lang]?.[key] || items?.names?.en?.[key] || '' : '';
+}
+
 /**
  * Sprite in the art style of the game's generation (served + cached by the local server). `form`: the Pokémon's
  * alternate form (shared/forms.mjs – PokeAPI's own number for it; Gen 4/5's sprite sets have them, the others show
@@ -199,7 +217,11 @@ export class RunData {
     this.byId = {};
   }
 
-  async load(manifest) {
+  /**
+   * `rom: false`: without the ROM's own data (romFetch / withRom bring it later) – the scan of a big game file takes
+   * seconds (a DS game) to minutes (a slow PC, the first time), and the run must not wait for it (web/app.mjs).
+   */
+  async load(manifest, { rom = true } = {}) {
     const game = gameById(manifest?.game?.id) || gameById(manifest?.base?.gameId);
     this.gen = game?.generation || genFromSystem(manifest?.game) || 4;
     this.game = game;
@@ -208,24 +230,38 @@ export class RunData {
       this.romData[slot] = d;
       this.byId[slot] = d ? new Map(d.pokemon.filter((p) => p.forme === 0).map((p) => [p.id, p])) : null;
     }
-    // the game's own data from its ROM (server/lib/romloc.mjs): its types (any game – a hack may have changed them) and,
-    // for a GBA game, which Pokémon it holds (a hack with later generations' Pokémon: Run & Bun, Light Platinum – also a
-    // ROM that was patched before it was added)
-    this.romTypes = null;
-    this.romSpecies = null;
-    this.romVanilla = null;
-    const out = Object.entries(manifest?.outputs || {}).find(([s, o]) => !this.byId[s] && o?.rom);
-    if (out) {
-      const src = `/api/runs/${manifest.id}/file?inline=1&name=${encodeURIComponent(out[1].rom)}`;
-      const j = await fetch(`/api/rom/locations?src=${encodeURIComponent(src)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      this.romTypes = j?.types?.species ? j.types : null;
-      this.romSpecies = j?.species || null;
-      this.romVanilla = j ? j.vanilla !== false : null;
-      Object.assign(TYPE_LABELS, this.romTypes?.labels || {});
-      // a hack's own Pokémon are named as the game names them – on the board too, not only while the game runs
-      if (this.romSpecies?.unknown && Object.keys(this.romSpecies.unknown).length) setRomSpecies(this.romSpecies);
-    }
+    this._applyRom(null);
+    if (rom) this._applyRom(await this.romFetch(manifest));
     return this;
+  }
+
+  /**
+   * The game's own data from its ROM (server/lib/romloc.mjs, computed in a worker): its types (any game – a hack may
+   * have changed them) and, for a GBA game, which Pokémon it holds (a hack with later generations' Pokémon: Run & Bun,
+   * Light Platinum – also a ROM that was patched before it was added). Only needed while no player's randomizer data
+   * is here. → the scan's result, or null (none needed, or it failed).
+   */
+  async romFetch(manifest) {
+    const out = Object.entries(manifest?.outputs || {}).find(([s, o]) => !this.byId[s] && o?.rom);
+    if (!out) return null;
+    const src = `/api/runs/${manifest.id}/file?inline=1&name=${encodeURIComponent(out[1].rom)}`;
+    return fetch(`/api/rom/locations?src=${encodeURIComponent(src)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  }
+
+  /** A copy of this run's data with the ROM's own data `j` (romFetch) in it – a new object, so whatever depends on it updates. */
+  withRom(j) {
+    const c = Object.assign(Object.create(RunData.prototype), this);
+    c._applyRom(j);
+    return c;
+  }
+
+  _applyRom(j) {
+    this.romTypes = j?.types?.species ? j.types : null;
+    this.romSpecies = j?.species || null;
+    this.romVanilla = j ? j.vanilla !== false : null;
+    Object.assign(TYPE_LABELS, this.romTypes?.labels || {});
+    // a hack's own Pokémon are named as the game names them – on the board too, not only while the game runs
+    if (this.romSpecies?.unknown && Object.keys(this.romSpecies.unknown).length) setRomSpecies(this.romSpecies);
   }
 
   /** A ROM hack's own Pokémon (no National Dex number): their ids (FAKEMON + the game's index), for the picker. */

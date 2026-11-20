@@ -10,7 +10,7 @@ import { listRuns, runDir } from './build.mjs';
 import { catalog } from './library.mjs';
 import { PROGRESSION } from '../../shared/routes.mjs';
 import { slotsOf } from '../../shared/slots.mjs';
-import { digestRun, buildDex, dexTotals, context, evaluate, medals, migrate, cleanMoment, momentKey, MAX_MOMENTS, MAX_SPECIES, SCHEMA } from '../../shared/trophies.mjs';
+import { digestRun, runStarted, buildDex, dexTotals, context, evaluate, medals, migrate, cleanMoment, momentKey, MAX_MOMENTS, MAX_SPECIES, SCHEMA } from '../../shared/trophies.mjs';
 
 export const TROPHY_PATH = join(DATA_DIR, DEV ? 'runs/trophies.json' : 'trophies.json');
 
@@ -70,8 +70,10 @@ function guessSlot(m) {
 
 // Bump when digestRun (shared/trophies.mjs) or the generation lookup here reads a run differently: every run is
 // digested again (2: a hack's base game's generation, evolutions once per step, the partner's deaths, bonus deaths;
-// 3: every cheat counts against Honest Work, not only Rare Candies – cheatUses).
-const DIGEST_VERSION = 3;
+// 3: every cheat counts against Honest Work, not only Rare Candies – cheatUses;
+// 4: a run with an imported battery save – its wins, badges and levels don't count (run.json saveImports);
+// 5: the first Master Ball from the cheats – masterBallAt).
+const DIGEST_VERSION = 5;
 
 /** The generation of a run's game – or a hack's base game (a hack run's game id can be the hack's). */
 function genOf(m, games) {
@@ -81,18 +83,30 @@ function genOf(m, games) {
   return game?.generation || null;
 }
 
-/** Re-read the runs whose doc changed since the last digest (by size + mtime + slot + digest version). */
+/**
+ * Re-read the runs whose doc changed since the last digest (by size + mtime + slot + digest version). Returns the ids
+ * of the runs this computer has not started (an invite opened but not built): they count for nothing.
+ */
 function refreshRuns(state) {
   const games = catalog().games || [];
   const present = new Set();
+  const idle = new Set();
   for (const m of listRuns()) {
     present.add(m.id);
+    // (a Play together is the player's own game with friends, no challenge – it counts for no trophy and no profile
+    // stat: its badges and catches are the library game's, which other runs may play too – shared/playtogether.mjs)
+    if (!runStarted(m) || m.mode === 'together') {
+      // (a digest an older version made of it goes – the invite wasn't a run of this computer's yet)
+      idle.add(m.id);
+      delete state.runs[m.id];
+      continue;
+    }
     const slot = slotsOf(m).includes(state.slots[m.id]) ? state.slots[m.id] : guessSlot(m);
     let sig = `v${DIGEST_VERSION}:none:${slot}`;
     const p = join(runDir(m.id), 'doc.json');
     try {
       const st = statSync(p);
-      sig = `v${DIGEST_VERSION}:${st.size}:${Math.round(st.mtimeMs)}:${slot}:${m.updatedAt || ''}:${m.name || ''}`;
+      sig = `v${DIGEST_VERSION}:${st.size}:${Math.round(st.mtimeMs)}:${slot}:${m.updatedAt || ''}:${m.name || ''}:${(m.saveImports?.[slot] || []).length}`;
     } catch {
       // no doc yet – a fresh run still counts as started
     }
@@ -116,6 +130,7 @@ function refreshRuns(state) {
     const digest = gen && r.digest.gen !== gen ? { ...r.digest, gen } : r.digest;
     if (!r.archived || digest !== r.digest) state.runs[id] = { ...r, digest, archived: true };
   }
+  return idle;
 }
 
 /**
@@ -137,21 +152,21 @@ export function syncTrophies({ slots = {}, seen = [], moments = [] } = {}) {
     const n = Number(id);
     if (Number.isInteger(n) && n >= 1 && n <= MAX_SPECIES && !state.seen[n]) state.seen[n] = now;
   }
+  const idle = refreshRuns(state);
   const keys = new Set(state.moments.map(momentKey));
   for (const raw of Array.isArray(moments) ? moments.slice(0, 50) : []) {
     const m = cleanMoment(raw);
-    if (m && !keys.has(momentKey(m))) {
+    if (m && !idle.has(m.runId) && !keys.has(momentKey(m))) {
       keys.add(momentKey(m));
       state.moments.push(m);
     }
   }
   state.moments = state.moments.slice(-MAX_MOMENTS);
-  refreshRuns(state);
 
   const digests = Object.values(state.runs).map((r) => r.digest).filter(Boolean);
   const dex = buildDex(digests, state.seen);
   const totals = dexTotals(dex);
-  const states = evaluate(context(digests, state.moments, { dex, typesOf, isDefaultName }));
+  const states = evaluate(context(digests, state.moments.filter((m) => !idle.has(m.runId)), { dex, typesOf, isDefaultName }));
   const fresh = [];
   for (const s of states) {
     if (!s.ok || state.unlocked[s.id]) continue;
@@ -173,4 +188,19 @@ export function syncTrophies({ slots = {}, seen = [], moments = [] } = {}) {
     fresh: first ? [] : fresh,
     backfilled: first ? fresh : [],
   };
+}
+
+/**
+ * Every run's digest (shared/trophies.mjs digestRun), up to date – also of deleted runs. For the souldew account's
+ * profile numbers (server/lib/accounts/stats.mjs), which only leave the computer when the player opted in.
+ */
+export function runDigests() {
+  syncTrophies();
+  const state = load();
+  return Object.entries(state?.runs || {}).map(([id, r]) => (r.digest ? { ...r.digest, id, archived: !!r.archived } : null)).filter(Boolean);
+}
+
+/** The ids of the achievements this computer has unlocked (titles and showcase picks of the souldew profile). */
+export function unlockedAchievements() {
+  return Object.keys(load()?.unlocked || {});
 }

@@ -121,7 +121,7 @@ jobs:
         with:
           name: native-linux-x64
           path: tools/native/linux-x64
-      - run: chmod +x tools/native/linux-x64/retrohost && node scripts/build-native.mjs --check
+      - run: chmod +x tools/native/linux-x64/retrohost tools/native/linux-x64/linkhost && node scripts/build-native.mjs --check
       - name: Build the AppImage and the .deb
         run: npx electron-builder --linux AppImage deb --x64 --publish never
       - name: Smoke test
@@ -151,9 +151,9 @@ jobs:
       - run: npm test
       - name: The 3DS part (host, Azahar core with the souldew patch, MoltenVK – npm run dist checks it)
         run: |
-          brew install cmake ninja spirv-tools vulkan-headers git-lfs
+          brew install cmake ninja spirv-tools vulkan-headers git-lfs rgbds # (rgbds: SameBoy's boot ROMs – fast player and link host)
           node scripts/build-ctr.mjs
-      - name: The fast player part (host, melonDS DS, mGBA, Gambatte – npm run dist checks it)
+      - name: The fast player part (host, melonDS DS, mGBA, SameBoy, link host – npm run dist checks it)
         run: node scripts/build-native.mjs
       - name: Build the DMG
         env:

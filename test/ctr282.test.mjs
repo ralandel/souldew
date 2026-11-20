@@ -2,6 +2,7 @@
 // a cut-off game file recognised before it starts to a black screen (the game's own hashes, server/lib/ctrcheck.mjs), a
 // black picture said and recorded, what "Save diagnostics" keeps about the game file – and the ROM data of a 3DS game
 // that couldn't be read for a moment no longer cached as "no place names" for good.
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, statSync } from 'node:fs';
@@ -262,7 +263,7 @@ test('ctrData: a read that fails throws (not "no zone table"), so it isn\'t cach
   mkdirSync(notAFile, { recursive: true }); // (opens, but every read fails – EISDIR – like a file a scanner holds)
   assert.throws(() => ctrData(notAFile));
   const cacheDir = join(TMP, 'cache');
-  const r = await romDataFor({ file: notAFile }, { sharedDir: new URL('../shared', import.meta.url).pathname, cacheDir });
+  const r = await romDataFor({ file: notAFile }, { sharedDir: fileURLToPath(new URL('../shared', import.meta.url)), cacheDir });
   assert.equal(r.data, null);
   assert.ok(!existsSync(join(cacheDir, 'romloc')) || readdirSync(join(cacheDir, 'romloc')).length === 0, 'nothing on disk');
   // a whole file is read and cached as before

@@ -160,8 +160,6 @@
 .rules-drawer-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 22px; container-type: inline-size; }
 @keyframes drawer-in { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
 
-/* Left column of the session: level cap / rules and, in battle, the battle helper */
-.session-left { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
 .bt-chart.mine { border-top: 1px solid var(--edge); padding-top: 6px; }
 
 /* Pair died */
@@ -351,7 +349,7 @@
 .survivor b { font-family: var(--font-pixel); font-weight: 400; font-size: 18px; }
 
 /* Rules: Nuzlocke presets as segmented cards, rule rows, honour-system marks */
-.rule-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 5px; border-radius: var(--r-xl); background: #141318; box-shadow: inset 0 1px 2px #0008; }
+.rule-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 5px; border-radius: var(--r-xl); background: var(--sk-well, #141318); box-shadow: var(--lt-inset, inset 0 1px 2px #0008); }
 .rule-preset { display: grid; gap: 4px; align-content: start; text-align: left; padding: 12px 14px; border: 0; border-radius: 14px; background: transparent; color: var(--ink-2); cursor: pointer; transition: background .15s, color .15s; }
 .rule-preset:hover { background: var(--shell-2); color: var(--ink); }
 .rule-preset.on { background: linear-gradient(180deg, var(--shell-4), var(--shell-3)); color: var(--ink); box-shadow: var(--press), 0 6px 14px #0006; }

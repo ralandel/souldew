@@ -8,7 +8,7 @@ import { t, currentLang } from '../lib/i18n.mjs';
 import { speciesName, speciesFormName, typeLabel, moveName, romTypesNow, pokeapi } from '../lib/data.mjs';
 import {
   party as partyAreas, live, pairState, encounter, levelCap, rules as getRules, dupeOf, players as getPlayers,
-  areaName, causeText, slotsOf, othersOf, openAreas, isNuzlocke, pairTypeClash, typeHelpOn, lives as getLives, livesFor,
+  areaName, causeText, slotsOf, othersOf, openAreas, isNuzlocke, isTogether, pairTypeClash, typeHelpOn, progression, lives as getLives, livesFor,
 } from '../lib/run.mjs';
 import { statusOf, statusLabel, shownLevel } from './party.mjs';
 import { effectiveness, defenseChart, moveInfo, matchup } from '/shared/typechart.mjs';
@@ -58,7 +58,7 @@ export function blockedTypes(doc, rd, me, manifest) {
 export function RunStrip({ mine, onRules }) {
   const { doc, manifest, me, runData } = useApp();
   const [restart, setRestart] = useState(false);
-  if (!doc || !manifest) return null;
+  if (!doc || !manifest || isTogether(manifest)) return null; // (Play together: no cap, no rules to watch)
   const st = doc.get('run:status', null);
   if (st) {
     // ended: no cap or rules to watch anymore – what happened and the way on
@@ -168,7 +168,7 @@ function teamOf(doc, slot, me, mine) {
 export function LinkedPairs({ mine, gen, compact }) {
   const { doc, manifest, me } = useApp();
   if (!doc || !manifest) return null;
-  if (isNuzlocke(manifest)) return html`<${TeamList} mine=${mine} gen=${gen} compact=${compact} />`;
+  if (isNuzlocke(manifest) || isTogether(manifest)) return html`<${TeamList} mine=${mine} gen=${gen} compact=${compact} />`;
   const names = getPlayers(doc, manifest);
   const slots = slotsOf(manifest);
   const team = {};
@@ -195,13 +195,13 @@ export function LinkedPairs({ mine, gen, compact }) {
       const icon = html`<${Icon} name=${dead ? 'grave' : 'link'} size=${14} />`;
       const linkLabel = dead ? t('routes.dead', 'dead') : t('pairs.link', 'Link');
       if (pair) {
-        return html`<div class=${`pair-row ${st.state}`} key=${area} title=${areaName(doc, manifest, area)}>
+        return html`<div class=${`pair-row ${st.state}`} key=${area} data-area=${area} title=${areaName(doc, manifest, area)}>
           <${PairMon} mon=${team.p1.get(area)} enc=${st.encs.p1} dead=${dead} gen=${gen} side="l" />
           <span class=${`pair-link ${st.state}`} role="img" aria-label=${linkLabel}>${icon}</span>
           <${PairMon} mon=${team.p2.get(area)} enc=${st.encs.p2} dead=${dead} gen=${gen} side="r" />
         </div>`;
       }
-      return html`<div class=${`grp-row ${st.state}`} key=${area}>
+      return html`<div class=${`grp-row ${st.state}`} key=${area} data-area=${area}>
         <div class="grp-area"><span class=${`pair-link ${st.state}`} role="img" aria-label=${linkLabel}>${icon}</span><span class="grp-name" title=${areaName(doc, manifest, area)}>${areaName(doc, manifest, area)}</span></div>
         <div class="grp-cells">${slots.map((s) => html`<${GroupMon} key=${s} slot=${s} name=${names[s].name} mon=${team[s].get(area)} enc=${st.encs[s]} dead=${dead} gen=${gen} />`)}</div>
       </div>`;
@@ -223,6 +223,146 @@ function GroupMon({ slot, name, mon, enc, dead, gen }) {
     <span class="gm-lv num">${shownLevel(mon?.level) || shownLevel(enc?.level) || ''}</span>
     ${st && st !== 'fnt' && html`<span class=${`pp-st gm-st ${st}`} aria-hidden="true">${statusLabel(st)}</span>`}
     ${mon?.maxHp && !dead ? html`<${HpBar} hp=${mon.hp} max=${mon.maxHp} />` : html`<span class="gm-sub">${dead ? t('routes.dead', 'dead') : t('pairs.boxedShort', 'box')}</span>`}
+  </div>`;
+}
+
+// ---- the linked groups along the bottom dock (views/playdock.mjs) ---------------------------------------------------
+// Every group of the run in the game's order – alive, waiting for someone, dead or failed – as a tracker table: the
+// players as rows (their names once, in a fixed column on the left), the groups as columns that scroll sideways, a link
+// line through each column. The group of the place you are at (else the latest encounter) is marked and scrolled into
+// view.
+
+/** One player's part of a group: { slot, species, nick, level, hp, maxHp, shiny, status } with status alive | fnt | boxed | dead | open | failed. */
+function memberOf(slot, mon, enc, dead) {
+  const species = mon?.species || enc?.species || null;
+  const base = { slot, species, nick: species ? mon?.nick || enc?.nickname || speciesName(species) : '', level: shownLevel(mon?.level) || shownLevel(enc?.level) || null, hp: mon?.hp, maxHp: mon?.maxHp, shiny: !!(mon?.shiny || enc?.shiny) };
+  if (!enc && !mon) return { ...base, status: 'open' };
+  if (enc?.outcome === 'missed') return { ...base, status: 'failed' };
+  if (dead) return { ...base, status: 'dead' };
+  if (!mon) return { ...base, status: 'boxed' };
+  if (statusOf(mon) === 'fnt') return { ...base, status: 'fnt' };
+  return { ...base, status: 'alive', cond: statusOf(mon) };
+}
+
+const memberText = (m) => ({
+  open: t('grp.open', 'still missing'), failed: t('grp.failed', 'failed'), dead: t('routes.dead', 'dead'),
+  boxed: t('pairs.boxed', 'in the box'), fnt: t('grp.down', 'no HP left'), alive: t('grp.alive', 'alive'),
+}[m.status]);
+const groupText = (st) => ({ linked: t('grp.linked', 'linked'), waiting: t('grp.waiting', 'waiting'), dead: t('routes.dead', 'dead'), failed: t('grp.failed', 'failed') }[st] || '');
+const groupIcon = (st) => ({ dead: 'grave', failed: 'close', waiting: 'clock' }[st] || 'link');
+
+/** The groups to show: [{ area, name, state, members }] in the game's order, plus the area to mark. */
+function groupsOf(doc, manifest, me, mine, here) {
+  const slots = slotsOf(manifest);
+  const team = {};
+  for (const s of slots) team[s] = new Map(teamOf(doc, s, me, mine).filter((m) => m.area).map((m) => [m.area, m]));
+  const known = new Set();
+  const order = [];
+  for (const x of progression(doc, manifest)) if (x.kind !== 'boss' && !known.has(x.key)) (known.add(x.key), order.push(x.key));
+  for (const s of slots) for (const a of team[s].keys()) if (!known.has(a)) (known.add(a), order.push(a));
+  let latest = null;
+  let latestAt = -1;
+  const groups = [];
+  for (const area of order) {
+    const st = pairState(doc, area, slots);
+    if (st.state === 'empty' && !slots.some((s) => team[s].has(area))) continue;
+    for (const e of Object.values(st.encs)) if (e?.at > latestAt) [latest, latestAt] = [area, e.at];
+    const dead = st.state === 'dead';
+    groups.push({ area, name: areaName(doc, manifest, area), state: st.state === 'empty' ? 'waiting' : st.state, members: slots.map((s) => memberOf(s, team[s].get(area), st.encs[s], dead)) });
+  }
+  const mark = here && groups.some((g) => g.area === here) ? { area: here, kind: 'here' } : latest ? { area: latest, kind: 'latest' } : null;
+  return { slots, groups, mark };
+}
+
+/** The strip's scrolling: arrows at the ends while there is more that way, the marked group brought into view. */
+function useStrip(markArea, count) {
+  const ref = useRef(null);
+  const [ends, setEnds] = useState({ l: false, r: false });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const check = () => setEnds((e) => {
+      const n = { l: el.scrollLeft > 4, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 };
+      return n.l === e.l && n.r === e.r ? e : n;
+    });
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(check) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', check);
+      ro?.disconnect();
+    };
+  }, [count]);
+  useEffect(() => {
+    const el = ref.current;
+    const card = markArea && el?.querySelector(`[data-area="${CSS.escape(markArea)}"]`);
+    if (!card) return;
+    const left = card.offsetLeft - (el.clientWidth - card.offsetWidth) / 2;
+    el.scrollTo({ left: Math.max(0, left), behavior: 'auto' });
+  }, [markArea, count]);
+  const page = (dir) => ref.current?.scrollBy({ left: dir * Math.max(160, ref.current.clientWidth * 0.8), behavior: 'smooth' });
+  // a mouse wheel scrolls the strip sideways (it has nothing to scroll up or down)
+  const onWheel = (e) => {
+    const el = ref.current;
+    if (!el || Math.abs(e.deltaX) > Math.abs(e.deltaY) || el.scrollWidth <= el.clientWidth) return;
+    el.scrollLeft += e.deltaY;
+    e.preventDefault();
+  };
+  return { ref, ends, page, onWheel };
+}
+
+function StripArrows({ ends, page }) {
+  return html`
+    ${ends.l && html`<button class="gstrip-arrow l" tabIndex="-1" aria-hidden="true" onClick=${() => page(-1)}><${Icon} name="chevDown" size=${14} /></button>`}
+    ${ends.r && html`<button class="gstrip-arrow r" tabIndex="-1" aria-hidden="true" onClick=${() => page(1)}><${Icon} name="chevDown" size=${14} /></button>`}`;
+}
+
+/** A player's colour badge with the first letter of the name (the full name in the tooltip). */
+const Who = ({ slot, name }) => html`<span class=${`gwho who-bg-${slot}`} title=${name} aria-hidden="true">${(name || slot).trim().slice(0, 1).toUpperCase()}</span>`;
+
+function MemberBody({ m, gen }) {
+  if (!m.species) return html`<span class="gmon-sub">${m.status === 'failed' ? `✕ ${memberText(m)}` : memberText(m)}</span>`;
+  return html`<${Sprite} id=${m.species} shiny=${m.shiny} size=${32} gen=${gen} />
+    <span class="gmon">
+      <span class="gmon-top"><b class="gmon-name">${m.nick}</b>${m.cond && html`<span class=${`pp-st ${m.cond}`} title=${statusLabel(m.cond)}>${statusLabel(m.cond)}</span>`}${m.level && html`<span class="gmon-lv num">${m.level}</span>`}</span>
+      ${m.status === 'alive' && m.maxHp ? html`<${HpBar} hp=${m.hp} max=${m.maxHp} />` : html`<span class="gmon-sub">${memberText(m)}</span>`}
+    </span>`;
+}
+
+/**
+ * The linked groups for the bottom dock (2–4 players): every group in the game's order, readable at a glance – the
+ * area, each player's Pokémon in the player's colour, the link between them and how each one is doing.
+ */
+export function GroupTrack({ mine, gen, here }) {
+  const { doc, manifest, me } = useApp();
+  const data = doc && manifest ? groupsOf(doc, manifest, me, mine, here) : { slots: [], groups: [], mark: null };
+  const strip = useStrip(data.mark?.area, data.groups.length);
+  if (!doc || !manifest) return null;
+  const names = getPlayers(doc, manifest);
+  const { slots, groups, mark } = data;
+  const nameOf = (s) => names[s]?.name || s.toUpperCase();
+  const label = (g, m) => `${nameOf(m.slot)}: ${m.species ? `${m.nick}${m.level ? ` ${t('common.lv', 'Lv')} ${m.level}` : ''}, ` : ''}${memberText(m)}`;
+  const tag = (g) => mark?.area === g.area && html`<span class=${`gtag ${mark.kind}`}>${mark.kind === 'here' ? t('grp.here', 'here') : t('grp.latest', 'latest')}</span>`;
+  if (!groups.length) return html`<p class="small muted gtrack-empty">${t('pairs.emptyGroup', 'Linked groups show up here as soon as you catch something.')}</p>`;
+  const counts = groups.reduce((c, g) => ({ ...c, [g.state]: (c[g.state] || 0) + 1 }), {});
+  const summary = html`<span class="gtrack-sum tiny">${t('grp.count', '{n} group|{n} groups', { n: groups.length, count: groups.length })}${counts.dead ? html` · <span class="dead-t">${t('grp.deadCount', '{n} dead', { n: counts.dead })}</span>` : ''}</span>`;
+  return html`<div class=${`gtable n${slots.length}`} style=${`--n:${slots.length}`}>
+    <div class="gt-names" aria-hidden="true">
+      <span class="gt-corner">${summary}</span>
+      ${slots.map((s) => html`<span class=${`gt-name who-${s}`} title=${nameOf(s)}><${Who} slot=${s} name=${nameOf(s)} /><b class="px">${nameOf(s)}</b></span>`)}
+    </div>
+    <div class=${`gstrip-wrap ${strip.ends.l ? 'fade-l' : ''} ${strip.ends.r ? 'fade-r' : ''}`}>
+      <div class="gstrip gt-cols" ref=${strip.ref} onWheel=${strip.onWheel} tabIndex="0" role="list" aria-label=${t('pairs.titleGroup', 'Linked groups')}>
+        ${groups.map((g) => html`<div class=${`gt-col ${g.state} ${mark?.area === g.area ? 'marked' : ''}`} key=${g.area} data-area=${g.area} role="listitem"
+          aria-label=${`${g.name}: ${groupText(g.state)}`}>
+          <div class="gt-head" title=${g.name}><${Icon} name=${groupIcon(g.state)} size=${12} /><span class="gt-area">${g.name}</span>${tag(g)}</div>
+          ${g.members.map((m) => html`<div class=${`gt-cell ${m.status}`} key=${m.slot} style=${`--acc:var(--${m.slot})`} role="img" aria-label=${label(g, m)} title=${label(g, m)}>
+            <span class="gt-bead" aria-hidden="true"></span><${MemberBody} m=${m} gen=${gen} /></div>`)}
+        </div>`)}
+      </div>
+      <${StripArrows} ends=${strip.ends} page=${strip.page} />
+    </div>
   </div>`;
 }
 
@@ -258,21 +398,20 @@ function TeamList({ mine, gen, compact }) {
   </section>`;
 }
 
-// The battle helper's place, per player on this computer: next to the game on the left (default) or on the right,
-// and folded in to its head line. (A run whose host switched the matchup help off keeps it off either way.) `hits`:
-// the opponent's moves ("What hits …") shown – folded in by default, they'd tell what the opponent knows before it
-// uses it.
+// The battle helper, per player on this computer: in full or folded in to its head line (it lives in the play view's
+// dock). (A run whose host switched the matchup help off keeps it off either way.) `hits`: the opponent's moves ("What
+// hits …") shown – folded in by default, they'd tell what the opponent knows before it uses it.
 const PANEL_KEY = 'sl-battle-panel';
-const PANEL_DEFAULT = { side: 'left', collapsed: false, hits: false };
+const PANEL_DEFAULT = { collapsed: false, hits: false };
 function readPanelPrefs() {
   try {
     const v = JSON.parse(localStorage.getItem(PANEL_KEY) || 'null');
-    return { side: v?.side === 'right' ? 'right' : 'left', collapsed: v?.collapsed === true, hits: v?.hits === true };
+    return { collapsed: v?.collapsed === true, hits: v?.hits === true };
   } catch {
     return PANEL_DEFAULT;
   }
 }
-/** [prefs, update] – { side: 'left'|'right', collapsed, hits } for the battle helper, remembered in this profile. */
+/** [prefs, update] – { collapsed, hits } for the battle helper, remembered in this profile. */
 export function useBattlePanelPrefs() {
   const [p, setP] = useState(readPanelPrefs);
   const update = (patch) => setP((prev) => {
@@ -292,11 +431,11 @@ const monName = (m) => (m ? m.nickname || speciesName(m.species) : '');
 
 /**
  * Battle helper: who is out there, how your moves land, what hits you, how the rest of your team would fare, and
- * whether you may catch it – and how likely one ball does. `side` / `collapsed` / `hitsOpen` / `onPrefs`: where the
- * player put it and what they unfolded (useBattlePanelPrefs). `game`: the running game's memory-table id (a formula
- * quirk of Ruby/Sapphire).
+ * whether you may catch it – and how likely one ball does. `collapsed` / `hitsOpen` / `onPrefs`: what the player
+ * folded in or unfolded (useBattlePanelPrefs). `game`: the running game's memory-table id (a formula quirk of
+ * Ruby/Sapphire).
  */
-export function BattlePanel({ battle, mine, gen, game = '', isRun, side = 'left', collapsed = false, hitsOpen = false, onPrefs, noMoves = false }) {
+export function BattlePanel({ battle, mine, gen, game = '', isRun, collapsed = false, hitsOpen = false, onPrefs, noMoves = false }) {
   const { doc, manifest, me, runData } = useApp();
   const moves = useMoves();
   const foe = battle?.enemy;
@@ -332,7 +471,8 @@ export function BattlePanel({ battle, mine, gen, game = '', isRun, side = 'left'
     return { id, info: info && rt?.moves?.[id] ? { ...info, type: rt.moves[id] } : info };
   }).filter((m) => m.info && (!damaging || m.info.power > 0)));
   const foeData = foes.map((f) => ({ f, types: foeTypesOf(f), moves: movesOf(f.moves, true) }));
-  const r = isRun && doc ? getRules(doc, manifest) : null;
+  // (Play together: no catch rules – only the matchup help)
+  const r = isRun && doc && !isTogether(manifest) ? getRules(doc, manifest) : null;
   const solo = isRun && isNuzlocke(manifest);
   // the host can switch the matchup help off for the whole run: then only who's out there and the catch rules stay
   const help = !isRun || typeHelpOn(doc, manifest);
@@ -369,15 +509,12 @@ export function BattlePanel({ battle, mine, gen, game = '', isRun, side = 'left'
     if (solo && r.setMode) notes.push(t('battle.setMode', 'Set mode: no free switch after a knockout'));
   }
   const kind = battle.kind === 'wild' ? t('battle.wild', 'wild') : t('battle.trainer', 'trainer');
-  const other = side === 'right' ? 'left' : 'right';
-  const moveLabel = other === 'left' ? t('battle.moveLeft', 'Show the battle helper left of the game') : t('battle.moveRight', 'Show the battle helper right of the game');
   const foldLabel = collapsed ? t('battle.expand', 'Show the battle helper in full') : t('battle.collapse', 'Fold the battle helper in');
   const head = html`<div class="bt-head">
     ${collapsed ? html`<span class="bt-head-foes">${foes.map((f) => html`<span class="bt-head-foe" key=${`${f.species}:${f.level}`}><${Sprite} id=${f.species} form=${f.form} shiny=${f.shiny} size=${30} gen=${gen} /><b>${speciesFormName(f.species, f.form, gen)}</b><span class="num">${t('common.lv', 'Lv')} ${f.level}</span></span>`)}</span>`
       : html`<span class="bt-title px">${t('battle.title', 'Battle')}</span>`}
     <span class="bt-kind">${kind}</span>
     ${onPrefs && html`<span class="bt-ctls">
-      <button class="btn ghost icon bt-ctl" title=${moveLabel} aria-label=${moveLabel} onClick=${() => onPrefs({ side: other })}><${Icon} name=${other === 'left' ? 'panelLeft' : 'panelRight'} size=${14} /></button>
       <button class="btn ghost icon bt-ctl" title=${foldLabel} aria-label=${foldLabel} aria-expanded=${!collapsed} onClick=${() => onPrefs({ collapsed: !collapsed })}><${Icon} name=${collapsed ? 'chevDown' : 'chevUp'} size=${14} /></button>
     </span>`}
   </div>`;

@@ -502,3 +502,31 @@ export function cleanupAppImageStaging(appImage, { rm = rmSync } = {}) {
  * --user-data-dir) – the old mount and the binary inside it go away with this process.
  */
 export const appImageRelaunch = (appImage, argv = process.argv) => ({ execPath: appImage, args: argv.slice(1) });
+
+// ---- automatic checks ------------------------------------------------------------------------------------------
+/** Settings › About "Check for updates automatically" (config.json updateCheck): on unless switched off. */
+export const autoCheckOn = (config) => config?.updateCheck !== false;
+
+/**
+ * The automatic update checks: once `first` ms after the start, then every `every` ms. `enabled()` is asked before
+ * each one (the setting is read from config.json every time, so switching it takes effect without a restart); when it
+ * says no, nothing goes out. "Check for updates" in Settings calls the check directly and is not affected.
+ * Returns stop() (the tests; the app keeps them for its lifetime).
+ */
+export function scheduleUpdateChecks({ check, enabled = () => true, first, every, timers = globalThis }) {
+  const run = () => {
+    let on = false;
+    try {
+      on = enabled();
+    } catch {
+      on = false; // the setting can't be read: better no request than one the player switched off
+    }
+    if (on) check();
+  };
+  const t = timers.setTimeout(run, first);
+  const i = timers.setInterval(run, every);
+  return () => {
+    timers.clearTimeout(t);
+    timers.clearInterval(i);
+  };
+}

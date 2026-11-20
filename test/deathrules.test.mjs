@@ -149,7 +149,7 @@ test('balls in the bag – 3DS: X/Y and ORAS { id, count }, Sun/Moon packed slot
   s.poke(base, g7(4, 10));
   assert.equal(readBalls(sm, s.read, {}), 10);
   assert.equal(readBalls(null, s.read), null);
-  assert.equal(readBalls(entry({ platform: 'gba', code: 'BPED' }), s.read), null, 'no bag layout for this release: unknown');
+  assert.equal(readBalls(entry({ platform: 'gba', code: 'BPES' }), s.read), null, 'no bag layout for this release: unknown');
 });
 
 // ---- 1. the rule in the run ----------------------------------------------------------------------------------

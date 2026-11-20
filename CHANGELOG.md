@@ -2,6 +2,470 @@
 
 `npm run release` takes the release notes from the section of the version being released.
 
+## 3.0.0-r.1
+
+**souldew Renaissance passe en 3.0** : tout le multijoueur de souldew 3.0 (détails dans la section 3.0.0 juste en
+dessous), avec ce qui fait souldew Renaissance.
+
+- **Échanges et combats en link, Shared World, raids, pierre-feuille-ciseaux, cadeaux, paris en argent du jeu** – comme
+  dans souldew 3.0, de la Gen 1 à la Gen 5, sans redémarrer le jeu.
+- **Jusqu'à 8 joueurs, aussi en « Jouer ensemble ».** Le nouveau mode Jouer ensemble (chacun son propre jeu, sans règles
+  de challenge) accepte, comme le SoulLink, de 2 à 8 joueurs. Raids, cadeaux, échanges et combats en link marchent entre
+  n'importe lesquels des 8 joueurs ; une session de link elle-même reste limitée à ce que le jeu permet (2 joueurs, 4
+  pour le Multi Combat Gen 3 et le Salon Union Gen 4). Les joueurs 5 à 8 gardent leurs couleurs partout, y compris
+  dans le nouveau dock du jeu.
+- **Tout passe par le serveur de souldew Renaissance** : la sync, la mise en relation et le relais TURN
+  (`souldew.pkmnrenaissance.com`) servent aussi aux sessions de link 3.0. souldew Renaissance ne demande pas de relais
+  au bot de souldew officiel.
+- **Pas de compte souldew** : la connexion Discord, les amis et souldew+ de souldew 3.0 dépendent des serveurs de
+  souldew officiel, ils sont donc absents de souldew Renaissance (pas d'onglet Compte, pas de bouton « Se connecter »).
+  On invite toujours les autres joueurs avec le code d'invitation. Le bouton en bas de la barre latérale reste « Buy me
+  a coffee » pour l'auteur original.
+- **Rising Ruby et Sinking Sapphire** restent reconnus comme des ROM hacks, à côté du nouveau Pokémon Quetzal.
+- Les runs créées avec souldew Renaissance 2.8.3 continuent ; chaque joueur doit passer en 3.0.0-r.1 pour les nouveautés
+  multijoueur.
+
+## 3.0.0
+
+souldew 3.0 brings multiplayer: the players of a run trade Pokémon and battle each other the way the games meant it –
+in the Cable Club, the Colosseum and the Union Room – and in the Game Boy and Game Boy Advance games (Gen 1 to 3),
+Platinum and HeartGold/SoulSilver your partners walk around in your game.
+Plus a new play view that gives the game the room it deserves.
+
+- **Trade and battle with your partners – Gen 1 to Gen 5, no restart.** On the board, each partner's card has Trade
+  and Battle; your partner gets the invite, presses Join, and both games go into the link right from where you are –
+  in the middle of a route, a text box, a menu. No reboot, no title screen: walk to the Cable Club (Gen 1–3) or the
+  Union Room (Gen 4 and 5), trade or battle as on real hardware, press “Leave link”, and each game goes on alone from
+  where the link left it. Every player's computer runs all linked consoles in lockstep and only the buttons travel, so
+  it feels like a cable even between two homes; when no direct connection can be made, it goes through a relay server.
+  Tested end to end with Red, Crystal with Silver (cartridge clock included), Emerald with Sapphire, Platinum, Diamond
+  with Pearl, HeartGold with SoulSilver, and Black with Black, White and Black 2; different games of a generation link
+  too, and a Game Boy game with a Game Boy Color game (Red or Blue with Yellow) – souldew finds your partner's game in
+  your library or lets you pick it, checked byte for byte.
+- **Up to four players where the game has it:** the Gen 3 Multi Battle (two against two) and the Gen 4 Union Room,
+  where all four of you see each other and trade in pairs. “Link all of us” on the board starts it.
+- **Who's linked shows on the board.** In a run of three or four, while two players trade or battle, the others see
+  “In a link with Tim” on both players' cards – Trade and Battle are greyed out with that as the reason, “Link all of
+  us” leaves them out, and the Shared World menu says the same. It's gone as soon as the link ends.
+- **Made to be safe for your run.** A trade goes into the run's log. Before the link souldew keeps your save, for the
+  whole session; if the linked games ever fall out of step, both go back to exactly where they were before the link –
+  also for a player who reloaded and rejoined – and the session's last save is kept next to it. In the Game Boy and
+  GBA games a player whose game dropped out can rejoin while the others wait, or press “Leave it”: the others' games
+  go on alone right away, and a battle that was on counts as no result. Nothing a link session shows counts for the
+  run – a battle there never files a death. The run's rules decide whether trades and link battles are allowed.
+- **Battle for money, and keep score.** A challenge can be for in-game money: pick single or double battle (two
+  against two with four Game Boy Advances), set a wager up to what you have, and your partner sees it in the invite –
+  joining for less if they have less. When the battle is over, every player's souldew reads the result from the games
+  themselves, the results are compared, and only one your own souldew read and everybody agrees with counts – nobody
+  can claim a result your game didn't see. The log says “Sam won a link battle against Tim”, the loser's game pays
+  the winner's as soon as both stand in the overworld again (read back from the game, saved with your next in-game
+  save – once, even after a reset), and the board keeps the record between you: “Sam 3 : 1 Tim”.
+  Games out of step, a game that dropped out of the link or a result that isn't clear: nobody pays. The host decides
+  whether wagers are allowed and the highest wager. Results and wagers count in Red, Blue, Yellow, Gold, Silver,
+  Crystal, Ruby, Sapphire, Emerald, FireRed, LeafGreen, Diamond, Pearl, Platinum, HeartGold, SoulSilver, Black, White
+  and Black 2 – only in the English games, plus the German Ruby, Sapphire, FireRed and LeafGreen (Rubin, Saphir,
+  Feuerrote, Blattgrüne). In every other language, in German Emerald (Smaragd) and in White 2 you can still battle,
+  but the result isn't counted and nobody pays. Stream tools get a `link-battle` event.
+- **Leaving the link inside a link room can't hurt your run.** A game that's still in the Trade Center or the
+  Colosseum when the link ends goes on alone in its link mode – Gold, Silver and Crystal even start the next battle
+  against the partner's team they already received. souldew counts nothing of it (no deaths, no catches, no team
+  changes) until you walk out or start the game again. The result card says “₽2,000 to pay …” until the money has
+  really left your game – in the Gen 1 Colosseum, which has no way out, that's after you switch the game off and on
+  and press Continue.
+- **Gen 5 links too: Black, White, Black 2 and White 2.** Meet in the Union Room – upstairs in the Pokémon Center,
+  the left counter, open once you have the C-Gear – and trade, battle or swap Trainer Cards as on real hardware, from
+  where you are in your game. A trade goes into the log (“traded Lillipup for Patrat with Tim”) and a battle's result
+  and wager count as in the other games. White 2 links and trades too, but it hasn't been tested end to end in
+  souldew: its link battles count for neither results nor wagers. The C-Gear's infrared features don't link: the
+  emulator has no infrared.
+- **The “You are here” sign knows the link rooms** of Diamond, Pearl, Platinum, HeartGold, SoulSilver, Black, White
+  and Black 2 – the Union Room and the Colosseums.
+- **Raids: one trainer, all of you, one shared health bar.** On the board's log, “Raid” asks your partners; they
+  press Join, a short countdown runs, and the next trainer battle each of you walks into is the raid. Every hit in
+  anybody's game comes off one shared HP pool – as a share of each game's HP, so randomized games with other Pokémon
+  work too – and souldew puts the pool into everybody's game while it waits for your move: the opponent's HP bar
+  slides there the game's own way. The trainer is beaten when the pool is empty, in everyone's game at once (the
+  Pokémon that is out keeps 1 HP until your next hit, so the game knocks it out itself). A Pokémon of the trainer's
+  that went down in one game never comes out in the others. Your own team fights normally; whoever's team goes
+  down is out and watches the others in the raid panel and the partner screens. The raid panel in the play view
+  shows the pool per opponent Pokémon and everybody's team; afterwards the result – won or lost, who did the most
+  damage, who's still standing, the time – and one line in the log (“Sam, Tim & Lena won a raid together
+  (1:38 · most damage: Tim)”). Works in Red, Blue, Crystal, FireRed, LeafGreen, Emerald, Platinum, HeartGold and
+  Black 2 (English), in any ordinary trainer battle – Steven at your side included, but not in Emerald's Battle
+  Frontier and Battle Pyramid or the Trainer Tower of FireRed and LeafGreen. Not in the 3DS games or in ROM hacks that
+  keep their memory elsewhere than the original game, and the app says why for every other game.
+- **Two new host rules:** “Raids” (on by default) and “Deaths in a raid count” (on: a raid is a real battle). With it
+  off, Pokémon that go down in a raid don't count – they stand on the board until you heal them. Stream tools get a
+  `raid` event with who took part, won or lost, the MVP, the survivors and the time.
+- **Play together: your own game with friends, no challenge.** Next to SoulLink and Nuzlocke there's a third way to
+  play: “Play together” in the SoulLink section, or on a game in your library. Everyone plays their normal game with
+  its own save – what you do together is there when you play the game alone from the library, and the other way round.
+  Invite friends with the code or as souldew friends; each of them picks a game of their own, the same as yours or
+  another one (Emerald, Sapphire and FireRed in one group is fine). Then it's everything multiplayer has – trades and
+  battles in the link rooms (wagers too, if the host allows them), seeing each other walk around, emotes,
+  rock-paper-scissors, watching each other's battles, gifts, “Come to me” and raids – and nothing of a challenge: no
+  encounter rules, no deaths, no level caps, no run that can fail, no log full of catches. The board shows every
+  player's game and team and who can trade, battle or see whom (the same generation links; seeing each other needs
+  games with the same maps). The host decides what's allowed, cheats included. It doesn't earn trophies – those are
+  for challenge runs. Needs souldew 3.0 on every computer; a friend on 2.8 is told to update when they open the
+  invite.
+- **Cloned Pokémon no longer stop live tracking.** A cloning glitch (Gen 1–4) leaves the same Pokémon twice in your
+  team. souldew took that for a misread and showed no team at all. Now they're two Pokémon: the one you caught keeps
+  its place in the run, the clone comes in like any other new Pokémon (the inbox asks what it is), and a Pokémon going
+  down or being traded only ever counts for that one – also after you reorder the team. A swap in the party menu,
+  or another Pokémon read under the same number, is still never taken for a clone. A trade that leaves a clone in
+  a team (getting back a Pokémon you already have a copy of) is logged too.
+- **Shared World: your partners walk in your game** (Gen 3). In a SoulLink of two to four players, partners on the
+  same map appear in your own game, with their trainer sprite from your ROM and a name tag in their colour – walking,
+  running, biking, surfing, coming and going between maps. Walk up to one and press A: Trade, Battle (straight into
+  the link) or Wave – the wave shows on every player's screen. Like you, they walk behind trees, plants and counters,
+  and they never cover the game's text boxes or the place name. It is drawn over your game; nothing is written into
+  it. One switch in the play view, “Show partners in my game”, turns it off per run. Tested in Ruby, Sapphire,
+  Emerald, FireRed and LeafGreen – English and German (Rubin, Saphir, Smaragd, Feuerrote, Blattgrüne) – with up to
+  four players.
+- **Your Pokémon walks with you – and your partners' with them** (Shared World, Gen 3). Every player is followed by
+  the first Pokémon of their team that can fight, one step behind on their path: round corners, out of doors after
+  them, behind trees like everyone else, gone while they surf. The games have no walking Pokémon, so it's the
+  Pokémon's own party icon from your ROM, stepping along with its two frames (a shiny one sparkles now and then);
+  randomized games show the right one too. “Show my Pokémon following me” in the play view switches yours off on this
+  computer – your partners see it either way. It walks through people and doors like the partners do: the game
+  doesn't know it's there.
+- **Shared World in 3D: Platinum, HeartGold and SoulSilver.** Your partners walk in the DS field too – with their
+  own trainer sprite from your ROM, standing on the ground of the 3D map wherever the camera looks: indoors, outdoors,
+  while it eases after you, smaller further away like everything the game draws. souldew uses the game's own camera,
+  so they stay on their tile to the pixel while you both walk. In HeartGold and SoulSilver they're lit like the field –
+  a blue evening, a dark cave – and their Pokémon walks behind them as the game's own follower does; in Platinum it's
+  the party icon. Names, Trade/Battle/Wave with A, the emotes and rock-paper-scissors work as in Gen 3. They walk
+  behind houses, trees, counters, plants and people exactly like the game's own figures: souldew's DS emulator hands
+  over the depth of the 3D picture, pixel for pixel. Surfing partners sit without their Pokémon.
+- **Shared World on the Game Boy: Red, Blue, Yellow, Gold, Silver and Crystal.** Your partners walk in your Gen 1 and
+  Gen 2 games too – with their trainer sprite from your ROM, their name tag and the Pokémon at the front of their team
+  following them (its party icon from your ROM: Gen 2 in the Pokémon's own colours, a shiny one in its shiny ones; Gen
+  1 the game's own icon), across the edge to the next map, and the A menu with Trade, Battle, Wave,
+  rock-paper-scissors and the emotes. They look like the game's own people: on the original Game Boy in its greens, in
+  a Game Boy Color's colours, in Yellow's – and the tall grass covers their legs exactly where it covers yours. Red,
+  Blue and Yellow meet each other, so do Gold, Silver and Crystal. In Yellow, Pikachu already walks behind you: your
+  partners see Pikachu follow you, and souldew adds no second one.
+- **Partners next door:** a partner on a map connected to yours (the route beyond the town's edge) shows across the
+  edge and walks over it smoothly.
+- **Rock-paper-scissors with your partners, fair and square.** Walk up to a partner and press A, click their name tag
+  or the hand on their tile, or use “Rock-paper-scissors” in the board's log – that last one works in every game,
+  with or without Shared World. Both pick within 10 seconds; souldew only swaps the hands once both have picked (each
+  side first sends a sealed fingerprint of its hand), so nobody can wait and counter, a changed hand is refused and
+  walking away after seeing the other hand counts as a loss. In the game the hands pop up over both heads, everywhere
+  else in a small card; the log says “Sam beat Tim at rock-paper-scissors”. A draw is played again; best of 3 from
+  the board.
+- **More bubbles next to Wave:** a heart, “!”, “?” and “GG”, from the same A menu – small pixel art over your head on
+  every screen that sees you. A few in a row, then one every few seconds, so nobody floods the screen.
+- **See when a partner is in a battle – and watch it.** Their card on the board says “In a battle – wild Zigzagoon”
+  in every game, and in Shared World they stay where the battle began with a small ⚔ over their head. “Watch” (their
+  card, their name tag, or walk up and press A) opens their game live in a window, with the battle under it: their
+  Pokémon and its HP and moves, the opponent and its HP – read by live tracking, so it shows even when there's no
+  picture.
+- **Catches and deaths show in the world** (Shared World). When a partner catches a Pokémon, its icon pops up over
+  their head for a moment; when a partner's Pokémon dies, a small tombstone stands where the battle began, on that map,
+  for everyone, for five minutes. Only what the run records – nothing is made up.
+- **Give your partner an item.** “Give item” in the A menu (or on their card on the board while your game runs) lets
+  you pick from your bag; your partner accepts, and it leaves your game and arrives in theirs – checked on both sides,
+  never in part, never twice, and back in your bag if their game can't take it; between 3DS games a gift from the
+  Medicine pocket arrives safely too. Only while you walk around – not in a battle or a link (in the Game Boy and
+  Gen 3 games not with a menu or a text open either). Key items, TMs/HMs and the Master Ball stay with you. The log says
+  “Sam gave Tim a gift: 3 × Potion”; the host's new rule “Gifts between us” (on by default) switches it off for a
+  stricter run. Works in the games whose bag souldew knows – the same as the cheats'.
+- **“Come to me”.** One button in the play view marks where you are for all your partners: in their game an arrow at
+  the edge of the picture points to you when they're on the same map or next door, otherwise their board says “Sam
+  is at Route 110 – come here”. It clears when they arrive, or after a few minutes.
+- **Trades and battles are the host's call, like every rule.** “Trades between us”, “Battles between us” and “Losing a
+  link battle counts as deaths” are set by the host – already in the new-run wizard for the games that link, later in
+  the board's Rules – and every change goes to the log; the others see them read-only.
+- **German Emerald (Smaragd) is read live.** souldew showed nothing for it so far: its memory was taken to be laid out
+  differently from the English game's. It isn't – every address souldew reads is the same – so the team, the place,
+  battles, level caps and badges, the bag (the Poké Ball rule, Rare Candies, Max Repels) and Shared World now work in
+  Smaragd as they do in Emerald. Link battle results and wagers don't count in Smaragd.
+- **FireRed and LeafGreen: the “Previously on your quest…” replay after loading** no longer shows (or sends) where you
+  walked last time as if you were there.
+- **souldew engine (beta)** – Settings › Play. One player of souldew's own for DS, GBA and Game Boy, on the
+  same emulators as the fast player: a trade or battle simply brings your partners' consoles into your running game,
+  and when the link ends they leave it again – nothing restarts, not even for a moment's handover. Speed steps, Max,
+  save states (the fast player's – they work in both), cheats, live sync, the turbo music, the steady fast-forward sound
+  of 2.8.2 and Shared World as you know them. Off by default while it is in beta; the fast player stays as it is.
+- **A new play view: the game big, everything else in one dock beside it.** The sidebar folds away while you play
+  (its button at the top left, the window's left edge or ⌘B / Ctrl+B bring it back – a note says so the first time)
+  and the game gets the room. Title, place and level cap, the battle helper, the link with your partners, your team or
+  the linked groups and the partners' games now sit in one dock that goes where the picture leaves room: right of tall
+  pictures (Game Boy, GBA, DS and 3DS screens on top of each other), under wide ones (DS and 3DS side by side, 3DS
+  large) – whichever side gives the bigger picture, decided again when the window, the screen layout or fullscreen
+  changes. With room to spare next to a tall picture the dock widens and the partners' games get a column of their
+  own. Nothing covers the game and nothing hides by itself; fold the dock to a slim strip with its button or ⌘I /
+  Ctrl+I (remembered) – the strip still shows a battle, the level cap, the link and who is online, and an invite still
+  shows over the game. At 1440×900 a GBA picture is about 3.6× bigger than before, DS / 3DS screens side by side about
+  6×, and the game bar always stays on one row.
+- **Something happened? A card over the top of the game says so** – a group died, a catch (yours, or the one that
+  links a group), the level cap reached, a battle starting while the dock is folded. It leaves by itself (not while
+  the pointer is on it), never takes the keyboard, and “Show” opens the dock at that place.
+- **Every partner's game at once, in windows you can move.** In a run with three or four players each partner's game
+  is a tile in the dock, live (two players: the one partner). Any tile opens in a window of its own: drag it by its
+  header, resize it from the corner (the picture keeps its shape), it snaps lightly to the edges and to the other
+  windows, never leaves the play area and never covers the game bar; “Back to the panel” docks it again. Which partner
+  is in a window, where and how big is remembered per run on this computer. Each partner sends video over a direct
+  link (several videos at once work) or small stills over the relay; with three watchers the video bitrate per watcher
+  goes down so the upload stays about the same. Tiles and windows never take the keyboard or the controller from the
+  game. On the folded strip partners whose names start alike get two letters (“Mi”, “Ma”).
+- **A paused partner stays in the picture.** When a partner opens Shared World's A menu, plays rock-paper-scissors
+  or pauses, their tile keeps showing their game, standing still and marked “paused”, and their video goes on without
+  a restart. While a picture is only late (a new video starting, a switch to stills, a partner on an older
+  version) the tile keeps the last good frame instead of a black box, dimmed under the message when the picture
+  stopped. The video keeps every game pixel sharp under load and drops frames instead.
+- **The linked groups along the bottom dock are a tracker table:** the players as rows, every group of the run as a
+  column in the game's order – alive, waiting, dead or failed at a glance, each player's Pokémon in the player's
+  colour, a link line through the column, the group of the place you are at (or the latest encounter) marked and
+  scrolled into view. The right dock keeps the pair / group view. “This computer runs the game at only …” is now a
+  small chip in the dock (details on a click), and four players' names no longer squeeze the live status line.
+- **Sharper pixels at any size.** All three players (the fast player, the 3DS player and the browser emulator) blow
+  each game pixel up by a whole number with hard edges and only smooth the last bit to the frame – no more uneven
+  rows of pixels at odd sizes. Settings › Play › “Whole pixels only” snaps to exact multiples instead, when that
+  costs at most about 15 % of the picture. Touch on the DS and 3DS bottom screen lands on the same spot in every
+  layout and size; the 3DS menu's “Smooth picture” still smooths everything.
+- **Import a save file – and take yours elsewhere** (thanks to a player on Discord). In the library, open a game ›
+  “Import a save file …”; in a run, the board's Files menu. It takes .sav and .srm files from other emulators, flash
+  carts and cartridge dumps (Checkpoint, JKSM), DeSmuME's .dsv (its footer comes off), Game Boy saves with either
+  clock footer and mGBA's clock record, and a zip with one save in it. The size is checked per system, and for the
+  Pokémon games souldew tells whether it is a save of that game at all (Gen 1–5: the save's own checksums and
+  signatures) – a save of another game gets a warning you can go past. The save it replaces is always backed up first
+  (the one from before your first import is kept however many files you try), Undo puts it back, and nothing is
+  written while the game runs. In a run it is a big change and asks first: it goes into the log for everyone, a
+  SoulLink needs the host's new rule “Allow importing a save file”, and what the save brings along doesn't count – its
+  Pokémon are set aside, its badges are no news, and the run earns no trophies for winning or level records. 3DS: a
+  Checkpoint or JKSM backup (the folder or a zip) goes into souldew's own 3DS player once the game has saved there.
+  “Save game file” stays a plain .sav that other emulators and flash carts read.
+- **Pokémon Quetzal is read live** (thanks to a player on Discord). The hack keeps Emerald's game code, so souldew used
+  to take it for Emerald: “Pokémon Emerald Version”, no team, and the randomizer's check ending in “unreadable”. Now
+  it is recognised by its header – the library files it under Pokémon Quetzal, every version of it – and read with its
+  own memory layout: your team with its own Pokémon (from Sprigatito to the hack's own, named as the game names them),
+  HP, status and held items, the place from the game's own names, battles with the opponent's HP, catches filed under
+  their area and deaths. Checked in a new game from Oak's lab to the first catch on Route 1. What isn't safe for the
+  hack is off and says so: the cheats, souldew's randomizer (the hack has one of its own – the new-run wizard points
+  you there), link trades and battles, Shared World and raids. Its PC boxes and level caps aren't read.
+- **Interface size, for big screens** (thanks to a player on Discord). Settings › General › “Interface size” draws
+  souldew's own interface at 80 to 175 % – the sidebar, the dock, the board, partner windows, menus, toasts and the
+  names and menus over the game – sharp at every size, because it is laid out again rather than stretched. ⌘+ / ⌘− /
+  ⌘0 (Ctrl on Windows and Linux) and the new View menu change it anywhere; while a game fills the window, its own
+  shortcuts on those keys go first, so ⌘+ / ⌘− stay the game speed there as before. The game picture isn't scaled: it
+  keeps filling the room it has, pixel-sharp. A window too small for the size you picked shows the biggest one that
+  fits and grows back when you make it larger. On a large screen at 100 % (4K, or 1440p without the system's own
+  scaling) souldew asks once: “The interface looks small on this screen – make it bigger?”. The size is kept per
+  computer, not per account; the stream overlays keep their own size in OBS.
+- **When the 3DS resolution holds back fast-forward, the play view says so.** At 2× or 3× some graphics cards fall
+  well short of the fast-forward speed you picked (a player's 4× reached only 1.1–3.3× at 3×, with gaps in the
+  sound). When fast-forward stays below 70 % of it for about 10 seconds, a small note in the dock says how fast it
+  really runs and opens Settings › Play › 3DS resolution – once per start of souldew, with “Don't show again” and a
+  switch next to the resolution to bring it back. souldew never lowers the resolution by itself.
+- **The 3DS team keeps up with your game** (thanks to a player on Discord). X/Y and Omega Ruby/Alpha Sapphire keep the
+  team in a different place for version 1.0 and for the latest update, and souldew stuck with the first place it
+  found a team for the whole session. Now it looks at the version of the update the game started with first, and keeps
+  checking: when the team it reads stands still while the other place changes, or stops being a team for a few
+  seconds, souldew moves over – and "Save diagnostics" notes the move.
+- **One cheats menu: Poké Balls, healing items and money** (thanks to a player on Discord). The cheats button in the
+  play view's dock now opens one menu instead of single buttons: pick how many (×1, ×10, ×99), then Rare Candy, Max
+  Repel, Master Ball, Ultra Ball, Poké Ball, Full Restore, Revive or Max Revive – each goes into its own pocket of the
+  bag – or add money: +₽1,000, +₽10,000, +₽100,000 or Max (₽999,999). souldew asks first, writes into the game's
+  memory and reads it back; a full pocket, a stack at the game's limit or a bag it can't find says so, with a details
+  line for a report – it never writes blindly. The new cheats show only in the games they were tried in, every item
+  with every amount: Red, Blue, Yellow, Gold, Silver, Crystal, Ruby, Sapphire, Emerald, FireRed and LeafGreen (English
+  and German), Diamond, Pearl, Platinum, HeartGold, SoulSilver, Black, White, Black 2 and White 2 – money included –,
+  Sun/Moon and Ultra Sun/Ultra Moon (the items). X/Y and Omega Ruby/Alpha Sapphire keep just Rare Candies and Max
+  Repels. A DS game's bag that is still empty (Diamond right after the starter) takes a cheat only where the game's
+  own save data confirms it is the bag – else “Pick up or buy any item first”. In a SoulLink the host picks which
+  cheats the run allows – Rare Candies, Max Repels, Master Balls, Poké Balls and Ultra Balls, Full Restores and
+  Revives, money – in the new-run wizard or on the board; a run from before 3.0 keeps the two it had. Every use goes
+  into the log for everyone (“Lena used a cheat: 10 × Master Ball”, “+₽10,000 money (now ₽13,000)”) – a partner
+  still on 2.x reads it too. Any cheat still costs Honest Work, and a legendary caught after a Master Ball from the
+  cheats doesn't count for Route 1 Legend.
+- **The Game Boy look.** The fast player now runs Game Boy and Game Boy Color games on SameBoy – the emulator the link
+  sessions use. New in Settings › Play › “Game Boy look”: Red, Blue, Yellow and the other Game Boy games on the
+  original Game Boy with its green screen (the default), or in the colours a Game Boy Color gives them; Gold, Silver
+  and Crystal are always in colour. The cartridge clock of Gold, Silver and Crystal carries over.
+- **Settings in tabs, with search.** Settings is now split into General, Play, Controls, Games, Online, Account and
+  About, so every page is short instead of one long scroll. Everything about playing sits together under Play –
+  fast-forward, the sound while fast-forwarding (until now only in the game's sound menu), the picture and the fast
+  player – and the graphics backend, the 3DS renderer and the diagnostics file wait under About › Troubleshooting. The
+  re-bindable shortcuts of 2.8 are in Settings › Controls, next to the keyboard keys (⌘I / Ctrl+I stays the dock's),
+  and “playing now” is under Settings › Online. Type into the search (⌘F / Ctrl+F) and every matching setting from
+  all tabs shows up at once, the words marked, ready to change right there; it understands English and your app
+  language and everyday words like “fast forward” or “gamepad”. Buttons elsewhere in the app – “Connect Discord …”,
+  “Open Settings” on a slow game, “More sound settings” in the game's sound menu – open the exact setting and mark it.
+  The tab you used last opens again, back and forward work, and L / R on a controller switch the tabs.
+- **Colour themes.** Settings › General › Appearance has a Theme row: souldew's own look, free as always, and 16
+  souldew+ colour themes in two groups (Colours · dark, Colours · light). One click tries a theme on the whole app;
+  “Back to …” or leaving Settings puts yours back. A theme only ever changes the look, never a box or a word.
+- **A souldew account – optional, for playing with friends.** Settings › Account: “Sign in with Discord” opens your
+  browser (souldew never sees your Discord password and only gets your name and picture) and the sign-in is kept in
+  your computer's keychain. Then you have a profile – banner, frame, nameplate, a title from your trophies, an accent
+  colour, a showcase and a status line, and, only if you turn it on, your run numbers – and a **Friends** page: add
+  friends by handle or friend code, see who is online and what they play, invite them into a SoulLink or a Play
+  together from the board or the new-run wizard (only as many as the run has free seats). Your friend gets the invite
+  in souldew and presses Join; you allow it with one click, and the run itself still connects peer to peer as before –
+  the account service only carries the invite, never the key to your run. Friends can ask to join a run with a free
+  seat if you allow it. Privacy is yours to set (who sees your profile, appear offline, where you are in the game), and
+  you can export or delete your data any time. Without an account everything works exactly as before.
+- **Sign in from the sidebar.** Signed out, the bottom of the sidebar has a small “Sign in” with the Discord mark –
+  right where your profile picture sits once you're signed in. It starts the same sign-in as Settings › Account, says
+  so while your browser is open (a click opens it again, the × stops waiting), and works with the keyboard and a
+  controller.
+- **souldew+ with your account.** Support souldew on Buy Me a Coffee and link it in Settings › Account › souldew+ (or
+  with /supporter claim in the souldew Discord). There are three tiers: **Supporter** gives you a Supporter badge on
+  your profile and the 3D launch with your own handheld; **souldew+** and **Legend** (souldew+ with its own badge)
+  unlock every colour theme, banner, avatar frame, nameplate and everything for your handheld and the launch
+  animation. Friends see your badge, banner and frame. Signed in without souldew+, you can try
+  any theme on the whole app for 15 minutes (“Try for 15 minutes”, a Preview badge counts down, then your own look
+  comes back). The looks arrive as one signed pack, encrypted for your account, checked file by file before anything
+  is shown; updates only download what changed, and the pack is removed from your computer when the membership ends
+  or you sign out. Everything that was free in 2.x stays free. “Unlink membership” takes it off your account again (to
+  move it to another one; the email can be linked again after 30 days), and Settings › Account lists every device
+  you're signed in on, each with its own “Sign out”. Quitting souldew tells your friends you're offline right away.
+- **A tidier sidebar and a souldew+ page.** The sidebar puts the three things you play every day on top – Library,
+  SoulLink, Nuzlocke – then Friends and Trophies, then Connection and Stream; Settings and Help sit at the bottom as
+  two buttons next to **souldew+**, which replaces “Buy me a coffee” (members read “thank you”). The souldew+ page
+  shows you yourself wearing it – your own picture and name – a few of the best banners, frames and nameplates in
+  their real look, your handheld turning slowly with any skin you pick (a souldew+ one as a marked preview; “Put it on
+  my handheld” for the ones you have), the launch animations playing side by side with their tier (“Use it for my
+  games” on one you may use), every colour theme
+  as a small swatch, the three tiers, what always stays free, where the money goes and what happens if you stop.
+  Every “Get souldew+” in the app leads there – never a pop-up; joining happens on the Buy Me a Coffee membership page.
+- **A Thank you page, live.** Help, Settings › About and the souldew+ page lead to the people who keep souldew free –
+  Legends, souldew+ members, Supporters and everyone who bought a coffee – each in their own banner and frame, with how
+  many support souldew right now. It updates by itself every minute while you look at it, and someone new arrives with
+  a short “New: Lena joined the Legends 🏆”; offline it shows the last list with “as of …”. Nobody appears by name
+  unless they say so: a new supporter is asked once (“Yes, show me” / “No thanks”), and Settings › Account › Privacy has
+  “Show my name on the Thank you page” – everyone else is only counted.
+- **Your showcase, your way.** Pick the three trophies from a trophy cabinet (search, categories, rarities) and your
+  most trusted Pokémon from your regulars – the lines your own runs relied on most, with how many teams they were on,
+  their top level and how often they fell, plus a line in your own words. On your profile you choose how friends see
+  it: a display case, a trainer card on the handheld's screen, or a compact shelf. The numbers update themselves
+  while “Show my runs on my profile” is on.
+- **A profile editor right on your profile.** “Edit profile” shows on the left your whole profile exactly as friends
+  see it, on the right every part you can change as a card – banner, avatar frame, nameplate, accent colour, name and
+  status, title, showcase layout, trophies, most trusted, favourite game and who sees what. Pick a card, or click the
+  part right on your profile, and try things on: everything shows at once, and one Save (or Cancel) covers it all,
+  with “Back to saved” for a single part. Leaving with unsaved changes asks first. Without souldew+ you can try on any
+  banner, frame or nameplate as long as you like – Save keeps your free one and saves the rest. Works with keyboard
+  and controller (L / R steps through the parts, B goes back).
+- **Favourites for your looks.** Every banner, frame, nameplate, colour theme and launch animation has a ☆ in its
+  corner, in the profile editor and in Settings. Click it (or press F, or Y / △ on a controller) and “★ Favourites”
+  above the list shows just those, in their usual order. souldew+ items can be starred too, as a wish list.
+  Favourites are kept on this computer.
+- **A new launch animation: your handheld, in 3D – with Supporter or souldew+.** Starting a game, your own souldew
+  handheld plays over the screen area: a DS or 3DS lid swings open, a GBA or Game Boy turns round, the card or
+  cartridge drops in and latches, the screens power on with the game's own picture and the camera pushes into them –
+  ending exactly on the game. It runs next to the game's start and never makes it wait; a click or any key skips it; it
+  is silent. Settings › Play › Launch animation: with Supporter “Your colours” (in your theme's colours) with Full /
+  Quick / Off; with souldew+ (and Legend) also Gold, Clear shell (four colours), Holo label, and now and then – one
+  start in 64 – a Rare start. With reduced motion it is a short fade. It plays smoothly from its first frame to the
+  game: the device, its light and every look are made ready before it appears, the game's sound and “where you left
+  off” (a DS game's too) start under it without costing it a frame, and the hand-over is one clean cut.
+- **Without a membership your games start as before:** the cartridge slides into the console and clicks in – On or Off
+  in Settings › Play › Launch animation, with a quiet line about the 3D one.
+- **Your handheld.** Dress that device: one skin for all of them (made from a banner), up to 8 stickers per device out
+  of 54 – turn them freely, size them 70–160 %, put them over the edges and on top of each other; they slide round
+  buttons and screens. Supporter: the Plain Dusk skin, the 11 free stickers and one saved design; souldew+: every skin
+  and sticker, holo and glitter, up to 12 saved designs and “Surprise me at start”. Favourites, export / import as a
+  small file. Three stickers and the Summit Dawn banner can't be bought – they come with a hard trophy: the banner is
+  on your profile for everyone, the stickers show in the 3D launch. Only you see your handheld. From the library's
+  header tile (with Supporter or souldew+), the souldew+ page or Settings › Play › Launch animation.
+- **20 cool and funny stickers for your handheld,** next to the cosy ones: RIP, 1 HP and GG are among the free
+  stickers (with Supporter or souldew+); Skill Issue, Snake Eyes, Crit!, Blow On It, Touch Grass, Rubber Duck, Cool
+  Skull, Flame Skull, Bolt, Hardcore, Arcade Stick, Floppy, Glitch, the souldew Racing Stripe, Verified Nuzlocker,
+  LIVE and Finish Flag come with souldew+. Their lettering is the souldew logo's own pixel font. The sticker sheet
+  shows the souldew+ stickers in two groups – cosy, and funny and cool – so the 54 stay easy to look through.
+- **When a membership ends, nothing you set is lost.** Your launch settings, your handheld and its designs stay as they
+  are and come back with the membership; meanwhile the launch plays what your tier has now – from souldew+ to
+  Supporter the free parts, without a membership the cartridge. Nothing paid is shown or played in the meantime: the
+  launch plays “Your colours”, the still of your handheld in Settings and the library's tile show it without the
+  souldew+ skin, stickers and finishes, and a line says they're back as soon as souldew+ is active again.
+- **souldew+ looks stay souldew+'s.** Gold, Clear shell, Holo label, the Rare start and the holo and glitter sticker
+  finishes come in the souldew+ pack like the banners and stickers, not built into the app – a changed copy of the
+  open-source app can't just switch them on. The pack's key belongs to the device you signed in on: copying souldew's
+  data folder to another computer opens nothing, and signing a device out ends its key. The pictures of souldew+
+  stickers and skins you see before joining are shots of the real thing, not the files themselves.
+- **Trophies come once you've joined.** Opening a friend's invite already gave you “Press Start” and “Linked Souls”
+  (and “Roll the Dice” or “The More, the Deadlier” for such a run) before your game was even built. Now a run counts
+  once your game for it is built – an invite you only looked at, or turned down, earns nothing.
+- **No DS save missed with the melonDS app.** A save melonDS wrote just as souldew began watching for it – right after
+  souldew started or the emulator launched, on a busy computer – could go unnoticed until your next in-game save,
+  most often a first save into melonDS's own save folder. souldew now notes every save file the moment it starts
+  watching, so that save is read like any other.
+- **Shared World moves as smoothly as the game itself.** Your partners, their Pokémon and your own Pokémon step
+  exactly with the pictures of your game: they start and stop at walking speed, follow the grid around corners, wait
+  on the next tile through a short break in the connection, and your own follower walks pixel by pixel behind you and
+  on over a route's edge into the next town. In the Game Boy games and on the DS a partner beside you keeps their place
+  to the pixel, a partner running in HeartGold/SoulSilver runs evenly, and followers stay in view when you turn back
+  through them. Measured picture by picture in Emerald, Sapphire, Platinum, HeartGold, Red and Crystal.
+- **A DS run opens right away.** Opening a run waited for souldew to read the game's own data out of the game file
+  (its types, a ROM hack's own Pokémon) – a few seconds for a DS game, much longer on a slower PC the first time.
+  All that time you showed as offline to your partners, nothing synced and no trade or battle could start. The run
+  now opens at once and that data comes in a moment later.
+- **A backup before the first start of 3.0.** Updating from 2.x, souldew first copies your runs, in-game saves, save
+  states, settings and trophies into a “backups” folder next to your data – not your games, which stay where they are.
+  Settings › About shows it with “Open backup folder”. It's made once, and only when there's enough free space on the
+  disk (if not, souldew says so there and changes nothing for lack of it); a file that disappears while it is being
+  copied is left out, not the whole backup.
+- **You decide what souldew sends by itself.** souldew collects no personal data. Two things go out on their own: the
+  anonymous “playing now” count while a game runs (once a minute: the system, the mode, the app version and a random
+  id), and the update check at start and every four hours. Signed in with a souldew account, the account service also gets your
+  online status for your friends – what you play and, only if you allow it, where you are in the game; “Appear
+  offline” shares none of it. The Windows installer now opens with a privacy page – what souldew sends, what the
+  installer changes on your PC, a link to the privacy policy and a checkbox for each of the two (both ticked as before;
+  a reinstall shows them as you set them). The in-app update installs silently, skips the page and keeps your
+  settings. On every system the welcome tour has the same two switches, and Settings › About has “Check for updates
+  automatically” – off, souldew only looks when you press “Check for updates”. Uninstalling on Windows asks whether
+  your data in %APPDATA%\SoulLink Studio should go too; “No” is the default and keeps it.
+- **What's new, at a glance.** The first start after updating from 2.x shows five short cards – trade & battle, Shared
+  World, raids, your handheld and friends – each with a picture of the app. Skip them any time; Help and Settings ›
+  General bring them back. New installs get the welcome tour as before.
+- **A partner still on 2.8 is told, not left waiting.** In a SoulLink where someone hasn't updated yet, Trade and
+  Battle on their card say they need souldew 3.0 (instead of an invite that ran out with “didn't answer”), “Link all of
+  us” leaves them out, and the run's log gets one line for them that their 2.8 app shows as a notice: update to trade,
+  battle, raid and walk around together. Everything else of the run – catches, deaths, the log, the rules – keeps
+  syncing between both versions as before.
+- **The host's rules win on every computer,** even when a partner's clock runs ahead of the host's.
+- **Cheats in the fast player say “added” only when the game really has it.** The check after a cheat now reads the
+  game's own memory, so a write the game didn't take is reported as not working.
+- **Cheats in Ruby, Sapphire, Emerald, FireRed and LeafGreen** wait until you stand in the overworld – not during a
+  battle, a menu, a text or a screen change, when the game may be moving its data around – and not on the title
+  screen or the Continue menu, where a new game would throw it away. Otherwise souldew says to try again in a moment.
+- **“Close game” keeps where you left off in the fast player and the 3DS player too.** Closing a game there (or
+  switching to another game or run) left no “where you left off” of that moment – the next start went back to the
+  last one souldew had kept while you played, up to two minutes earlier, or to your in-game save. Now the game closes
+  once that moment is kept, a split second later, and the next start picks up right there.
+
+Good to know:
+- Every player needs souldew 3.0. Linking without a restart works from the fast player (Settings › Play, on by
+  default); a game in the browser emulator joins the link from its last in-game save.
+- Save states made for Game Boy / Game Boy Color games in the fast player before 3.0 (on the old Gambatte emulator)
+  can't be loaded any more – souldew says so and deletes nothing: the last “where you left off” moves to the backups,
+  older ones are set aside in the save-state folder, and your in-game saves are fine. Save states of the other Game
+  Boy look load once you switch back to it.
+
+## 2.8.4
+
+- **Cheats in Sun, Moon, Ultra Sun and Ultra Moon work right from the start** (thanks to a player for the report). In
+  these games your bag stays empty for a while after you get your first Pokémon, and souldew never writes into memory
+  it can't be sure is your bag – an empty bag looked just like empty memory, so “Add 99 Rare Candies” and “Add 10 Max
+  Repels” said your bag wasn't found and blamed a game update you didn't have. souldew now recognises the empty bag by
+  the game's own bookkeeping, and when the bag of a 3DS game isn't where souldew expects it, it now looks for it nearby
+  instead of giving up. If it still can't find it, the message says so plainly, and “Save diagnostics” records where it
+  looked.
+
+- **Fast-forward with “Music continues” stays in step with the game** (thanks to a player on Discord). In the fast player
+  (DS, GBA, Game Boy) and the 3DS player, a song souldew had no music of its own for yet – right after starting a game,
+  on a new route, or in a ROM hack whose music it can't read – was played at its normal speed while the picture raced
+  ahead: first a moment of silence, then the game's sound up to a second late and skipping ahead in pieces, and a jump
+  when fast-forward ended. It sounded as if fast-forward didn't touch the sound and then lost step with the game. Now
+  you hear the sped-up original there, in step with the picture, until souldew has music of its own for that song
+  (heard at normal speed, or the game's own music track) – as the setting always promised. The fast player's log also no
+  longer fills up with thousands of empty messages from the DS emulator, so “Save diagnostics” keeps the lines that
+  matter.
+
 ## 2.8.3-r.3
 
 - **Rising Ruby et Sinking Sapphire reconnus comme des ROM hacks** (v2.1, `.3ds` décrypté) : ils ont leur propre fiche

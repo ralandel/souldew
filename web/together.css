@@ -1,0 +1,82 @@
+/* Playing together (views/together.mjs, docs/MULTIPLAYER.md › 9): the gift and "come here" cards, the gift picker,
+   the watch panel, the battle strip, the line on a partner's board card. Surfaces take the skin's tokens with
+   classic's colour as the fallback (test/skin-surfaces.test.mjs); the battle strip sits on the partner screens'
+   dark glass (.pt / .ps) like the picture. */
+
+/* the cards: one column with the rock-paper-scissors cards at the bottom of the app (app.mjs .cards-dock) – above the
+   play view's game bar, which they would cover at its usual place */
+.cards-dock { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 79; display: flex; flex-direction: column; gap: 8px;
+  width: min(340px, calc(100vw - 32px)); pointer-events: none; }
+.cards-dock > * { pointer-events: auto; }
+.cards-dock .rps-cards { position: static; transform: none; width: auto; left: auto; bottom: auto; }
+.cards-dock:empty { display: none; }
+.tg-cards { display: flex; flex-direction: column; gap: 8px; }
+.tg-card { background: var(--shell-3); color: var(--ink); border: 1px solid var(--sk-line, #0d0c10); border-left: 3px solid var(--c, var(--ink-3)); border-radius: var(--r-l);
+  padding: 10px 12px 11px; box-shadow: var(--lt-pop-shadow, 0 14px 30px #000a); animation: toast-in 0.22s cubic-bezier(.2,.8,.2,1); }
+.tg-card h4 { margin: 0; font-size: 13px; display: flex; gap: 8px; align-items: center; min-width: 0; }
+.tg-card h4 .grow { flex: 1; min-width: 0; }
+.tg-card .tg-what { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.tg-card .tg-say { margin-top: 6px; font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+.tg-card.ok .tg-say { color: var(--ok-ink); }
+.tg-card.bad .tg-say { color: var(--bad-ink); }
+.tg-card p { margin: 6px 0 0; }
+.tg-actions { margin-top: 8px; justify-content: flex-end; gap: 6px; }
+.tg-time { height: 3px; margin-top: 8px; border-radius: 2px; background: var(--shell-4); overflow: hidden; }
+.tg-time i { display: block; height: 100%; background: var(--c, var(--ink-2)); transition: width .5s linear; }
+.tg-art { image-rendering: pixelated; flex: none; width: auto; height: 14px; vertical-align: -2px; }
+.btn .tg-art { height: 12px; margin-right: 1px; }
+
+/* the gift picker */
+.tg-items { display: flex; flex-direction: column; gap: 2px; max-height: min(320px, 46vh); overflow: auto; padding: 3px; border-radius: var(--r-m);
+  background: var(--sk-well, #15141a); border: 1px solid var(--sk-line, #0d0c10); }
+.tg-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--r-s); background: transparent; color: var(--ink);
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.tg-item:hover { background: var(--lt-hover, var(--shell-3)); }
+.tg-item.on { background: color-mix(in srgb, var(--crs) 22%, transparent); box-shadow: inset 2px 0 0 var(--crs); }
+.tg-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tg-count { gap: 8px; align-items: center; }
+.tg-count b { min-width: 2ch; text-align: center; }
+
+/* the battle: the watch panel's two sides, and the strip under a partner's picture */
+.tg-watch .tg-screen { position: relative; width: 100%; aspect-ratio: var(--ar, 1.5); max-height: 60vh; border-radius: var(--r-m); background: #000; overflow: hidden; }
+.tg-watch .tg-screen img, .tg-watch .tg-screen video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #000; image-rendering: pixelated; }
+.tg-watch .tg-screen .ps-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 10px; text-align: center; color: #b9b5ad; font-size: 13px; }
+.tg-battle { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; }
+.tg-side { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.tg-side .hp { max-width: 160px; }
+.tg-vs { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.tg-vs .tg-art { height: 18px; }
+@media (max-width: 560px) { .tg-battle { grid-template-columns: 1fr; } .tg-vs { flex-direction: row; } }
+.tg-strip { flex: none; display: flex; align-items: center; gap: 6px; min-width: 0; margin: -2px 6px 6px; padding: 3px 7px; border-radius: 6px; font-size: 11px; line-height: 1.3;
+  color: #d9d4c9; background: #ffffff0d; }
+.tg-strip .muted { color: #a9a59b; }
+.tg-strip .tg-art { height: 10px; }
+.tg-strip .tg-hp { flex: 1; min-width: 34px; max-width: 70px; margin-left: auto; }
+.tg-strip .hp { height: 4px; }
+
+/* a partner's board card */
+.tg-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; min-width: 0; }
+.tg-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 2px 8px; border-radius: 999px; font-size: 12px; line-height: 1.5;
+  background: color-mix(in srgb, var(--acc, var(--crs)) 14%, transparent); color: var(--ink); border: 1px solid color-mix(in srgb, var(--acc, var(--crs)) 35%, transparent); }
+.tg-chip .btn.icon { width: 18px; height: 18px; min-height: 0; padding: 0; }
+.tg-chip.ping { background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+
+/* "Come to me" next to the Shared World switches */
+.tg-ping { align-self: flex-start; gap: 6px; }
+.tg-ping.on { color: var(--warn-ink); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+@media (prefers-reduced-motion: reduce) { .tg-card { animation: none; } }
+
+/* ---- Play together's board (views/playtogether.mjs) -------------------------------------------------------------- */
+.together-board .pt-players { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.together-board .pt-player.player-tag { flex-direction: column; align-items: stretch; gap: 8px; }
+.together-board .pt-player .who { font-size: 18px; }
+.together-board .pt-facts .fact { white-space: nowrap; }
+.together-board .pt-player .link-buttons { margin-top: 2px; }
+.pt-pair-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.pt-pair-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.pt-pair-who { min-width: 9em; }
+.pt-pair-note { flex-basis: 100%; }
+.pt-chips .chip.off { color: var(--ink-3, var(--ink-2)); opacity: .75; }
+.pt-chips .chip.warn { color: var(--warn-ink); }
+.pt-invite > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; }
+.together-entry .row { flex-wrap: wrap; }

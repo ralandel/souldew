@@ -55,3 +55,38 @@ serve is readable by design – to the pages and programs listed in [docs/STREAM
 
 A way to read anything from the "never" list, or to read the stream data from a page or machine that isn't allowed
 there, is a vulnerability we want to hear about.
+
+## The souldew account and souldew+ (3.0)
+
+The account service (souldew-accounts, its own SECURITY.md) is the trust root for everything other players see. On
+this computer:
+
+- **Who may act as the account:** the local server's account and souldew+ routes (`/api/account*`, `/api/plus*`) need,
+  in the desktop app, a per-launch random secret on top of the app header: electron/main.mjs sets it as an HttpOnly,
+  SameSite=Strict cookie in the app window's own cookie jar, the server never serves it (`server/lib/guard.mjs`
+  `rendererSecretError`). Another program on the computer – another user's on a shared machine – that talks HTTP to
+  127.0.0.1 gets `403`. A second sign-in on top of a running session is refused, and the sign-in address is never handed
+  to the caller (only the system browser gets it).
+- **Sign-in hand-off:** a wrong `state` on `/auth/done` never cancels the waiting sign-in, and the result page shows
+  only for the redirect the server just made (a one-time nonce) – a website can't fake "You're signed in".
+- **Development switches** (`SLS_ACCOUNTS_URL`, `SLS_PLUS_DEV_PACK`, `SLS_PLUS_DEV_KEY`, `SLS_ACCOUNTS_DEV_ENT_KEY`) are
+  ignored by an installed (packaged) app; a session is bound to the service address that issued it.
+- **souldew+ decisions** come only from the entitlement token verified against the pinned key
+  (`server/lib/accounts/enttoken.mjs`: signature, `aud`, `iss`, `sub`, `sid`, `tier`, `exp` with 5 minutes of clock
+  skew; offline its `grace_until`, and a clock set back behind the latest time seen counts as expired). Packs: the
+  manifest signature is checked against the pinned pack key in the local server before anything is downloaded, and
+  again with every file in the page. `npm run dist*` / `npm run release` stop while either pinned key is a placeholder
+  (`scripts/check-pinned-keys.mjs`).
+- **Pack code** (frames, launch animations) runs in a module worker inside a sandboxed iframe with an opaque origin
+  and `connect-src 'none'` (`web/lib/cosmetics/sandbox.mjs`) – it can't call the local API, read the account or reach
+  the network.
+
+Known limits:
+
+- **Friend invites fill in the 4 confirmation digits.** A run invite delivered through the account service carries the
+  invite code, and the joining app fills in the digits itself, so the host's "Allow" trusts the service (and the friend
+  it delivered to) instead of a code read out over voice chat. Someone controlling the account service could therefore
+  sit in the middle of a friend-invite join once the host clicks Allow. Joining with a code read out by the host keeps
+  the old guarantee.
+- "Appear offline" and the presence privacy are kept with the session; with neither known (first start, profile
+  unreadable) nothing about the game is sent.

@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync, renameSync, rmSync, mkdirSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { pbkdf2 } from 'node:crypto';
 import { findEntry, readSaveFile, LiveTables } from '../shared/live/parse.mjs';
 import { encryptPK4, crc16ccitt, writeFooters, SAVE_LAYOUT } from '../shared/gen4save.mjs';
 import { SaveWatcher, saveParser, isHgssGame } from '../server/lib/savewatch.mjs';
@@ -286,6 +287,49 @@ test('melonDS with its own save folder: the newest of the places is read; a save
   assert.ok(await until(() => events.some((e) => e.ev === 'save-error')));
   assert.equal(events.find((e) => e.ev === 'save-error').data.code, 'saveNotFound');
   assert.equal(w.status('r1').errorCode, 'saveNotFound');
+});
+
+// fs.watchFile (what the watcher used) takes what it compares against from its first stat, which runs later on libuv's
+// thread pool: a save written between watch() and that stat became the baseline and was never reported – the test
+// above failed every time in a busy full test run. The thread pool is kept busy here, so that stat comes late.
+test('a save written the moment the watch starts (a busy moment) is still read – a new file and a changed one', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'souldew-savewatch-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const busy = () => {
+    const jobs = [];
+    for (let i = 0; i < Number(process.env.UV_THREADPOOL_SIZE || 4); i++) jobs.push(new Promise((r) => pbkdf2('souldew', 'busy', 200000, 64, 'sha512', r)));
+    return Promise.all(jobs);
+  };
+  // 1) melonDS's own folder has no save yet; the first one is written right after the watch starts
+  const own = join(dir, 'melon saves', 'p1.sav');
+  mkdirSync(join(dir, 'melon saves'));
+  const a = watcherFor(dir);
+  t.after(() => a.w.unwatch('r1'));
+  let pool = busy();
+  a.w.watch('r1', [join(dir, 'p1.sav'), own]);
+  writeFileSync(own, sinnohSave('pt', [{ p: 0, count: 1, party: [STARTER] }]));
+  await pool;
+  assert.ok(await until(() => a.last() === '390'), 'the save that appeared is read');
+  assert.equal(a.w.status('r1').path, own);
+  // 2) an existing save (read when the watch starts) saved over right after
+  const sav = join(dir, 'p2.sav');
+  writeFileSync(sav, sinnohSave('pt', [{ p: 0, count: 1, party: [STARTER] }]));
+  const old = new Date(Date.now() - 60000);
+  utimesSync(sav, old, old);
+  const b = watcherFor(dir);
+  t.after(() => b.w.unwatch('r2'));
+  pool = busy();
+  b.w.watch('r2', sav);
+  assert.equal(b.last(), '390');
+  writeFileSync(sav, sinnohSave('pt', [{ p: 0, count: 2, party: [STARTER, CATCH] }]));
+  await pool;
+  assert.ok(await until(() => b.last() === '390,399'), 'the save written over it is read');
+  // nothing is watched anymore once unwatched: a later save isn't read
+  b.w.unwatch('r2');
+  const n = b.saves().length;
+  writeFileSync(sav, sinnohSave('pt', [{ p: 0, count: 3, party: [CATCH] }]));
+  await sleep(400);
+  assert.equal(b.saves().length, n);
 });
 
 test('melonDS\'s settings: the save folder from melonDS.toml (1.x, per instance) or melonDS.ini (0.9.x)', (t) => {

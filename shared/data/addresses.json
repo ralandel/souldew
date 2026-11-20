@@ -75,6 +75,31 @@
     "addr": "0xD356",
     "bytes": 1,
     "source": "pokered.sym wObtainedBadges (bit per badge)"
+   },
+   "world": {
+    "family": "rby",
+    "curMapAddr": "0xD35E",
+    "walkCounterAddr": "0xCFC5",
+    "sprite1Addr": "0xC100",
+    "sprite2Addr": "0xC200",
+    "fontLoadedAddr": "0xCFC4",
+    "joyIgnoreAddr": "0xCD6B",
+    "statusFlags5Addr": "0xD730",
+    "walkBikeSurfAddr": "0xD700",
+    "mapHeightAddr": "0xD368",
+    "connectionsAddr": "0xD370",
+    "tilesetBankAddr": "0xD52B",
+    "grassTileAddr": "0xD535",
+    "overworldMapAddr": "0xC6E8",
+    "rom": {
+     "playerSprite": "05:4180",
+     "bikeSprite": "05:4000",
+     "surfSprite": "05:76C0",
+     "iconPointers": "1C:57C0",
+     "iconCount": 28,
+     "iconData": "1C:590D"
+    },
+    "source": "pokered.sym (pret symbols branch)"
    }
   },
   {
@@ -149,6 +174,31 @@
     "addr": "0xD356",
     "bytes": 1,
     "source": "pokeblue.sym wObtainedBadges (bit per badge)"
+   },
+   "world": {
+    "family": "rby",
+    "curMapAddr": "0xD35E",
+    "walkCounterAddr": "0xCFC5",
+    "sprite1Addr": "0xC100",
+    "sprite2Addr": "0xC200",
+    "fontLoadedAddr": "0xCFC4",
+    "joyIgnoreAddr": "0xCD6B",
+    "statusFlags5Addr": "0xD730",
+    "walkBikeSurfAddr": "0xD700",
+    "mapHeightAddr": "0xD368",
+    "connectionsAddr": "0xD370",
+    "tilesetBankAddr": "0xD52B",
+    "grassTileAddr": "0xD535",
+    "overworldMapAddr": "0xC6E8",
+    "rom": {
+     "playerSprite": "05:4180",
+     "bikeSprite": "05:4000",
+     "surfSprite": "05:76C0",
+     "iconPointers": "1C:57C0",
+     "iconCount": 28,
+     "iconData": "1C:590D"
+    },
+    "source": "pokeblue.sym (pret symbols branch)"
    }
   },
   {
@@ -223,6 +273,33 @@
     "addr": "0xD355",
     "bytes": 1,
     "source": "pokeyellow.sym wObtainedBadges (bit per badge)"
+   },
+   "world": {
+    "family": "rby",
+    "curMapAddr": "0xD35D",
+    "walkCounterAddr": "0xCFC4",
+    "sprite1Addr": "0xC100",
+    "sprite2Addr": "0xC200",
+    "fontLoadedAddr": "0xCFC3",
+    "joyIgnoreAddr": "0xCD6B",
+    "statusFlags5Addr": "0xD72F",
+    "walkBikeSurfAddr": "0xD6FF",
+    "mapHeightAddr": "0xD367",
+    "connectionsAddr": "0xD36F",
+    "tilesetBankAddr": "0xD52A",
+    "grassTileAddr": "0xD534",
+    "overworldMapAddr": "0xC6E8",
+    "pikachuAddr": "0xC1F0",
+    "pikachuMapAddr": "0xC2F4",
+    "rom": {
+     "playerSprite": "05:4571",
+     "bikeSprite": "05:43F1",
+     "surfSprite": "05:7AB1",
+     "iconPointers": "1C:584D",
+     "iconCount": 30,
+     "iconData": "1C:59BA"
+    },
+    "source": "pokeyellow.sym (pret symbols branch)"
    }
   },
   {
@@ -297,6 +374,35 @@
     "addr": "0xD57C",
     "bytes": 2,
     "source": "pokegold.sym wJohtoBadges/wKantoBadges (bit per badge)"
+   },
+   "world": {
+    "family": "gsc",
+    "mapGroupAddr": "0xDA00",
+    "playerStructAddr": "0xD1FD",
+    "bgMapOffsetXAddr": "0xCE81",
+    "playerStateAddr": "0xD682",
+    "scriptRunningAddr": "0xD15F",
+    "mapStatusAddr": "0xD159",
+    "timeOfDayPalAddr": "0xD568",
+    "mapHeightAddr": "0xD087",
+    "connectionsAddr": "0xD091",
+    "tilesetBankAddr": "0xD0C2",
+    "overworldMapAddr": "0xC700",
+    "rom": {
+     "overworldSprites": "05:47DE",
+     "sprites": {
+      "player": 1,
+      "bike": 2,
+      "surf": 83
+     },
+     "iconPointers": "23:6A70",
+     "icons": "23:6ABE",
+     "monMenuIcons": "23:6975",
+     "pokemonPalettes": "02:6D3D",
+     "mapObjectPals": "02:78AE"
+    },
+    "canon": "031D>0325 031E>0326 031F>0327 0320>0328 0321>0329 0322>032A 0323>032B 0324>032C 0325>032D 0326>032E 0327>032F 0328>0330 0329>0331 032A>0332 032B>0333 032C>0334 032D>0335 032E>0336 032F>0337 0330>0338 0331>0339 0332>033A 0333>033B 0334>033C 0335>033D 0336>033E 0337>033F 0338>0340 0339>0341 033A>0342 033B>0343 033C>0344 033D>0345 033E>0346 033F>0347 0340>0348 0341>0349 0342>034A 0343>034B 0344>034C 0345>034D 0346>034E 0347>034F 0348>0350 0349>0351 034A>0353 034B>0354 034C>0355 034D>0356 034E>0357 034F>0358 0350>0359 0351>035A 0352>035B 0402>0000 0B09>0B14 0B0A>0B09 0B0B>0B0A 0B0C>0B0B 0B0D>0B0C 0B0E>0B0D 0B0F>0B0E 0B10>0B0F 0B11>0B10 0B12>0B11 0B14>0B16 0B15>0B17 0B16>0B18",
+    "source": "pokegold.sym (pret symbols branch); canon: Gold/Silver map → Crystal’s number (pret map constants), 0 = a map Crystal doesn’t have"
    }
   },
   {
@@ -371,6 +477,35 @@
     "addr": "0xD57C",
     "bytes": 2,
     "source": "pokesilver.sym wJohtoBadges/wKantoBadges (bit per badge)"
+   },
+   "world": {
+    "family": "gsc",
+    "mapGroupAddr": "0xDA00",
+    "playerStructAddr": "0xD1FD",
+    "bgMapOffsetXAddr": "0xCE81",
+    "playerStateAddr": "0xD682",
+    "scriptRunningAddr": "0xD15F",
+    "mapStatusAddr": "0xD159",
+    "timeOfDayPalAddr": "0xD568",
+    "mapHeightAddr": "0xD087",
+    "connectionsAddr": "0xD091",
+    "tilesetBankAddr": "0xD0C2",
+    "overworldMapAddr": "0xC700",
+    "rom": {
+     "overworldSprites": "05:47DE",
+     "sprites": {
+      "player": 1,
+      "bike": 2,
+      "surf": 83
+     },
+     "iconPointers": "23:6A56",
+     "icons": "23:6AA4",
+     "monMenuIcons": "23:695B",
+     "pokemonPalettes": "02:6D3D",
+     "mapObjectPals": "02:78AE"
+    },
+    "canon": "031D>0325 031E>0326 031F>0327 0320>0328 0321>0329 0322>032A 0323>032B 0324>032C 0325>032D 0326>032E 0327>032F 0328>0330 0329>0331 032A>0332 032B>0333 032C>0334 032D>0335 032E>0336 032F>0337 0330>0338 0331>0339 0332>033A 0333>033B 0334>033C 0335>033D 0336>033E 0337>033F 0338>0340 0339>0341 033A>0342 033B>0343 033C>0344 033D>0345 033E>0346 033F>0347 0340>0348 0341>0349 0342>034A 0343>034B 0344>034C 0345>034D 0346>034E 0347>034F 0348>0350 0349>0351 034A>0353 034B>0354 034C>0355 034D>0356 034E>0357 034F>0358 0350>0359 0351>035A 0352>035B 0402>0000 0B09>0B14 0B0A>0B09 0B0B>0B0A 0B0C>0B0B 0B0D>0B0C 0B0E>0B0D 0B0F>0B0E 0B10>0B0F 0B11>0B10 0B12>0B11 0B14>0B16 0B15>0B17 0B16>0B18",
+    "source": "pokesilver.sym (pret symbols branch); canon: Gold/Silver map → Crystal’s number (pret map constants), 0 = a map Crystal doesn’t have"
    }
   },
   {
@@ -458,6 +593,38 @@
     "addr": "0xD857",
     "bytes": 2,
     "source": "pokecrystal.sym wJohtoBadges/wKantoBadges (bit per badge)"
+   },
+   "world": {
+    "family": "gsc",
+    "mapGroupAddr": "0xDCB5",
+    "playerStructAddr": "0xD4D6",
+    "bgMapOffsetXAddr": "0xD14C",
+    "playerStateAddr": "0xD95D",
+    "scriptRunningAddr": "0xD438",
+    "mapStatusAddr": "0xD432",
+    "timeOfDayPalAddr": "0xD841",
+    "mapHeightAddr": "0xD19E",
+    "connectionsAddr": "0xD1A8",
+    "tilesetBankAddr": "0xD1D9",
+    "overworldMapAddr": "0xC800",
+    "playerGenderAddr": "0xD472",
+    "landmarkSignAddr": "0xC2DA",
+    "rom": {
+     "overworldSprites": "05:4736",
+     "sprites": {
+      "player": 1,
+      "bike": 2,
+      "surf": 83,
+      "kris": 96,
+      "krisBike": 97
+     },
+     "iconPointers": "23:6BBF",
+     "icons": "23:6C0D",
+     "monMenuIcons": "23:6AC4",
+     "pokemonPalettes": "02:68CE",
+     "mapObjectPals": "02:7469"
+    },
+    "source": "pokecrystal.sym (pret symbols branch)"
    }
   },
   {
@@ -518,7 +685,94 @@
     "partyCountAddr": "pokeruby.sym:613",
     "partyAddr": "pokeruby.sym:614"
    },
-   "verified": "pret symbols branch .sym"
+   "verified": "pret symbols branch .sym",
+   "world": {
+    "family": "rs",
+    "objectEvents": "0x030048A0",
+    "playerAvatar": "0x0202E858",
+    "fieldCamera": "0x03004880",
+    "saveBlock1": "0x02025734",
+    "main": "0x03001770",
+    "paletteFade": "0x0202F388",
+    "lockFieldControls": "0x030006A4",
+    "sprites": "0x02020004",
+    "mapHeader": "0x0202E828",
+    "backupMapLayout": "0x03004870",
+    "tasks": "0x03004B20",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      112,
+      32
+     ],
+     "offsetData": 2,
+     "offsetBase": 32
+    },
+    "rom": {
+     "0": {
+      "overworldCb2": "0x080543A4",
+      "graphicsInfo": "0x0836DC58",
+      "spritePalettes": "0x0837377C",
+      "mapNamePopupTask": "0x080A2FF4"
+     },
+     "1": {
+      "overworldCb2": "0x080543C4",
+      "graphicsInfo": "0x0836DC70",
+      "spritePalettes": "0x08373794",
+      "mapNamePopupTask": "0x080A3014"
+     },
+     "2": {
+      "overworldCb2": "0x080543C4",
+      "graphicsInfo": "0x0836DC70",
+      "spritePalettes": "0x08373794",
+      "mapNamePopupTask": "0x080A3014"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      89
+     ],
+     [
+      "mach",
+      1,
+      90
+     ],
+     [
+      "acro",
+      63,
+      91
+     ],
+     [
+      "surf",
+      2,
+      92
+     ],
+     [
+      "dive",
+      111,
+      112
+     ],
+     [
+      "fieldmove",
+      3,
+      93
+     ],
+     [
+      "fish",
+      137,
+      138
+     ],
+     [
+      "water",
+      191,
+      192
+     ]
+    ],
+    "source": "pret symbols branch: gObjectEvents, gPlayerAvatar, gFieldCamera, gSaveBlock1, gMain, gPaletteFade, sLockFieldControls, gSprites, gMapHeader, gBackupMapLayout, gTasks (RAM); CB2_Overworld, gObjectEventGraphicsInfoPointers, sObjectEventSpritePalettes, Task_MapNamePopup (ROM, per revision: pokeruby.sym, pokeruby_rev1.sym, pokeruby_rev2.sym). Structs: include/global.fieldmap.h (ObjectEvent 0x24, PlayerAvatar, ObjectEventGraphicsInfo), src/field_camera.c (CameraObject x/y = sub-tile offset), include/palette.h (PaletteFadeControl), src/field_player_avatar.c sPlayerAvatarGfxIds (avatars: kind, male gfx id, female gfx id); src/map_name_popup.c (the popup window and its slide offset in task data[2])"
+   }
   },
   {
    "id": "sapphire_us",
@@ -578,7 +832,94 @@
     "partyCountAddr": "pokesapphire.sym:613",
     "partyAddr": "pokesapphire.sym:614"
    },
-   "verified": "pret symbols branch .sym"
+   "verified": "pret symbols branch .sym",
+   "world": {
+    "family": "rs",
+    "objectEvents": "0x030048A0",
+    "playerAvatar": "0x0202E858",
+    "fieldCamera": "0x03004880",
+    "saveBlock1": "0x02025734",
+    "main": "0x03001770",
+    "paletteFade": "0x0202F388",
+    "lockFieldControls": "0x030006A4",
+    "sprites": "0x02020004",
+    "mapHeader": "0x0202E828",
+    "backupMapLayout": "0x03004870",
+    "tasks": "0x03004B20",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      112,
+      32
+     ],
+     "offsetData": 2,
+     "offsetBase": 32
+    },
+    "rom": {
+     "0": {
+      "overworldCb2": "0x080543A8",
+      "graphicsInfo": "0x0836DBE8",
+      "spritePalettes": "0x0837370C",
+      "mapNamePopupTask": "0x080A2FF4"
+     },
+     "1": {
+      "overworldCb2": "0x080543C8",
+      "graphicsInfo": "0x0836DC00",
+      "spritePalettes": "0x08373724",
+      "mapNamePopupTask": "0x080A3014"
+     },
+     "2": {
+      "overworldCb2": "0x080543C8",
+      "graphicsInfo": "0x0836DC00",
+      "spritePalettes": "0x08373724",
+      "mapNamePopupTask": "0x080A3014"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      89
+     ],
+     [
+      "mach",
+      1,
+      90
+     ],
+     [
+      "acro",
+      63,
+      91
+     ],
+     [
+      "surf",
+      2,
+      92
+     ],
+     [
+      "dive",
+      111,
+      112
+     ],
+     [
+      "fieldmove",
+      3,
+      93
+     ],
+     [
+      "fish",
+      137,
+      138
+     ],
+     [
+      "water",
+      191,
+      192
+     ]
+    ],
+    "source": "pret symbols branch: gObjectEvents, gPlayerAvatar, gFieldCamera, gSaveBlock1, gMain, gPaletteFade, sLockFieldControls, gSprites, gMapHeader, gBackupMapLayout, gTasks (RAM); CB2_Overworld, gObjectEventGraphicsInfoPointers, sObjectEventSpritePalettes, Task_MapNamePopup (ROM, per revision: pokesapphire.sym, pokesapphire_rev1.sym, pokesapphire_rev2.sym). Structs: include/global.fieldmap.h (ObjectEvent 0x24, PlayerAvatar, ObjectEventGraphicsInfo), src/field_camera.c (CameraObject x/y = sub-tile offset), include/palette.h (PaletteFadeControl), src/field_player_avatar.c sPlayerAvatarGfxIds (avatars: kind, male gfx id, female gfx id); src/map_name_popup.c (the popup window and its slide offset in task data[2])"
+   }
   },
   {
    "id": "ruby_de",
@@ -637,7 +978,88 @@
     "partyCountAddr": "pokeruby_de.sym:615",
     "partyAddr": "pokeruby_de.sym:616"
    },
-   "verified": "pret symbols branch .sym"
+   "verified": "pret symbols branch .sym",
+   "world": {
+    "family": "rs",
+    "objectEvents": "0x030048B0",
+    "playerAvatar": "0x0202E858",
+    "fieldCamera": "0x03004890",
+    "saveBlock1": "0x02025734",
+    "main": "0x03001770",
+    "paletteFade": "0x0202F388",
+    "lockFieldControls": "0x030006A4",
+    "sprites": "0x02020004",
+    "mapHeader": "0x0202E828",
+    "backupMapLayout": "0x03004880",
+    "tasks": "0x03004B30",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      112,
+      32
+     ],
+     "offsetData": 2,
+     "offsetBase": 32
+    },
+    "rom": {
+     "0": {
+      "overworldCb2": "0x080546E4",
+      "graphicsInfo": "0x08379440",
+      "spritePalettes": "0x0837EF64",
+      "mapNamePopupTask": "0x080A3144"
+     },
+     "1": {
+      "overworldCb2": "0x080546E4",
+      "graphicsInfo": "0x08379440",
+      "spritePalettes": "0x0837EF64",
+      "mapNamePopupTask": "0x080A3144"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      89
+     ],
+     [
+      "mach",
+      1,
+      90
+     ],
+     [
+      "acro",
+      63,
+      91
+     ],
+     [
+      "surf",
+      2,
+      92
+     ],
+     [
+      "dive",
+      111,
+      112
+     ],
+     [
+      "fieldmove",
+      3,
+      93
+     ],
+     [
+      "fish",
+      137,
+      138
+     ],
+     [
+      "water",
+      191,
+      192
+     ]
+    ],
+    "source": "pret symbols branch: gObjectEvents, gPlayerAvatar, gFieldCamera, gSaveBlock1, gMain, gPaletteFade, sLockFieldControls, gSprites, gMapHeader, gBackupMapLayout, gTasks (RAM); CB2_Overworld, gObjectEventGraphicsInfoPointers, sObjectEventSpritePalettes, Task_MapNamePopup (ROM, per revision: pokeruby_de.sym; rev 1 = pokeruby_de_rev1.sym, the same addresses). Structs: include/global.fieldmap.h (ObjectEvent 0x24, PlayerAvatar, ObjectEventGraphicsInfo), src/field_camera.c (CameraObject x/y = sub-tile offset), include/palette.h (PaletteFadeControl), src/field_player_avatar.c sPlayerAvatarGfxIds (avatars: kind, male gfx id, female gfx id); src/map_name_popup.c (the popup window and its slide offset in task data[2])"
+   }
   },
   {
    "id": "sapphire_de",
@@ -696,7 +1118,148 @@
     "partyCountAddr": "pokesapphire_de.sym:615",
     "partyAddr": "pokesapphire_de.sym:616"
    },
-   "verified": "pret symbols branch .sym"
+   "verified": "pret symbols branch .sym",
+   "world": {
+    "family": "rs",
+    "objectEvents": "0x030048B0",
+    "playerAvatar": "0x0202E858",
+    "fieldCamera": "0x03004890",
+    "saveBlock1": "0x02025734",
+    "main": "0x03001770",
+    "paletteFade": "0x0202F388",
+    "lockFieldControls": "0x030006A4",
+    "sprites": "0x02020004",
+    "mapHeader": "0x0202E828",
+    "backupMapLayout": "0x03004880",
+    "tasks": "0x03004B30",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      112,
+      32
+     ],
+     "offsetData": 2,
+     "offsetBase": 32
+    },
+    "rom": {
+     "0": {
+      "overworldCb2": "0x080546E8",
+      "graphicsInfo": "0x083793D4",
+      "spritePalettes": "0x0837EEF8",
+      "mapNamePopupTask": "0x080A3144"
+     },
+     "1": {
+      "overworldCb2": "0x080546E8",
+      "graphicsInfo": "0x083793D4",
+      "spritePalettes": "0x0837EEF8",
+      "mapNamePopupTask": "0x080A3144"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      89
+     ],
+     [
+      "mach",
+      1,
+      90
+     ],
+     [
+      "acro",
+      63,
+      91
+     ],
+     [
+      "surf",
+      2,
+      92
+     ],
+     [
+      "dive",
+      111,
+      112
+     ],
+     [
+      "fieldmove",
+      3,
+      93
+     ],
+     [
+      "fish",
+      137,
+      138
+     ],
+     [
+      "water",
+      191,
+      192
+     ]
+    ],
+    "source": "pret symbols branch pokesapphire_de.sym (pokeruby, the German Sapphire build): every RAM symbol is the German Ruby’s (gObjectEvents, gPlayerAvatar, gFieldCamera, gSaveBlock1, gMain, gPaletteFade, sScriptContext2Enabled = sLockFieldControls, gSprites, gMapHeader, gBackupMapLayout, gTasks); ROM: CB2_Overworld, gObjectEventGraphicsInfoPointers, sObjectEventSpritePalettes, Task_MapNamePopup. The German Sapphire rev 1 ROM has these exact functions and tables at the .sym addresses (CB2_Overworld and Task_MapNamePopup byte for byte the German Ruby’s, the graphics table is also what findGraphicsTable finds), rev 0 is taken from the same .sym. Checked in the running German Sapphire rev 1, Nov 2026 (souldew 3.0 acceptance): SaveBlock1 pos = the player object’s coords −7, the camera offset mid-step, CB2_Overworld on the overworld, the lock with the START menu, the palette fade on the stairs and the door, Task_MapNamePopup on entering Route 101, the backup map = layout size +15/+14, the player’s sprite. Structs as in ruby_de."
+   }
+  },
+  {
+   "id": "quetzal_en",
+   "name": "Pokémon Quetzal (English)",
+   "gen": 3,
+   "platform": "gba",
+   "language": "en",
+   "hack": "quetzal",
+   "match": {
+    "gameCode": [
+     "BPEE"
+    ],
+    "headerTitle": [
+     "PKM QUETZAL"
+    ],
+    "gameCodeOffset": "0xAC",
+    "note": "TohmaRH's pokeemerald-based hack keeps Emerald's game code and version: only the header title tells it apart (parse.mjs findEntry tries this entry first, and only with this title)"
+   },
+   "memory": {
+    "note": "Absolute GBA bus addresses, measured in the running game (English Alpha 9v1, a new game). Its species, struct and save blocks are its own: see shared/live/quetzal.mjs."
+   },
+   "partyCountAddr": "0x020235C9",
+   "partyCountRegion": "EWRAM",
+   "partyCountType": "u8",
+   "partyAddr": "0x020235CC",
+   "partyRegion": "EWRAM",
+   "structSize": 104,
+   "maxParty": 6,
+   "otNamesAddr": null,
+   "nicknamesAddr": null,
+   "namesInline": {
+    "nickname": "struct+0x08 (10 bytes)",
+    "otName": "struct+0x14 (7 bytes)"
+   },
+   "charset": "charset_gen3.json",
+   "speciesTable": "the ROM's own (romspecies.mjs: 1,528 species by name, National Dex order to Calyrex, then forms, Gen 9 and its own Pokémon)",
+   "enemyPartyAddr": "0x02023AAC",
+   "inBattle": {
+    "addr": "0x03002A99",
+    "type": "u8",
+    "mask": "0x02",
+    "meaning": "gMain.inBattle (gMain 0x03002660, + 0x439, bit 1) – 2 in the rival's and a wild battle, 0 in Pallet Town, the lab and on Route 1; gMain.callback2 is the battle's then"
+   },
+   "liveBattleHp": {
+    "battleMonsAddr": "0x0202305C",
+    "battleMonSize": "0x60",
+    "hpOffset": "0x2A",
+    "maxHpOffset": "0x2E",
+    "note": "pokeemerald-expansion's BattlePokemon (personality +0x4C, status1 +0x50, OT ID +0x58): the starter 19/19 at +0x2A/+0x2E, the rival's Squirtle 13 → 7 next to it"
+   },
+   "saveBlockPtrs": {
+    "sb1": "0x030055BC",
+    "sb2": "0x030055C0"
+   },
+   "saveBlock1Pos": "0x470",
+   "sources": {
+    "partyAddr": "found by the starter's nickname, the count byte 3 bytes before it; the Pidgey caught on Route 1 104 bytes on",
+    "saveBlockPtrs": "SaveBlock2 starts with the player's name; SaveBlock1's position (pos, location: map 37.120, the bedroom) is 0x470 bytes behind the pointer – walking a tile changes it there"
+   },
+   "verified": "live in Pokémon Quetzal English Alpha 9v1 (SHA-1 c108cec750a35775084c0806cc704d8abd1994e7): bedroom, Pallet Town, Oak's lab (Sprigatito), the rival's battle, Route 1 (a wild Pidgey caught)"
   },
   {
    "id": "emerald_us",
@@ -754,7 +1317,216 @@
     "partyCountAddr": "pokeemerald.sym:200",
     "partyAddr": "pokeemerald.sym:202"
    },
-   "verified": "pret symbols branch .sym"
+   "verified": "pret symbols branch .sym",
+   "world": {
+    "family": "e",
+    "objectEvents": "0x02037350",
+    "playerAvatar": "0x02037590",
+    "fieldCamera": "0x03005DD0",
+    "saveBlock1Ptr": "0x03005D8C",
+    "main": "0x030022C0",
+    "paletteFade": "0x02037FD4",
+    "lockFieldControls": "0x03000F2C",
+    "sprites": "0x02020630",
+    "mapHeader": "0x02037318",
+    "backupMapLayout": "0x03005DC0",
+    "tasks": "0x03005E00",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      96,
+      40
+     ],
+     "offsetData": 2,
+     "offsetBase": 40
+    },
+    "rom": {
+     "0": {
+      "overworldCb2": "0x08085E5C",
+      "graphicsInfo": "0x08505620",
+      "spritePalettes": "0x0850BBC8",
+      "mapNamePopupTask": "0x080D487C"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      89
+     ],
+     [
+      "mach",
+      1,
+      90
+     ],
+     [
+      "acro",
+      63,
+      91
+     ],
+     [
+      "surf",
+      2,
+      92
+     ],
+     [
+      "dive",
+      111,
+      112
+     ],
+     [
+      "fieldmove",
+      3,
+      93
+     ],
+     [
+      "fish",
+      137,
+      138
+     ],
+     [
+      "water",
+      191,
+      192
+     ]
+    ],
+    "source": "pret symbols branch: gObjectEvents, gPlayerAvatar, gFieldCamera, gSaveBlock1Ptr, gMain, gPaletteFade, sLockFieldControls, gSprites, gMapHeader, gBackupMapLayout, gTasks (RAM); CB2_Overworld, gObjectEventGraphicsInfoPointers, sObjectEventSpritePalettes, Task_MapNamePopUpWindow (ROM, per revision: pokeemerald.sym). Structs: include/global.fieldmap.h (ObjectEvent 0x24, PlayerAvatar, ObjectEventGraphicsInfo), src/field_camera.c (CameraObject x/y = sub-tile offset), include/palette.h (PaletteFadeControl), src/field_player_avatar.c sPlayerAvatarGfxIds (avatars: kind, male gfx id, female gfx id); src/map_name_popup.c (the popup window and its slide offset in task data[2])"
+   }
+  },
+  {
+   "id": "emerald_de",
+   "name": "Pokémon Smaragd-Edition (Germany)",
+   "gen": 3,
+   "platform": "gba",
+   "language": "de",
+   "match": {
+    "gameCode": [
+     "BPED"
+    ],
+    "gameCodeOffset": "0xAC",
+    "softwareVersionOffset": "0xBC",
+    "softwareVersion": [
+     0
+    ]
+   },
+   "memory": {
+    "note": "Absolute GBA bus addresses. EWRAM 0x02000000 (256 KiB), IWRAM 0x03000000 (32 KiB). Offset into the region array = addr & 0xFFFFFF."
+   },
+   "partyCountAddr": "0x020244E9",
+   "partyCountRegion": "EWRAM",
+   "partyCountType": "u8",
+   "partyAddr": "0x020244EC",
+   "partyRegion": "EWRAM",
+   "structSize": 100,
+   "maxParty": 6,
+   "otNamesAddr": null,
+   "nicknamesAddr": null,
+   "namesInline": {
+    "nickname": "struct+0x08 (10 bytes)",
+    "otName": "struct+0x14 (7 bytes)"
+   },
+   "charset": "charset_gen3.json",
+   "speciesTable": "gen3_index_to_dex.json",
+   "enemyPartyAddr": "0x02024744",
+   "inBattle": {
+    "addr": "0x030026F9",
+    "type": "u8",
+    "mask": "0x02",
+    "meaning": "gMain.inBattle bitfield (bit 1 of the byte after gMain.state)",
+    "source": "pokeemerald.sym:894 (gMain) + include/main.h struct Main offset 0x439"
+   },
+   "battleTypeFlagsAddr": "0x02022FEC",
+   "liveBattleHp": {
+    "battleMonsAddr": "0x02024084",
+    "battleMonSize": "0x58",
+    "hpOffset": "0x28",
+    "maxHpOffset": "0x2C",
+    "battlerPartyIndexesAddr": "0x0202406E",
+    "note": "Player battler 0 (and 2 in doubles); gBattlerPartyIndexes is u16[4]. gPlayerParty HP is also written live (Cmd_datahpupdate -> REQUEST_HP_BATTLE).",
+    "source": "pokeemerald.sym:124, pokeemerald.sym:118"
+   },
+   "sources": {
+    "partyCountAddr": "pokeemerald.sym:200",
+    "partyAddr": "pokeemerald.sym:202",
+    "evidence": "RAM: the US/European English Emerald’s for every address souldew reads – no pret build of the German game exists, so each was derived by aligning the English ROM with the German one (unique 16-byte runs, ~940k anchors) and reading the literal-pool word at every load site of the English address: gPlayerParty 1085 sites, gPlayerPartyCount 1130, gEnemyParty 474, gMain 791 (inBattle = gMain+0x439), gBattleTypeFlags 438, gBattleMons 406, gBattlerPartyIndexes 420, gSaveBlock1Ptr 1667, gSaveBlock2Ptr 844, gPokemonStoragePtr 45, gMapHeader 142, sCurrentMapMusic 48, gBattleOutcome 134 – each one the English address, no conflicting vote. (The same method finds the German FireRed’s 0xB0 IWRAM shift and the pret pokeruby_de.sym addresses from the English ROMs.) Checked in the running German Emerald, Nov 2026 (souldew 3.0 acceptance)."
+   },
+   "verified": "derived from the English ROM by literal-pool alignment (see sources.evidence); checked live in the German ROM (BPED rev 0, CRC 34C9DF89): the Shared World table and the ROM matrix’s Emerald plan",
+   "world": {
+    "family": "e",
+    "objectEvents": "0x02037350",
+    "playerAvatar": "0x02037590",
+    "fieldCamera": "0x03005DD0",
+    "saveBlock1Ptr": "0x03005D8C",
+    "main": "0x030022C0",
+    "paletteFade": "0x02037FD4",
+    "lockFieldControls": "0x03000F2C",
+    "sprites": "0x02020630",
+    "mapHeader": "0x02037318",
+    "backupMapLayout": "0x03005DC0",
+    "tasks": "0x03005E00",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      96,
+      40
+     ],
+     "offsetData": 2,
+     "offsetBase": 40
+    },
+    "rom": {
+     "0": {
+      "overworldCb2": "0x08085E78",
+      "graphicsInfo": "0x08517350",
+      "spritePalettes": "0x0851D8F8",
+      "mapNamePopupTask": "0x080D44D8"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      89
+     ],
+     [
+      "mach",
+      1,
+      90
+     ],
+     [
+      "acro",
+      63,
+      91
+     ],
+     [
+      "surf",
+      2,
+      92
+     ],
+     [
+      "dive",
+      111,
+      112
+     ],
+     [
+      "fieldmove",
+      3,
+      93
+     ],
+     [
+      "fish",
+      137,
+      138
+     ],
+     [
+      "water",
+      191,
+      192
+     ]
+    ],
+    "source": "The English Emerald’s RAM table, unchanged in the German game: gObjectEvents 320 load sites, gPlayerAvatar 221, gFieldCamera 9, gSaveBlock1Ptr 1667, gMain 791, gPaletteFade 414, sLockFieldControls 18, gSprites 1572, gMapHeader 142, gBackupMapLayout 29, gTasks 2372 – every load site in the aligned German code names the English address. ROM addresses (rev 0): CB2_Overworld and Task_MapNamePopUpWindow have the English bytes (their literal-pool references map to them), gObjectEventGraphicsInfoPointers (284 entries, as in English; also what findGraphicsTable finds) and sObjectEventSpritePalettes from their references. Checked in the running German Emerald, Nov 2026 (souldew 3.0 acceptance): SaveBlock1 pos = the player object’s coords −7, the camera offset mid-step, CB2_Overworld on the overworld, sLockFieldControls with the START menu, the palette fade on the stairs and the door, Task_MapNamePopUpWindow on entering Route 101, the backup map = layout size +15/+14, the player’s sprite. Structs and avatars as in emerald_us."
+   }
   },
   {
    "id": "firered_us",
@@ -813,7 +1585,80 @@
     "partyCountAddr": "pokefirered.sym:158",
     "partyAddr": "pokefirered.sym:161"
    },
-   "verified": "pret symbols branch .sym"
+   "verified": "pret symbols branch .sym",
+   "world": {
+    "family": "frlg",
+    "objectEvents": "0x02036E38",
+    "playerAvatar": "0x02037078",
+    "fieldCamera": "0x03005050",
+    "saveBlock1Ptr": "0x03005008",
+    "main": "0x030030F0",
+    "paletteFade": "0x02037AB8",
+    "lockFieldControls": "0x03000F9C",
+    "sprites": "0x0202063C",
+    "mapHeader": "0x02036DFC",
+    "backupMapLayout": "0x03005040",
+    "tasks": "0x03005090",
+    "inHelpSystem": "0x0203F177",
+    "questLogState": "0x0203ADFA",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      192,
+      24
+     ],
+     "offsetData": 2,
+     "offsetBase": 0
+    },
+    "rom": {
+     "0": {
+      "overworldCb2": "0x080565B4",
+      "graphicsInfo": "0x0839FDB0",
+      "spritePalettes": "0x083A5158",
+      "mapNamePopupTask": "0x080981AC"
+     },
+     "1": {
+      "overworldCb2": "0x080565C8",
+      "graphicsInfo": "0x0839FE20",
+      "spritePalettes": "0x083A51C8",
+      "mapNamePopupTask": "0x080981C0"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      7
+     ],
+     [
+      "bike",
+      1,
+      8
+     ],
+     [
+      "surf",
+      2,
+      9
+     ],
+     [
+      "fieldmove",
+      3,
+      10
+     ],
+     [
+      "fish",
+      4,
+      11
+     ],
+     [
+      "vsseeker",
+      5,
+      12
+     ]
+    ],
+    "source": "pret symbols branch: gObjectEvents, gPlayerAvatar, gFieldCamera, gSaveBlock1Ptr, gMain, gPaletteFade, sLockFieldControls, gSprites, gMapHeader, VMap, gTasks, sInHelpSystem, gQuestLogState (RAM); CB2_Overworld, gObjectEventGraphicsInfoPointers, sObjectEventSpritePalettes, Task_MapNamePopup (ROM, per revision: pokefirered.sym, pokefirered_rev1.sym). Structs: include/global.fieldmap.h (ObjectEvent 0x24, PlayerAvatar, ObjectEventGraphicsInfo), src/field_camera.c (CameraObject x/y = sub-tile offset), include/palette.h (PaletteFadeControl), src/field_player_avatar.c sPlayerAvatarGfxIds (avatars: kind, male gfx id, female gfx id); src/map_name_popup.c (the popup window and its slide offset in task data[2])"
+   }
   },
   {
    "id": "firered_eu",
@@ -880,6 +1725,73 @@
     "sb1": "0x03004F58",
     "sb2": "0x03004F5C",
     "source": "pokebot-gen3 pokefirered.yml gSaveBlock1Ptr/gSaveBlock2Ptr D/F/I/S; Ironmon-Tracker Feuerrote.json gSaveBlock1ptr/gSaveBlock2ptr"
+   },
+   "world": {
+    "family": "frlg",
+    "objectEvents": "0x02036E38",
+    "playerAvatar": "0x02037078",
+    "fieldCamera": "0x03004FA0",
+    "saveBlock1Ptr": "0x03004F58",
+    "main": "0x03003040",
+    "paletteFade": "0x02037AB8",
+    "lockFieldControls": "0x03000F9C",
+    "sprites": "0x0202063C",
+    "mapHeader": "0x02036DFC",
+    "backupMapLayout": "0x03004F90",
+    "tasks": "0x03004FE0",
+    "inHelpSystem": "0x0203F177",
+    "questLogState": "0x0203ADFA",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      192,
+      24
+     ],
+     "offsetData": 2,
+     "offsetBase": 0
+    },
+    "rom": {
+     "BPRD:0": {
+      "overworldCb2": "0x080565D4",
+      "graphicsInfo": "0x0839FC74",
+      "spritePalettes": "0x083A501C",
+      "mapNamePopupTask": "0x080982C4"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      7
+     ],
+     [
+      "bike",
+      1,
+      8
+     ],
+     [
+      "surf",
+      2,
+      9
+     ],
+     [
+      "fieldmove",
+      3,
+      10
+     ],
+     [
+      "fish",
+      4,
+      11
+     ],
+     [
+      "vsseeker",
+      5,
+      12
+     ]
+    ],
+    "source": "The English game's RAM table with IWRAM from gMain on 0xB0 lower (gMain, gSaveBlock1Ptr, gFieldCamera, VMap, gTasks; sLockFieldControls below gMain and all EWRAM – gObjectEvents, gPlayerAvatar, gPaletteFade, gSprites, gMapHeader, sInHelpSystem, gQuestLogState – unchanged), as the tracker tables say (see the entry's evidence). Derived per symbol by matching the English ROM's literal-pool loads in the German ROM (22–910 load sites each, no conflicting votes) and checked in the running German game, Nov 2026: SaveBlock1 pos = the player object's coords −7, the camera offset mid-step, CB2_Overworld on the overworld, sLockFieldControls with the START menu, the palette fade at a door, Task_MapNamePopup on entering Route 1, VMap = layout size +15/+14, the player's sprite at OAM 112/56, the L help. ROM addresses per language and revision (keyed by game code): CB2_Overworld and Task_MapNamePopup have the English bytes; graphicsInfo is also what findGraphicsTable finds. French, Italian and Spanish share the RAM (untested here); their ROM addresses are learned (overworld callback) and searched (sprite tables), no map-name popup cut-out."
    }
   },
   {
@@ -939,7 +1851,80 @@
     "partyCountAddr": "pokeleafgreen.sym:158",
     "partyAddr": "pokeleafgreen.sym:161"
    },
-   "verified": "pret symbols branch .sym"
+   "verified": "pret symbols branch .sym",
+   "world": {
+    "family": "frlg",
+    "objectEvents": "0x02036E38",
+    "playerAvatar": "0x02037078",
+    "fieldCamera": "0x03005050",
+    "saveBlock1Ptr": "0x03005008",
+    "main": "0x030030F0",
+    "paletteFade": "0x02037AB8",
+    "lockFieldControls": "0x03000F9C",
+    "sprites": "0x0202063C",
+    "mapHeader": "0x02036DFC",
+    "backupMapLayout": "0x03005040",
+    "tasks": "0x03005090",
+    "inHelpSystem": "0x0203F177",
+    "questLogState": "0x0203ADFA",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      192,
+      24
+     ],
+     "offsetData": 2,
+     "offsetBase": 0
+    },
+    "rom": {
+     "0": {
+      "overworldCb2": "0x080565B4",
+      "graphicsInfo": "0x0839FD90",
+      "spritePalettes": "0x083A5138",
+      "mapNamePopupTask": "0x08098180"
+     },
+     "1": {
+      "overworldCb2": "0x080565C8",
+      "graphicsInfo": "0x0839FE00",
+      "spritePalettes": "0x083A51A8",
+      "mapNamePopupTask": "0x08098194"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      7
+     ],
+     [
+      "bike",
+      1,
+      8
+     ],
+     [
+      "surf",
+      2,
+      9
+     ],
+     [
+      "fieldmove",
+      3,
+      10
+     ],
+     [
+      "fish",
+      4,
+      11
+     ],
+     [
+      "vsseeker",
+      5,
+      12
+     ]
+    ],
+    "source": "pret symbols branch: gObjectEvents, gPlayerAvatar, gFieldCamera, gSaveBlock1Ptr, gMain, gPaletteFade, sLockFieldControls, gSprites, gMapHeader, VMap, gTasks, sInHelpSystem, gQuestLogState (RAM); CB2_Overworld, gObjectEventGraphicsInfoPointers, sObjectEventSpritePalettes, Task_MapNamePopup (ROM, per revision: pokeleafgreen.sym, pokeleafgreen_rev1.sym). Structs: include/global.fieldmap.h (ObjectEvent 0x24, PlayerAvatar, ObjectEventGraphicsInfo), src/field_camera.c (CameraObject x/y = sub-tile offset), include/palette.h (PaletteFadeControl), src/field_player_avatar.c sPlayerAvatarGfxIds (avatars: kind, male gfx id, female gfx id); src/map_name_popup.c (the popup window and its slide offset in task data[2])"
+   }
   },
   {
    "id": "leafgreen_eu",
@@ -1006,6 +1991,73 @@
     "sb1": "0x03004F58",
     "sb2": "0x03004F5C",
     "source": "pokebot-gen3 pokeleafgreen.yml gSaveBlock1Ptr/gSaveBlock2Ptr D/F/I/S; Ironmon-Tracker Feuerrote.json gSaveBlock1ptr/gSaveBlock2ptr"
+   },
+   "world": {
+    "family": "frlg",
+    "objectEvents": "0x02036E38",
+    "playerAvatar": "0x02037078",
+    "fieldCamera": "0x03004FA0",
+    "saveBlock1Ptr": "0x03004F58",
+    "main": "0x03003040",
+    "paletteFade": "0x02037AB8",
+    "lockFieldControls": "0x03000F9C",
+    "sprites": "0x0202063C",
+    "mapHeader": "0x02036DFC",
+    "backupMapLayout": "0x03004F90",
+    "tasks": "0x03004FE0",
+    "inHelpSystem": "0x0203F177",
+    "questLogState": "0x0203ADFA",
+    "mapNamePopup": {
+     "rect": [
+      0,
+      0,
+      192,
+      24
+     ],
+     "offsetData": 2,
+     "offsetBase": 0
+    },
+    "rom": {
+     "BPGD:0": {
+      "overworldCb2": "0x080565D4",
+      "graphicsInfo": "0x0839FC54",
+      "spritePalettes": "0x083A4FFC",
+      "mapNamePopupTask": "0x08098298"
+     }
+    },
+    "avatars": [
+     [
+      "walk",
+      0,
+      7
+     ],
+     [
+      "bike",
+      1,
+      8
+     ],
+     [
+      "surf",
+      2,
+      9
+     ],
+     [
+      "fieldmove",
+      3,
+      10
+     ],
+     [
+      "fish",
+      4,
+      11
+     ],
+     [
+      "vsseeker",
+      5,
+      12
+     ]
+    ],
+    "source": "The English game's RAM table with IWRAM from gMain on 0xB0 lower (gMain, gSaveBlock1Ptr, gFieldCamera, VMap, gTasks; sLockFieldControls below gMain and all EWRAM – gObjectEvents, gPlayerAvatar, gPaletteFade, gSprites, gMapHeader, sInHelpSystem, gQuestLogState – unchanged), as the tracker tables say (see the entry's evidence). Derived per symbol by matching the English ROM's literal-pool loads in the German ROM (22–910 load sites each, no conflicting votes) and checked in the running German game, Nov 2026: SaveBlock1 pos = the player object's coords −7, the camera offset mid-step, CB2_Overworld on the overworld, sLockFieldControls with the START menu, the palette fade at a door, Task_MapNamePopup on entering Route 1, VMap = layout size +15/+14, the player's sprite at OAM 112/56, the L help. ROM addresses per language and revision (keyed by game code): CB2_Overworld and Task_MapNamePopup have the English bytes; graphicsInfo is also what findGraphicsTable finds. French, Italian and Spanish share the RAM (untested here); their ROM addresses are learned (overworld callback) and searched (sprite tables), no map-name popup cut-out."
    }
   },
   {
@@ -1090,6 +2142,45 @@
     "battlers": "0 player, 1 opponent, 2 player's second, 3 opponent's second (double battles)",
     "source": "battleActive − 0x68 (BattleMon.species); layout pokeheartgold include/battle/battle.h BattleMon",
     "verified": "live in DeSmuME, HeartGold US and Definitive HeartGold (IPKE), 2026-10-21: zeroed at battle start, filled when the mons are out, kept after the battle"
+   },
+   "world": {
+    "family": "hgss",
+    "fieldSystem": "0x021D4158",
+    "g3dGlb": "0x021DA49C",
+    "system": "0x021D110C",
+    "off": {
+     "task": "0x10",
+     "location": "0x20",
+     "mapMatrix": "0x30",
+     "playerAvatar": "0x40",
+     "runningFieldMap": "0x6C",
+     "followMon": "0xE4"
+    },
+    "avatar": {
+     "state": "0x18",
+     "gender": "0x1C",
+     "mapObject": "0x30"
+    },
+    "billboardFoot": 5,
+    "billboardDepth": 17,
+    "mmodel": "a/0/8/1",
+    "sprites": {
+     "walk": [
+      "hero",
+      "heroine"
+     ],
+     "bike": [
+      "cyclehero",
+      "cycleheroine"
+     ],
+     "surf": [
+      "swimhero",
+      "swimheroine"
+     ]
+    },
+    "followers": "overworld",
+    "icons": "a/0/2/0",
+    "source": "pret/pokeheartgold xmap branch heartgoldus.xMAP / soulsilverus.xMAP (the same addresses): sFieldSysPtr 021D4158 (src/field_system.c), NNS_G3dGlb 021DA49C, gSystem 021D110C; layouts from include/field_system.h, include/player_avatar.h, include/map_object.h. Checked in the running HeartGold US (19 Nov 2026): global coordinates outdoors (New Bark Town), the matrices against the picture. Followers: the game's own overworld Pokémon ('tsure_poke' in a/0/8/1) by sModelIndexLUT, found in ARM9 by its shape."
    }
   },
   {
@@ -1174,6 +2265,45 @@
     "battlers": "0 player, 1 opponent, 2 player's second, 3 opponent's second (double battles)",
     "source": "battleActive − 0x68 (BattleMon.species); layout pokeheartgold include/battle/battle.h BattleMon",
     "verified": "live in DeSmuME, HeartGold US and Definitive HeartGold (IPKE), 2026-10-21: zeroed at battle start, filled when the mons are out, kept after the battle"
+   },
+   "world": {
+    "family": "hgss",
+    "fieldSystem": "0x021D4158",
+    "g3dGlb": "0x021DA49C",
+    "system": "0x021D110C",
+    "off": {
+     "task": "0x10",
+     "location": "0x20",
+     "mapMatrix": "0x30",
+     "playerAvatar": "0x40",
+     "runningFieldMap": "0x6C",
+     "followMon": "0xE4"
+    },
+    "avatar": {
+     "state": "0x18",
+     "gender": "0x1C",
+     "mapObject": "0x30"
+    },
+    "billboardFoot": 5,
+    "billboardDepth": 17,
+    "mmodel": "a/0/8/1",
+    "sprites": {
+     "walk": [
+      "hero",
+      "heroine"
+     ],
+     "bike": [
+      "cyclehero",
+      "cycleheroine"
+     ],
+     "surf": [
+      "swimhero",
+      "swimheroine"
+     ]
+    },
+    "followers": "overworld",
+    "icons": "a/0/2/0",
+    "source": "pret/pokeheartgold xmap branch heartgoldus.xMAP / soulsilverus.xMAP (the same addresses): sFieldSysPtr 021D4158 (src/field_system.c), NNS_G3dGlb 021DA49C, gSystem 021D110C; layouts from include/field_system.h, include/player_avatar.h, include/map_object.h. Checked in the running HeartGold US (19 Nov 2026): global coordinates outdoors (New Bark Town), the matrices against the picture. Followers: the game's own overworld Pokémon ('tsure_poke' in a/0/8/1) by sModelIndexLUT, found in ARM9 by its shape."
    }
   },
   {
@@ -1248,6 +2378,44 @@
     "generalOffsetFromSaveBase": "0x14",
     "trainerOffset": "0x68",
     "source": "save general block in RAM (saveBase+0x14 as for the boxes); PKHeX SAV4Pt Trainer1 0x68: TID +0x10, SID +0x12, badges +0x1A (bit per badge)"
+   },
+   "world": {
+    "family": "dppt",
+    "fieldSystem": "0x021C07DC",
+    "g3dGlb": "0x021C5A8C",
+    "system": "0x021BF67C",
+    "off": {
+     "task": "0x10",
+     "location": "0x1C",
+     "mapMatrix": "0x2C",
+     "playerAvatar": "0x3C",
+     "runningFieldMap": "0x68"
+    },
+    "avatar": {
+     "state": "0x1C",
+     "gender": "0x20",
+     "mapObject": "0x30"
+    },
+    "billboardFoot": 4,
+    "billboardDepth": 8,
+    "mmodel": "data/mmodel/mmodel.narc",
+    "sprites": {
+     "walk": [
+      "pl_boy01c",
+      "pl_girl01c"
+     ],
+     "bike": [
+      "pl_cyclehero",
+      "pl_cycheroine"
+     ],
+     "surf": [
+      "pl_swimhiro",
+      "pl_swimhiroine"
+     ]
+    },
+    "followers": "icons",
+    "icons": "poketool/icongra/pl_poke_icon.narc",
+    "source": "pret/pokeplatinum xmap branch platinumus.xMAP: sFieldSystem 021C07DC (src/field_system.c), NNS_G3dGlb 021C5A8C (libnnsg3d, size 0x264 – projMtx at +8, cameraMtx at +0x4C, nnsys/g3d/glbstate.h), gSystem 021BF67C (vblankCounter +0x2C, frameCounter +0x30, heldKeysRaw +0x38); FieldSystem/PlayerAvatar/MapObject/Location/MapMatrix layouts from include/field/field_system.h, include/player_avatar.h, src/map_object.c. Every address and offset checked in the running game (US, 19 Nov 2026): the player's MapObject grid/pos while walking, the matrices against the picture (block matching, 0.15 px mean), the map header and matrix in the Sandgem Pokémon Center 2F. Sprites by texture name in data/mmodel/mmodel.narc (any language, randomized or not)."
    }
   },
   {
@@ -1807,7 +2975,7 @@
    },
    "zoneAddr": "0x33F6D74A",
    "zoneSource": "Found by souldew in Ultra Sun 1.0 (US cartridge) with a heap scan across house → outside → house → outside: the player's position { u16 4, u16 zone, float x, y, z }, a copy of the previous one 0x48 after it; the house 36, outside 1 (both Route 1 in the ROM's zone table); the same address after a fresh start",
-   "bagSource": "Multi-PokemonFramework (semaj14, GPL-3) Trainer.cpp Pouch::Items / Medicines (USUM 1.2: 0x33011934, Medicine 0x330124A8 = +0xB74 as in PKHeX PlayerBag7USUM); PokeReader's USUM shiny-charm bag base 0x33011930 agrees (4 bytes before, as in Sun); the party address is the same in 1.0 and 1.2 – not checked in a game"
+   "bagSource": "Multi-PokemonFramework (semaj14, GPL-3) Trainer.cpp Pouch::Items / Medicines (USUM 1.2: 0x33011934, Medicine 0x330124A8 = +0xB74 as in PKHeX PlayerBag7USUM); PokeReader's USUM shiny-charm bag base 0x33011930 agrees (4 bytes before, as in Sun); checked live in Ultra Moon 1.0 (US cartridge): the same address as 1.2 – empty in a new game, the game's pointers to its pockets right behind the block (0x3301275C, from the intro on), a Poké Ball written to Items slot 0 shown in the bag, Rare Candies and Max Repels added and shown"
   }
  ]
 }

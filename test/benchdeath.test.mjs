@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
-import { findEntry, readLiveParty, readLiveBattle, playerBattle, withBattleHp, confirmFaints, LiveTables } from '../shared/live/parse.mjs';
+import { findEntry, readLiveParty, readLiveBattle, playerBattle, withBattleHp, confirmFaints, battleTwins, LiveTables } from '../shared/live/parse.mjs';
 import { encryptPK4 } from '../shared/gen4save.mjs';
 
 const ROOT = new URL('../', import.meta.url).href;
@@ -283,4 +283,107 @@ test('withBattleHp: a 0 HP of the battle\'s copy counts only for a Pokémon that
   assert.deepEqual(withBattleHp(party, fight(0, [20, 0]), st).map((m) => m.hp), [20, 30], 'the next battle starts afresh');
   // without the reader state (tests, tools): as before
   assert.deepEqual(withBattleHp(party, fight(0, [12, 0])).map((m) => m.hp), [12, 0]);
+});
+
+// ---- clones -------------------------------------------------------------------------------------------------------
+// A cloning glitch leaves the same Pokémon twice in the team (the Platinum link recordings' saves hold such clones).
+// The party reader took that for a misread and showed no team at all. Now they are two Pokémon – and none of the #79
+// guards above gives way: a wild Pokémon sharing a PID still never passes for one of the team.
+const BUIZEL2 = { ...BUIZEL }; // the clone: every byte alike
+
+function withClone() {
+  const s = onRoute32();
+  s.w(CORE, core([...TEAM, BUIZEL2]));
+  s.poll(ROUTE_32, 3);
+  const live = s.d.get('live:p1').party;
+  assert.equal(live.length, 5, 'the team is read again – the clone counted');
+  const [k1, k2] = live.filter((m) => m.species === BUIZEL.species).map((m) => m.key);
+  assert.equal(k2, `${k1}~2`);
+  assert.equal(s.d.get('enc:route-32:p1').key, k1, 'the Route 32 encounter stays the Buizel it was');
+  return { ...s, k1, k2 };
+}
+
+test('clones (DS): the same Pokémon twice is read as two – the encounter stays, the clone is no catch of anyone\'s', () => {
+  const { d } = withClone();
+  // the clone isn't filed anywhere: its route is taken by the original (the inbox asks what it is)
+  const filed = Object.keys(d.scan('enc:')).filter((k) => d.get(k)?.key?.endsWith('~2'));
+  assert.deepEqual(filed, []);
+});
+
+test('clones (DS): the clone faints – the original lives on, also when the team is reordered afterwards', () => {
+  const { w, d, poll, deaths, k2 } = withClone();
+  w(CORE, core([...TEAM, { ...BUIZEL2, hp: 0 }]));
+  poll(ROUTE_32, 3);
+  assert.deepEqual(deaths, []);
+  assert.notEqual(d.get('pair:route-32', null)?.state, 'dead');
+  // the fainted clone moved in front of the original
+  w(CORE, core([CHINCHOU, TAILLOW, { ...BUIZEL2, hp: 0 }, HOUNDOUR, BUIZEL]));
+  poll(ROUTE_32, 4);
+  assert.deepEqual(deaths, []);
+  assert.notEqual(d.get('pair:route-32', null)?.state, 'dead', 'the 0 HP stays with the clone');
+  const live = d.get('live:p1').party;
+  assert.deepEqual(live.filter((m) => m.species === BUIZEL.species).map((m) => [m.key === k2, m.hp]), [[true, 0], [false, BUIZEL.hp]]);
+});
+
+test('clones (DS): in a battle the original goes down – its own death only; the clone that was never out keeps its HP', () => {
+  const { w, flag, d, poll, deaths, k2 } = withClone();
+  const foe = { pid: 0x7a110005, species: 276, level: 9, hp: 28, maxHp: 28 };
+  flag(0x2100);
+  battlers(w, [BUIZEL, foe]);
+  w(PLAYER_COPY, core([...TEAM, BUIZEL2]));
+  w(WILD_COPY, core([foe]));
+  poll(ROUTE_32, 6);
+  battlers(w, [{ ...BUIZEL, hp: 0 }, foe]);
+  w(PLAYER_COPY, core([CHINCHOU, TAILLOW, { ...BUIZEL, hp: 0 }, HOUNDOUR, BUIZEL2]));
+  poll(ROUTE_32, 2);
+  assert.deepEqual(deaths, ['route-32']);
+  const live = d.get('live:p1').party;
+  assert.equal(live.find((m) => m.key === k2).hp, BUIZEL.hp, 'the clone isn\'t hit');
+  flag(0x2800);
+  w(CORE, core([CHINCHOU, TAILLOW, { ...BUIZEL, hp: 0 }, HOUNDOUR, BUIZEL2]));
+  poll(ROUTE_32, 3);
+  assert.deepEqual(deaths, ['route-32']);
+});
+
+test('clones (DS): a wild Pokémon with the clones\' PID is knocked out – neither of them dies (#79 holds)', () => {
+  const { w, flag, d, poll, deaths, k1, k2 } = withClone();
+  const foe = { pid: BUIZEL.pid, species: 276, level: 9, hp: 28, maxHp: 28 };
+  flag(0x2100);
+  battlers(w, [CHINCHOU, foe]);
+  w(PLAYER_COPY, core([...TEAM, BUIZEL2]));
+  w(WILD_COPY, core([foe]));
+  poll(ROUTE_32, 6);
+  battlers(w, [CHINCHOU, { ...foe, hp: 0 }]);
+  w(WILD_COPY, core([{ ...foe, hp: 0 }]));
+  const r = poll(ROUTE_32, 6);
+  assert.equal(r.fight.enemy.hp, 0);
+  assert.deepEqual([k1, k2].map((k) => r.party.find((m) => m.key === k).hp), [BUIZEL.hp, BUIZEL.hp]);
+  flag(0x2800);
+  poll(ROUTE_32, 4);
+  assert.deepEqual(deaths, []);
+  assert.notEqual(d.get('pair:route-32', null)?.state, 'dead');
+});
+
+test('clones: the battle\'s copy goes to the team by PID, the n-th clone with the n-th – a faint lands on the one it hit', () => {
+  const party = [{ key: 'a', pid: 1, hp: 30, maxHp: 30 }, { key: 'b', pid: 2, hp: 20, maxHp: 20 }, { key: 'a~2', pid: 1, hp: 30, maxHp: 30 }];
+  const battle = { active: { index: 2, hp: 0, maxHp: 30 }, party: [{ pid: 1, hp: 30, maxHp: 30 }, { pid: 2, hp: 20, maxHp: 20 }, { pid: 1, hp: 0, maxHp: 30 }] };
+  assert.deepEqual(battleTwins(party, battle.party).map((b) => b.hp), [30, 20, 0]);
+  assert.deepEqual(withBattleHp(party, battle, {}).map((m) => [m.key, m.hp]), [['a', 30], ['b', 20], ['a~2', 0]]);
+  // (a bench clone at 0 HP in the copy, the other one out: kept – #79)
+  const bench = { active: { index: 0, hp: 30, maxHp: 30 }, party: battle.party };
+  assert.deepEqual(withBattleHp(party, bench, {}).map((m) => m.hp), [30, 20, 30]);
+});
+
+test('clones: a trade of one moves one – the log names it, the other stays', () => {
+  const d = mkDoc();
+  const pair = { ...RUN, id: 'tr1', mode: 'soullink', players: { p1: { name: 'Ash' }, p2: { name: 'Tim' } } };
+  const before = [{ key: 'k', species: 418 }, { key: 'k~2', species: 418 }, { key: 'c', species: 170 }];
+  const after = [{ key: 'k', species: 418 }, { key: 'c', species: 170 }, { key: 'x', species: 25 }];
+  assert.equal(R.logLinkTrade(d, pair, 'p1', 'p2', before, after), true);
+  const f = R.feedList(d).find((x) => x.type === 'trade');
+  assert.deepEqual([f.gave, f.got], [[418], [25]]);
+  // after a reload the remaining one may be read under the plain key: still one gone, not two
+  const d2 = mkDoc();
+  R.logLinkTrade(d2, pair, 'p1', 'p2', before, [{ key: 'k', species: 418 }, { key: 'c', species: 170 }, { key: 'x', species: 25 }]);
+  assert.deepEqual(R.feedList(d2).find((x) => x.type === 'trade').gave, [418]);
 });

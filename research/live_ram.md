@@ -426,10 +426,22 @@ bit 30. 999 per slot, Rare Candy (50) in Medicine.
 | ORAS 1.4 | `0x08C6EC70` | `+0x970` (64) | Multi-PokemonFramework (money `0x08C71DC0` right before the badges `0x08C71DC4`) |
 | ORAS 1.0 | `0x08C6AC80` | same | [derived] 1.4 − `0x3FF0` like the party and badges – **not checked in a game** |
 | Sun/Moon | `0x330D5934` | `+0xB48` (64) | Multi-PokemonFramework (1.2); **checked live in Sun 1.0**: the object's vtable at `0x330D5930` (PokeReader's bag base), the pockets, then the game's own pointers to its six pockets right behind the block (`0x330D6714`: Medicine, Items, TMs, Berries, Key Items, Z-Crystals); Hala's Sparkling Stone = `0x4000074D` (NEW, Free Space 0) |
-| Ultra Sun/Ultra Moon | `0x33011934` | `+0xB74` (60) | Multi-PokemonFramework (1.2: Medicine `0x330124A8`), PokeReader's bag base `0x33011930` (4 before, as in Sun); 1.0 = 1.2 like the party address – **not checked in a game** |
+| Ultra Sun/Ultra Moon | `0x33011934` | `+0xB74` (60) | Multi-PokemonFramework (1.2: Medicine `0x330124A8`), PokeReader's bag base `0x33011930` (4 before, as in Sun); **checked live in Ultra Moon 1.0** (2026-11-18, US cartridge): the same address as 1.2, the game's pointers to its seven pockets right behind the block (`0x3301275C`: Medicine, Items, TMs, Berries, Key Items, Z-Crystals, Rotom Powers – there from Kukui's intro on, the bag itself all zeros until the game puts a first item in) |
 
 Every slot of every pocket has to look like an item (id ≤ the game's last, count 1–999, Medicine and TM ids from
-PKHeX's lists), the bag can't be empty, and when the pointer table is there it must point at exactly these pockets.
+PKHeX's lists), and when the pointer table is there it must point at exactly these pockets. An empty bag is only
+taken where that table vouches for it (2.8.4 – 2.8.3 refused every empty bag, and the Sun/Moon/USUM bag stays empty for
+a while after the starter: the cheats said "not found" there).
+
+**When the bag isn't at a known address (2.8.4, `locateCtrBag`).** The 3DS player reads up to six windows of 64 KB
+at a time next to the game's own regions (`__emu.watch`), ±`0x50000` around each known address, overlapping by more
+than a bag. Sun/Moon/USUM are found by the pocket table alone (the words at T that point at exactly T − size + each
+pocket's offset, every slot of that block an item of its pocket): over the whole heap `0x30000000–0x34800000` of Sun
+1.0 and Ultra Moon 1.0 exactly one place passes – the bag. X/Y and ORAS (no table seen there) by their slots: every
+pocket packed from the front, items in at least two pockets, no item twice, and only one such place in the range. (The
+slots alone, with items in one pocket allowed, pass at a few hundred places in those Gen 7 heaps; with two pockets
+required, none.) The place found is kept for the session; the diagnostics log every address tried and why it wasn't the
+bag (`unread`, `empty`, `pointers`, `slot <pocket>#<n> <value>`) and how the search went.
 The 3DS host writes through the core's FCRAM block (the stack page in the libretro memory map points into it; the page
 is found by content and only kept where the change shows at the game's address – `native/ctr-host/ctrhost.c`
 `mem_write`), only inside the heaps and only while the bytes are still what souldew read.

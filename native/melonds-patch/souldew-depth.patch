@@ -1,0 +1,76 @@
+diff --git a/src/GPU.h b/src/GPU.h
+index b0e1faf..465e089 100644
+--- a/src/GPU.h
++++ b/src/GPU.h
+@@ -847,6 +847,9 @@ public:
+     virtual void DrawScanline(u32 line) = 0;
+     virtual void DrawSprites(u32 line) = 0;
+ 
++    // souldew: the 3D renderer (Shared World reads the depth of the frame on screen from the software one)
++    Renderer3D* Souldew3D() noexcept { return Rend3D.get(); }
++
+     virtual void Start3DRendering() { Rend3D->RenderFrame(); }
+     virtual void Finish3DRendering() { Rend3D->FinishRendering(); }
+     virtual void Restart3DRendering() { Rend3D->RestartFrame(); }
+diff --git a/src/GPU3D_Soft.cpp b/src/GPU3D_Soft.cpp
+index e620270..9b1d560 100644
+--- a/src/GPU3D_Soft.cpp
++++ b/src/GPU3D_Soft.cpp
+@@ -1741,6 +1741,27 @@ void SoftRenderer3D::FinishRendering()
+ {
+     if (RenderThreadRunning.load(std::memory_order_relaxed) && !GPU3D.AbortFrame)
+         Platform::Semaphore_Wait(Sema_RenderDone);
++
++    // souldew: the frame on screen is rendered (line 192) – keep its depth before line 215 starts the next one
++    if (SouldewOn)
++    {
++        for (int y = 0; y < 192; y++)
++            memcpy(&SouldewBuf[y * 256], &DepthBuffer[FirstPixelOffset + y * ScanlineWidth], 256 * sizeof(u32));
++        SouldewWBuffer = GPU3D.RenderNumPolygons > 0 && GPU3D.RenderPolygonRAM[0] && GPU3D.RenderPolygonRAM[0]->WBuffer;
++        SouldewValid = true;
++    }
++}
++
++int SoftRenderer3D::SouldewDepth(int x, int y, int w, int h, u32* out) const noexcept
++{
++    if (!SouldewValid || w <= 0 || h <= 0) return 0;
++    for (int r = 0; r < h; r++)
++        for (int c = 0; c < w; c++)
++        {
++            const int sx = x + c, sy = y + r;
++            out[r * w + c] = (sx < 0 || sy < 0 || sx >= 256 || sy >= 192) ? 0xFFFFFFFF : (SouldewBuf[sy * 256 + sx] & 0xFFFFFF);
++        }
++    return SouldewWBuffer ? 3 : 1;
+ }
+ 
+ void SoftRenderer3D::RenderFrame()
+diff --git a/src/GPU3D_Soft.h b/src/GPU3D_Soft.h
+index f6034f2..e16ab18 100644
+--- a/src/GPU3D_Soft.h
++++ b/src/GPU3D_Soft.h
+@@ -48,6 +48,12 @@ public:
+     void EnableRenderThread();
+     void StopRenderThread();
+ 
++    // souldew (Shared World): the depth of the 3D frame on screen, kept while asked for – partners drawn over the
++    // picture hide where the map is nearer, as the game's own sprites do. SouldewDepth copies a rectangle of it, row by
++    // row (24-bit depth per pixel, Z or W as the frame used), and returns 1 | 2 when W-buffered (0: nothing kept yet).
++    void SouldewKeepDepth(bool on) noexcept { SouldewOn = on; if (!on) SouldewValid = false; }
++    int SouldewDepth(int x, int y, int w, int h, u32* out) const noexcept;
++
+ private:
+     SoftRenderer& Parent;
+ 
+@@ -510,5 +516,12 @@ private:
+     // Used to allow the main thread to read some scanlines
+     // before (the 3D portion of) the entire frame is rasterized.
+     Platform::Semaphore* Sema_ScanlineCount;
++
++    // souldew: the depth of the frame on screen, copied when its rendering is done (the next one starts at line 215,
++    // long before a frontend could read it)
++    bool SouldewOn = false;
++    bool SouldewValid = false;
++    bool SouldewWBuffer = false;
++    u32 SouldewBuf[256 * 192];
+ };
+ }

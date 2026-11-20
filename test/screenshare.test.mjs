@@ -68,7 +68,7 @@ function fakeTrystero() {
 }
 
 function fakeStream() {
-  const track = { kind: 'video', readyState: 'live', enabled: true, stop() { this.readyState = 'ended'; }, getSettings: () => ({ width: 768 }), addEventListener() {} };
+  const track = { kind: 'video', readyState: 'live', enabled: true, contentHint: '', stop() { this.readyState = 'ended'; }, getSettings: () => ({ width: 768 }), addEventListener() {} };
   return { id: 's1', track, getVideoTracks: () => [track], getAudioTracks: () => [], getTracks: () => [track], removeTrack() {}, addEventListener() {} };
 }
 const stubDoc = () => ({ onLocalChange: () => () => {}, entries: {}, merge: () => false });
@@ -165,7 +165,7 @@ test('nothing is sent to a partner that never asks (older app version)', async (
   }
 });
 
-test('paused game → no pictures, partner told it is inactive', async () => {
+test('no game running → no pictures, partner told it is inactive', async () => {
   const broker = fakeMqtt();
   const [a, b] = pair(broker);
   try {
@@ -180,6 +180,40 @@ test('paused game → no pictures, partner told it is inactive', async () => {
     const last = await until(() => views.at(-1).known && !views.at(-1).active && views.at(-1));
     assert.equal(last.url, null);
     assert.equal(last.paused, false); // the game itself stopped – not just a hidden tab
+  } finally {
+    a.stop();
+    b.stop();
+  }
+});
+
+// Trailer take "approach": Lena opened Shared World's A menu (it pauses her game) and Tim's tile went black with
+// "Lena isn't playing right now" for ~1.6 s, then came back blurry. A paused game keeps its picture – marked held.
+test('paused game (A menu, pause button) → the picture stays, marked held, unchanged pictures not resent', async () => {
+  const broker = fakeMqtt();
+  const [a, b] = pair(broker);
+  try {
+    await Promise.all([a.start(), b.start()]);
+    await until(() => a.status.relay === 'connected' && b.status.relay === 'connected');
+    let paused = false;
+    let shots = 0;
+    const bytes = jpeg(800);
+    a.startScreenShare({ isActive: () => true, isPaused: () => paused, getSnapshot: async () => (shots++, new Blob([bytes], { type: 'image/jpeg' })) });
+    const views = [];
+    b.watchPartnerScreen((v) => views.push(v));
+    await until(() => views.some((v) => v.mode === 'image' && v.blob));
+    paused = true;
+    const held = await until(() => views.at(-1).held && views.at(-1));
+    assert.equal(held.active, true);
+    assert.equal(held.mode, 'image');
+    assert.ok(held.url || held.blob, 'the last picture is still there');
+    assert.ok(views.every((v) => !v.known || v.active), 'never told the game stopped');
+    const frames = () => broker.log.filter((m) => m.topic.endsWith('/screen/p1') && m.size > 1000).length;
+    const before = frames();
+    await new Promise((r) => setTimeout(r, 3300)); // two more steps: the same picture isn't sent again (resendSame)
+    assert.equal(frames(), before);
+    assert.ok(shots > 0);
+    paused = false;
+    await until(() => views.at(-1).active && !views.at(-1).held);
   } finally {
     a.stop();
     b.stop();
@@ -230,7 +264,7 @@ test('stop() during start() and after sharing leaves no timers behind', async ()
   b.stop();
 });
 
-test('direct link: the game goes out as a video stream, paused → track disabled', async () => {
+test('direct link: the game goes out as a video stream; paused → track kept on (held), no game → track disabled', async () => {
   const broker = fakeMqtt();
   const trystero = fakeTrystero();
   const [a, b] = ['p1', 'p2'].map((slot) => new SyncLink({
@@ -241,16 +275,29 @@ test('direct link: the game goes out as a video stream, paused → track disable
     await until(() => a.status.p2p === 'connected' && b.status.p2p === 'connected');
     const stream = fakeStream();
     let playing = true;
+    let paused = false;
     let shots = 0;
-    a.startScreenShare({ system: 'nds', isActive: () => playing, getStream: () => stream, getSnapshot: async () => (shots++, null) });
+    a.startScreenShare({ system: 'nds', isActive: () => playing, isPaused: () => paused, getStream: () => stream, getSnapshot: async () => (shots++, null) });
     const views = [];
     b.watchPartnerScreen((v) => views.push(v));
     const got = await until(() => views.find((v) => v.mode === 'stream' && v.stream));
     assert.equal(got.stream, stream);
     assert.equal(got.system, 'nds');
     assert.equal(stream.track.enabled, true);
+    assert.equal(stream.track.contentHint, 'detail', 'pixel art: sharp, frames given up under load rather than resolution');
     assert.equal(shots, 0, 'no stills while the video runs');
     assert.equal(broker.log.filter((m) => m.topic.endsWith('/screen/p1') && m.size > 2000).length, 0);
+    // paused: a disabled track would send black frames and restart the encoder blurry when turned on again
+    paused = true;
+    const held = await until(() => views.at(-1).held && views.at(-1));
+    assert.equal(held.active, true);
+    assert.equal(held.stream, stream, 'the same stream – nothing renegotiated');
+    assert.equal(stream.track.enabled, true);
+    assert.equal(stream.track.readyState, 'live');
+    assert.equal(shots, 0, 'no switch to stills');
+    paused = false;
+    await until(() => views.at(-1).active && !views.at(-1).held);
+    assert.equal(views.at(-1).stream, stream);
     playing = false;
     await until(() => views.at(-1).known && !views.at(-1).active);
     assert.equal(stream.track.enabled, false);

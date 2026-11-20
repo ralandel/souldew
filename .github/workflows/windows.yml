@@ -85,6 +85,7 @@ jobs:
           if (-not (Test-Path dist/win-unpacked/resources/tools/jre/win32-x64/bin/java.exe)) { throw 'JRE not bundled' }
           if (-not (Test-Path dist/win-unpacked/resources/tools/ctr/win32-x64/azahar_libretro.dll)) { throw '3DS part not bundled' }
           if (-not (Test-Path dist/win-unpacked/resources/tools/native/win32-x64/melondsds_libretro.dll)) { throw 'fast player part not bundled' }
+          if (-not (Test-Path dist/win-unpacked/resources/tools/native/win32-x64/linkhost.exe)) { throw 'link host not bundled (trades and battles)' }
 
       - name: Smoke test – unpacked app (incl. one-click melonDS zip + mGBA 7z install through the app)
         run: node scripts/smoke-app.mjs "dist/win-unpacked/souldew Renaissance.exe" --screenshot smoke-unpacked.png --emulators

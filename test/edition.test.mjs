@@ -45,3 +45,34 @@ test('the official online services stay off unless the edition names them', () =
   for (const [k, u] of Object.entries(LINKS)) if (k !== 'coffee') assert.ok(!/souldewapp|souldew\.app/.test(u), `${k}: ${u}`);
   assert.equal(pkg.updates.repo, 'ralandel/souldew');
 });
+
+test('no souldew account (3.0): the server says so, every other account route is refused, nothing goes out', async () => {
+  assert.equal(EDITION.accounts, false);
+  const { createAccounts } = await import('../server/lib/accounts/index.mjs');
+  const calls = [];
+  const a = createAccounts({ port: () => 1, env: {}, fetchImpl: async (u) => { calls.push(u); throw new Error('no network'); } });
+  assert.equal(a.off, true);
+  const find = (method, path) => a.routes.find((r) => r.method === method && r.pattern.test(path));
+  const status = await find('GET', '/api/account').handler();
+  assert.equal(status.session.signedIn, false);
+  assert.equal(status.session.off, true);
+  assert.equal(status.session.loaded, true, 'final: the page never waits for a keychain');
+  assert.equal(status.service, '');
+  for (const [m, p] of [['POST', '/api/account/login'], ['GET', '/api/account/friends'], ['POST', '/api/account/presence']]) {
+    assert.throws(() => find(m, p).handler(), (e) => e.status === 404 && e.code === 'acctOff', `${m} ${p}`);
+  }
+  assert.equal(find('GET', '/api/account/diagnostics'), undefined, 'diagnostics stay with the server');
+  assert.deepEqual(a.diagnostics(), { signedIn: false, tier: null, off: true });
+  await a.loadSession();
+  assert.equal(await a.goOffline(), false);
+  assert.deepEqual(calls, []);
+});
+
+test('Play together and the 3.0 multiplayer modules take every slot of 8', async () => {
+  const { MODES } = await import('../shared/slots.mjs');
+  assert.ok(MODES.includes('together'));
+  const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+  assert.match(read('web/lib/linksession.mjs'), /const SLOT_RE = \/\^p\[1-8\]\$\/;/);
+  assert.match(read('shared/raid.mjs'), /const SLOTS = ALL_SLOTS;/);
+  assert.match(read('web/views/playtogether.mjs'), /length: MAX_PLAYERS - 1/);
+});

@@ -297,6 +297,22 @@ export function gen3Names(rom, charset, code = String.fromCharCode(...rom.subarr
     for (let i = 0; i < struct.len; i++) names.push(prettyName(str(u32(rom, struct.start + i * 8 + 4))));
     return { names, base: 0, layout: 'regionMapLocations', offset: struct.start };
   }
+  // Pokémon Quetzal names each section in several languages: { const u8 *const *names; u8 x, y, width, height } – a
+  // pointer to the section's names first (English, then Spanish ones and a short one: "LITTLEROOT TOWN", "VILLA RAÍZ",
+  // …), the position after it. The English name is the game's. (Its last section, Trainer Hill, has no position that
+  // reads as one – the run goes on while names follow.)
+  const grouped = (o) => {
+    const g = u32(rom, o);
+    return g >= 0x08000000 && g + 4 <= 0x08000000 + rom.length && (g & 3) === 0 ? str(u32(rom, g - 0x08000000)) : null;
+  };
+  const groups = longestRun(rom, 8, (o) => rom[o + 4] < 32 && rom[o + 5] < 32 && rom[o + 6] >= 1 && rom[o + 6] <= 16 && rom[o + 7] >= 1 && rom[o + 7] <= 16 && grouped(o) !== null);
+  if (groups.len >= 60) {
+    let n = groups.len;
+    while (n < 0xff && grouped(groups.start + n * 8)) n++;
+    const names = [];
+    for (let i = 0; i < n; i++) names.push(prettyName(grouped(groups.start + i * 8)));
+    return { names, base: 0, layout: 'regionMapNameGroups', offset: groups.start };
+  }
   // FireRed/LeafGreen: short one-line names in capitals (move descriptions & co. are pointer tables too, with longer
   // text) – a letter or two in lower case is allowed: the German games call Diglett's Cave "DIGDAs HÖHLE".
   const shortName = (p) => {

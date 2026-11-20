@@ -122,8 +122,11 @@ test('every build log line has a code with a text in the page', () => {
 
 test('every code in the page’s tables has a translation in every language', () => {
   const src = read('web/lib/errors.mjs');
-  const keys = [...src.matchAll(/\bt\('((?:err|buildLog)\.[A-Za-z]+)'/g)].map((m) => m[1]);
-  assert.ok(keys.length >= SERVER_CODES.errors.length + SERVER_CODES.log.length - 1, 'every table entry is a t() call');
+  // (the link session's codes share their texts with the play view's link bar: linkplay.*; the souldew account's have
+  // their own, acctErr.* – `acct` itself is the account service's code, worded by accountError(); archiveUnsupported
+  // shares the library's lib.skipArchive)
+  const keys = [...src.matchAll(/\bt\('((?:err|buildLog|linkplay|acctErr)\.[A-Za-z0-9]+)'/g)].map((m) => m[1]);
+  assert.ok(keys.length >= SERVER_CODES.errors.length + SERVER_CODES.log.length - 2, 'every table entry is a t() call');
   for (const lang of ['de', 'fr', 'es', 'it']) {
     const dict = JSON.parse(read(`web/i18n/${lang}.json`));
     const missing = keys.filter((k) => typeof dict[k] !== 'string' || !dict[k]);

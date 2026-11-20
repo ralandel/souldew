@@ -8,10 +8,13 @@ import { catalog, gameTitle, patchFits } from '../lib/data.mjs';
 import { romFeatures, FEATURES } from '/shared/live/features.mjs';
 import { gymCapsFamily } from '/shared/routes.mjs';
 import { FirstSteps } from './firststeps.mjs';
+import { HandheldTile } from './handheldtile.mjs';
 import { IS_MAC, IS_WIN, shortPath } from '../lib/platform.mjs';
 import { addedToLibrary, addedMessage, unpackToast } from '../lib/libadded.mjs';
 import { patchTitle } from '/shared/patchname.mjs';
 import { updateVersionLabel } from '../lib/ctrupdate.mjs';
+import { ImportSaveButton } from './saveimport.mjs';
+import { togetherRomBlock } from '/shared/playtogether.mjs';
 
 const SYS = { gb: 'GB', gbc: 'GBC', gba: 'GBA', nds: 'DS', '3ds': '3DS' };
 
@@ -440,7 +443,7 @@ function CoverActions({ coverId, own, offer }) {
 }
 
 /** "New SoulLink" and its solo sibling "New Nuzlocke" for a game or ROM hack. */
-function NewRunButtons({ gameId, hackId, patchId, romId, close }) {
+function NewRunButtons({ gameId, hackId, patchId, romId, close, togetherRom = null }) {
   const { navigate } = useApp();
   const go = (view) => {
     close?.();
@@ -451,6 +454,8 @@ function NewRunButtons({ gameId, hackId, patchId, romId, close }) {
   return html`<div class="row lib-new">
     <button class="btn go" onClick=${() => go('soullink')}><${Icon} name="link" size=${16} />${t('lib.newSoulLink', 'New SoulLink')}</button>
     <button class="btn nuz" onClick=${() => go('nuzlocke')}><${Icon} name="ball" size=${16} />${t('lib.newNuzlocke', 'New Nuzlocke')}</button>
+    ${togetherRom && !togetherRomBlock(togetherRom) && html`<button class="btn" title=${t('pt.libHint', 'This game, its save and your friends – trade, battle and see each other, no challenge rules')}
+      onClick=${() => { close?.(); navigate('soullink', { together: '', rom: togetherRom.id }); }}><${Icon} name="friends" size=${16} />${t('pt.start', 'Play together')}</button>`}
   </div>`;
 }
 
@@ -508,6 +513,7 @@ export function LibraryView() {
       <button class="btn go" onClick=${() => setDiscover(true)}><${Icon} name="search" size=${16} />${discoverLabel()}</button>
       <button class="btn" onClick=${() => addGamesFlow({ reloadLibrary, toast })}><${Icon} name="plus" size=${16} />${t('lib.addFiles', 'Add files')}</button>
       ${window.sls && html`<button class="btn ghost" onClick=${() => api.post('/api/library/reveal', {})}><${Icon} name="folder" size=${16} />${t('lib.reveal', 'Show folder')}</button>`}
+      <${HandheldTile} system=${featured?.system} />
     </div>
     ${discover && html`<${DiscoverModal} onClose=${() => setDiscover(false)} />`}
     <${FirstSteps} />
@@ -521,6 +527,8 @@ export function LibraryView() {
           <button class="btn primary big" onClick=${() => navigate('play', { rom: ownedBy.get(featured.id).id })}><${Icon} name="play" size=${16} />${t('lib.play', 'Play')}</button>
           <button class="btn big" onClick=${() => navigate('soullink', { new: featured.id })}><${Icon} name="link" size=${16} />${t('lib.newSoulLink', 'New SoulLink')}</button>
           <button class="btn big" onClick=${() => navigate('nuzlocke', { new: featured.id })}><${Icon} name="ball" size=${16} />${t('lib.newNuzlocke', 'New Nuzlocke')}</button>
+          ${!togetherRomBlock(ownedBy.get(featured.id)) && html`<button class="btn big" title=${t('pt.libHint', 'This game, its save and your friends – trade, battle and see each other, no challenge rules')}
+            onClick=${() => navigate('soullink', { together: '', rom: ownedBy.get(featured.id).id })}><${Icon} name="friends" size=${16} />${t('pt.start', 'Play together')}</button>`}
           <button class="btn ghost" onClick=${() => setOpen({ kind: 'game', id: featured.id })}>${t('lib.details', 'Details')}</button>
         </div>
       </div>
@@ -601,9 +609,10 @@ function PlayButtons({ romId, patchId, system, close }) {
 const libDownload = (params) => `/api/library/download?${new URLSearchParams(params)}`;
 const soloSaveUrl = (id) => `/api/saves/solo/download?id=${encodeURIComponent(id)}`;
 
-/** Does the integrated emulator have a save file for this solo game? Returns { modified } or null. */
+/** Does the integrated emulator have a save file for this solo game? Returns { modified, id, refresh } or null. */
 function useSoloSave(id) {
   const [info, setInfo] = useState(null);
+  const [ver, setVer] = useState(0); // (after a save was imported or the import undone)
   useEffect(() => {
     let alive = true;
     setInfo(null);
@@ -613,24 +622,31 @@ function useSoloSave(id) {
         .catch(() => {});
     }
     return () => { alive = false; };
-  }, [id]);
-  return info;
+  }, [id, ver]);
+  return { info, refresh: () => setVer((v) => v + 1) };
 }
 
-function ExportFiles({ links }) {
+/**
+ * "Save as file": copies of the player's own files – and, for a game with a save (`save`: useSoloSave of the game's
+ * library id, `system`, `label`), "Import a save file …" (web/views/saveimport.mjs) next to them.
+ */
+function ExportFiles({ links, save = null, saveId = null, system = null, label = '' }) {
   const shown = links.filter(Boolean);
-  if (!shown.length) return null;
+  const importTarget = saveId && system ? { id: saveId, system, label } : null;
+  if (!shown.length && !importTarget) return null;
   return html`<div class="export-box">
     <div class="export-head"><${Icon} name="download" size=${16} /><b>${t('lib.exportTitle', 'Save as file')}</b></div>
     <div class="row">
       ${shown.map((l) => html`<a class="btn small" href=${l.href} download="" title=${l.title || ''} onClick=${l.onClick}>
         <${Icon} name=${l.icon || 'download'} size=${16} />${l.label}</a>`)}
+      <${ImportSaveButton} target=${importTarget} onDone=${() => save?.refresh?.()} />
     </div>
     <p class="small faint">${t('lib.exportHint', 'Saves a copy of your own files – the originals stay in your library.')}</p>
   </div>`;
 }
 
-function saveLink(id, info) {
+function saveLink(id, save) {
+  const info = save?.info;
   if (!info) return null;
   const when = info.modified ? new Date(info.modified) : null;
   return {
@@ -676,8 +692,8 @@ function GameDetail({ id, onClose, openHack }) {
         </dl>
         ${rom
           ? html`<${PlayButtons} romId=${rom.id} system=${g.system} close=${onClose} />
-            <${NewRunButtons} gameId=${g.id} close=${onClose} />
-            <${ExportFiles} links=${[
+            <${NewRunButtons} gameId=${g.id} close=${onClose} togetherRom=${rom} />
+            <${ExportFiles} save=${save} saveId=${rom.id} system=${g.system} label=${gameTitle(g)} links=${[
               { href: libDownload({ id: rom.id }), label: t('lib.exportRom', 'Save ROM'), title: rom.name },
               saveLink(rom.id, save),
             ]} />`
@@ -783,6 +799,7 @@ const liveNote = (k) => ({
   cfru: t('lib.liveNote.cfru', 'Team, place, battles and catches are read live, held items by the names the game gives them, types and matchups from the ROM. No level cap is shown – the hack’s leaders can’t be told apart with confidence – and the cheats are off.'),
   rnb: t('lib.liveNote.rnb', 'Team, place, battles and catches are read live. The cheats are off and held items aren’t named – the hack numbers its items its own way.'),
   types: t('lib.liveNote.types', 'Team, place, battles and catches are read live, the hack’s own types and their matchups from the ROM. The cheats are off.'),
+  quetzal: t('lib.liveNote.quetzal', 'Team, place, battles and catches are read live, held items by the names the game gives them, its own Pokémon by their names from the ROM. The PC boxes aren’t read and no level cap is shown (the hack has its own). Off for this hack: the cheats, souldew’s randomizer (use the hack’s own), link trades and battles, Shared World and raids.'),
 }[k] || '');
 
 function HackDetail({ id, onClose, openGame }) {
@@ -839,7 +856,7 @@ function HackDetail({ id, onClose, openGame }) {
           <${PlayButtons} romId=${baseRom.id} patchId=${patch.id} system=${h.system} close=${onClose} />
         </div>
         <${NewRunButtons} gameId=${h.baseGameId} hackId=${h.id} close=${onClose} />`}
-        ${patch && html`<${ExportFiles} links=${[
+        ${patch && html`<${ExportFiles} save=${save} saveId=${canPatch ? `${baseRom.id}|${patch.id}` : null} system=${h.system} label=${h.name} links=${[
           canPatch && {
             href: libDownload({ romId: baseRom.id, patchId: patch.id }), label: t('lib.exportPatched', 'Save patched game'),
             title: t('lib.exportPatchedHint', '{hack}, built from your {rom}', { hack: h.name, rom: baseRom.name }),
@@ -917,7 +934,7 @@ function PatchDetail({ family, onClose, openGame }) {
         ${!baseRom && patch.expectedCrc && html`<div class="row">
           <button class="btn ghost" onClick=${() => addGamesFlow({ reloadLibrary, toast })}><${Icon} name="plus" size=${16} />${t('lib.addFiles', 'Add files')}</button>
         </div>`}
-        <${ExportFiles} links=${[
+        <${ExportFiles} save=${save} saveId=${canPatch ? `${baseRom.id}|${patch.id}` : null} system=${baseRom?.system} label=${title} links=${[
           canPatch && {
             href: libDownload({ romId: baseRom.id, patchId: patch.id }), label: t('lib.exportPatched', 'Save patched game'),
             title: t('lib.exportPatchedHint', '{hack}, built from your {rom}', { hack: title, rom: baseRom.name }),
@@ -960,8 +977,8 @@ function RomDetail({ id, onClose, openHack }) {
           : html`<p class="small muted">${t('lib.unknownRom', 'This ROM is not in the catalog (maybe a hack or another region). You can still play it.')}</p>
             <${RomHackAction} rom=${r} onLinked=${openHack} />`}
         <${PlayButtons} romId=${r.id} system=${r.system} close=${onClose} />
-        ${r.customHack && html`<${NewRunButtons} gameId=${r.gameId} romId=${r.id} close=${onClose} />`}
-        <${ExportFiles} links=${[
+        ${r.customHack && html`<${NewRunButtons} gameId=${r.gameId} romId=${r.id} close=${onClose} togetherRom=${r} />`}
+        <${ExportFiles} save=${save} saveId=${r.id} system=${r.system} label=${title} links=${[
           { href: libDownload({ id: r.id }), label: t('lib.exportRom', 'Save ROM'), title: r.name },
           saveLink(r.id, save),
         ]} />

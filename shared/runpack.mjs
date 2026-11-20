@@ -16,6 +16,10 @@
 // 2.8.3 also adds the SoulLink rule "nothing counts before your first Poké Balls" (rules.startAtBalls): a 2.8.2 app
 // doesn't know it and would kill the linked Pokémon of everyone with its player's first knock-outs. A SoulLink with it
 // travels as @4 as well – the same format and version, no second one.
+// 3.0 adds "Play together" (mode 'together', shared/playtogether.mjs). Every older app would read such a pack as a
+// SoulLink – 2.8 drops the unknown mode (its checkPack: "damaged") or, worse, a build that ignored it would track
+// encounters and kill Pokémon in the player's own game. A Play together travels as @5, which 2.8.x refuses with
+// "update to 3.0.0" (their packFormatState says 'newer').
 import { shinyKnownTo280 } from './shiny.mjs';
 import { TMS_FOLLOW_MOVES } from './randomizer-options.mjs';
 
@@ -23,8 +27,11 @@ export const PACK_FORMAT = 'soullink-studio/run-pack@1';
 export const PACK_FORMAT_SHINY = 'soullink-studio/run-pack@2';
 export const PACK_FORMAT_SHINY_ANY = 'soullink-studio/run-pack@3';
 export const PACK_FORMAT_TMS = 'soullink-studio/run-pack@4';
+export const PACK_FORMAT_TOGETHER = 'soullink-studio/run-pack@5';
 /** Formats this app reads. */
-export const PACK_FORMATS = [PACK_FORMAT, PACK_FORMAT_SHINY, PACK_FORMAT_SHINY_ANY, PACK_FORMAT_TMS];
+export const PACK_FORMATS = [PACK_FORMAT, PACK_FORMAT_SHINY, PACK_FORMAT_SHINY_ANY, PACK_FORMAT_TMS, PACK_FORMAT_TOGETHER];
+/** The first version that knows Play together. */
+export const TOGETHER_MIN_VERSION = '3.0.0';
 /** The first version that reads a pack with a shiny rate (one of the presets). */
 export const SHINY_MIN_VERSION = '2.8.0';
 /** The first version that reads a pack with any other shiny rate. */
@@ -40,6 +47,7 @@ export const needsBallsRule = (m) => m?.mode !== 'nuzlocke' && m?.rules?.startAt
 
 /** What a run pack of manifest `m` needs: its format and, for a new format, the version that reads it. */
 export function packFormatOf(m) {
+  if (m?.mode === 'together') return { format: PACK_FORMAT_TOGETHER, minVersion: TOGETHER_MIN_VERSION };
   if (needsTmsFollow(m) || needsBallsRule(m)) return { format: PACK_FORMAT_TMS, minVersion: TMS_MIN_VERSION };
   if (!m?.shiny) return { format: PACK_FORMAT };
   return shinyKnownTo280(m.shiny) ? { format: PACK_FORMAT_SHINY, minVersion: SHINY_MIN_VERSION } : { format: PACK_FORMAT_SHINY_ANY, minVersion: SHINY_ANY_MIN_VERSION };

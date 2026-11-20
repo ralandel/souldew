@@ -8,6 +8,7 @@ import { decryptPK4 } from '../gen4save.mjs';
 import { summaryGB, summaryPk3, summaryPk45 } from '../monstats.mjs';
 import { readGen67, regions67, readGen67Battle, battleRegions } from './gen67.mjs';
 import { catchRate3ds } from './catch3ds.mjs';
+import { QUETZAL_PK3 } from './quetzal.mjs';
 
 const hex = (v) => (typeof v === 'string' ? parseInt(v, 16) : Number(v));
 const u16le = (b, o) => b[o] | (b[o + 1] << 8);
@@ -15,15 +16,27 @@ const u16be = (b, o) => (b[o] << 8) | b[o + 1];
 const u32le = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
 const u24be = (b, o) => (b[o] << 16) | (b[o + 1] << 8) | b[o + 2];
 
-/** Find the address-table entry for a running game. header: { platform, title, code } */
+/**
+ * Find the address-table entry for a running game. header: { platform, title, code }. An entry for a ROM hack that kept
+ * its base game's code (Pokémon Quetzal: Emerald's BPEE) names the header title too (`match.headerTitle`): it is tried
+ * first and matches only with that title – so the hack is never read as the base game, and the base game never as it.
+ */
 export function findEntry(table, header) {
   const games = table?.games || [];
   const code = String(header.code || '').trim().toUpperCase();
   const title = String(header.title || '').trim().toUpperCase();
+  const codesOf = (m) => [].concat(m.gameCode || [], m.manufacturerCode || []).map((c) => String(c).toUpperCase());
+  const titlesOf = (m) => [].concat(m.headerTitle || []).map((t) => String(t).trim().toUpperCase());
+  if (code && title) {
+    for (const g of games) {
+      const m = g.match || {};
+      if (titlesOf(m).includes(title) && codesOf(m).includes(code)) return g;
+    }
+  }
   for (const g of games) {
     const m = g.match || {};
-    const codes = [].concat(m.gameCode || [], m.manufacturerCode || []).map((c) => String(c).toUpperCase());
-    if (code && codes.includes(code)) return g;
+    if (titlesOf(m).length) continue;
+    if (code && codesOf(m).includes(code)) return g;
   }
   // 3DS: the running title ID (Azahar's process list) – a game started from its installed .cia has no file to read
   const titleId = String(header.titleId || '').toUpperCase();
@@ -142,8 +155,10 @@ export class LiveTables {
    * battle's current types are named with them) and the badge flags its leaders' scripts set (`badges3`, romcaps.mjs).
    */
   withRom(rom) {
-    if (!rom?.types && !rom?.caps) return this;
+    if (!rom?.types && !rom?.caps && !rom?.layout3) return this;
     const t = Object.create(this);
+    // an engine with a party struct of its own (server/lib/romloc.mjs romData `layout3`): Pokémon Quetzal's 104 bytes
+    t.pk3 = rom.layout3 === 'quetzal' ? QUETZAL_PK3 : this.pk3 || null;
     t.types3 = rom.types?.keys && rom.types?.species ? rom.types : null;
     t.badges3 = Number.isInteger(rom.caps?.badgeFlags) ? rom.caps.badgeFlags : null;
     // each species' two abilities (romtypes.mjs gbaAbilities: the retail base stats layout)
@@ -359,6 +374,12 @@ function gen3StatsOk(d, isEgg) {
  */
 const validPk3 = (m) => m && !m.bad && m.level >= 1 && m.level <= 100 && m.maxHp >= 1 && m.hp <= m.maxHp;
 
+/** The size of a party struct in this engine: 100 bytes, Pokémon Quetzal's 104 (T.pk3 – shared/live/quetzal.mjs). */
+const pk3Size = (T) => T?.pk3?.size || 100;
+
+/** The party struct at `o` in `buf` in the 100-byte layout every Gen 3 reader here knows (Quetzal's converted). */
+const pk3Slot = (buf, o, T) => (T?.pk3 ? T.pk3.conv(buf.subarray(o, o + T.pk3.size)) : buf.subarray(o, o + 100));
+
 /**
  * The run of valid structs at `o` in `ram` (no PID twice) and whether the slots after it are empty. `state` (the
  * party poll's): an invalid slot with the very same bytes for several polls is a Bad Egg, not a write in progress –
@@ -366,14 +387,17 @@ const validPk3 = (m) => m && !m.bad && m.level >= 1 && m.level <= 100 && m.maxHp
  */
 function pk3Run(ram, o, T, state = null) {
   const pids = [];
+  const mons = [];
   let n = 0;
+  const S = pk3Size(T);
   for (; n < 6; n++) {
-    const d = ram.subarray(o + n * 100, o + n * 100 + 100);
+    const d = pk3Slot(ram, o + n * S, T);
     const pid = u32le(d, 0);
     if (!pid && !u32le(d, 4)) break;
     const m = parsePk3(d, T);
-    // (a struct the game is writing right now, or a slot shown twice while the menu swaps two: torn, read again)
-    if (!validPk3(m) || pids.includes(pid)) {
+    // (a struct the game is writing right now, or a slot shown twice while the menu swaps two: torn, read again – a
+    // clone, the same Pokémon twice for good, is no misread: keyClones)
+    if (!validPk3(m) || (pids.includes(pid) && !mons.some((x) => sameClone(x, m)))) {
       if (state && !pids.includes(pid) && m?.bad) {
         const sig = Array.prototype.join.call(d.subarray(0, 32), ',');
         const seen = state.runBad || (state.runBad = {});
@@ -387,17 +411,20 @@ function pk3Run(ram, o, T, state = null) {
     }
     if (state?.runBad) delete state.runBad[n]; // a good read: a Bad Egg there has to be seen three times anew
     pids.push(pid);
+    mons.push(m);
   }
   let empty = true;
-  for (let i = n; i < 6; i++) if (ram.subarray(o + i * 100, o + i * 100 + 8).some((b) => b)) empty = false;
+  for (let i = n; i < 6; i++) if (ram.subarray(o + i * S, o + i * S + 8).some((b) => b)) empty = false;
   return { n, empty };
 }
 
 function findGen3Party(read, T, state, hint = null, base = null) {
+  const S = pk3Size(T);
+  const team = 6 * S; // (the bytes of a whole party array)
   const teamOf = (ram, o, n) => {
     if (n < 1 || n > 6) return false;
     for (let i = 0; i < n; i++) {
-      const m = parsePk3(ram.subarray(o + i * 100, o + i * 100 + 100), T);
+      const m = parsePk3(pk3Slot(ram, o + i * S, T), T);
       if (!validPk3(m)) return false;
     }
     return true;
@@ -406,7 +433,7 @@ function findGen3Party(read, T, state, hint = null, base = null) {
   // a count byte of its own (the base game's place) and as many structs behind it (a Bad Egg among them counts, pk3Run)
   const okBase = (count, party) => {
     const n = read(count, 1)?.[0];
-    const b = read(party, 600);
+    const b = read(party, team);
     if (!b || !(n >= 1 && n <= 6)) return false;
     const r = pk3Run(b, 0, T, state);
     return !r.torn && r.n === n;
@@ -414,7 +441,7 @@ function findGen3Party(read, T, state, hint = null, base = null) {
   if (state.party3) {
     if (state.count3 === null) {
       // (a static array: kept unless it holds no team any more – a torn read is read again by readGen3)
-      const b = read(state.party3, 600);
+      const b = read(state.party3, team);
       const r = b ? pk3Run(b, 0, T) : null;
       if (r && (r.n >= 1 || r.torn)) return state.party3;
     } else if (state.count3 !== state.party3 - 3) {
@@ -423,33 +450,33 @@ function findGen3Party(read, T, state, hint = null, base = null) {
       const n = read(state.count3, 1)?.[0];
       if (n >= 1 && n <= 6) return state.party3;
     } else {
-      const b = read(state.party3 - 4, 4 + 600);
+      const b = read(state.party3 - 4, 4 + team);
       if (b && okAt(b, 4)) return state.party3;
     }
   }
   if (state.lastScan3 && Date.now() - state.lastScan3 < 3000) return null;
   state.lastScan3 = Date.now();
   if (base?.party && base.count && okBase(base.count, base.party)) {
-    Object.assign(state, { count3: base.count, enemy3: base.enemy || base.party + 600 });
+    Object.assign(state, { count3: base.count, enemy3: base.enemy || base.party + team });
     return (state.party3 = base.party);
   }
   const ram = read(0x02000000, 0x40000);
   if (!ram) return null;
-  for (let o = 4; o + 600 <= ram.length; o += 4) {
+  for (let o = 4; o + team <= ram.length; o += 4) {
     if (ram[o] === 0 && ram[o + 1] === 0 && ram[o + 2] === 0 && ram[o + 3] === 0) continue;
     if (base?.enemy === 0x02000000 + o) continue; // (FireRed's gEnemyParty, 3 bytes after the player's count)
     if (okAt(ram, o)) {
       // gEnemyParty: where the code names it next to this party (Modern Emerald keeps another party array between the
       // two), else right behind it as in the base game
       const at = 0x02000000 + o;
-      Object.assign(state, { count3: at - 3, enemy3: hint?.player === at && hint.enemy ? hint.enemy : at + 600 });
+      Object.assign(state, { count3: at - 3, enemy3: hint?.player === at && hint.enemy ? hint.enemy : at + team });
       return (state.party3 = at);
     }
   }
   // no count byte in front of a team: the pair the ROM's code names, if its player half holds a team (and nothing
   // after it – a run of structs that goes on is some other array)
   const at = hint?.player;
-  if (at >= 0x02000000 && at + 600 <= 0x02040000) {
+  if (at >= 0x02000000 && at + team <= 0x02040000) {
     const r = pk3Run(ram, at - 0x02000000, T, state);
     if (r.n >= 1 && r.empty) {
       Object.assign(state, { count3: null, enemy3: hint.enemy });
@@ -463,7 +490,7 @@ function findGen3Party(read, T, state, hint = null, base = null) {
 /** The size of the found team: the count byte, or (no count byte, see findGen3Party) its valid structs. */
 function party3Count(read, T, state) {
   if (state.count3 === null) {
-    const b = read(state.party3, 600);
+    const b = read(state.party3, 6 * pk3Size(T));
     const r = b ? pk3Run(b, 0, T, state) : null;
     return r && !r.torn ? r.n : null; // null: torn – try again next poll
   }
@@ -508,11 +535,12 @@ function readGen3(entry, read, T, state = {}) {
     count = c[0];
   }
   if (count > 6) return { invalid: true };
-  const raw = read(hex(entry.partyAddr), entry.structSize * count);
+  const S = pk3Size(T);
+  const raw = read(hex(entry.partyAddr), S * count);
   if (!raw) return null;
   let party = [];
   for (let i = 0; i < count; i++) {
-    const slot = raw.subarray(i * 100, i * 100 + 100);
+    const slot = pk3Slot(raw, i * S, T);
     const m = parsePk3(slot, T);
     if (!m) continue;
     if (m.bad) {
@@ -528,7 +556,8 @@ function readGen3(entry, read, T, state = {}) {
     if (m.level < 1 || m.level > 100 || m.hp > m.maxHp) return { invalid: true };
     // Level, HP and stats (80-99) are neither encrypted nor checksummed: a slot the party menu is swapping reads as
     // one mon with the other's numbers – or the same mon twice. Stats over 999 or a duplicate: try again next poll.
-    if (party.some((x) => x.pid === m.pid) || !gen3StatsOk(slot, m.isEgg)) return { torn: true };
+    // (a clone – the same Pokémon twice for good, its data alike – is two Pokémon: keyClones waits one poll for it)
+    if (party.some((x) => x.pid === m.pid && !sameClone(x, m)) || !gen3StatsOk(slot, m.isEgg)) return { torn: true };
     if (state.bad3) delete state.bad3[i]; // a good read: a Bad Egg there has to be seen three times anew
     party.push(m);
   }
@@ -629,6 +658,8 @@ function readBoxesGen3(entry, read, T, state) {
   // reader; checked strictly below)
   const kept = !!entry.scan3;
   if (T.expanded3 && !kept) return null;
+  // (an engine with a party struct of its own – Pokémon Quetzal – keeps its boxes its own way too: not read)
+  if (T.pk3) return null;
   if (kept && !state.sb1PtrAddr) return null;
   const id = String(entry.id || '');
   const L = kept ? { ptr: state.sb1PtrAddr + 8 } : GBA_STORAGE[/^(ruby|sapphire)_(us|de)$/.test(id) ? 'rs' : /^emerald_/.test(id) ? 'e' : /^(firered|leafgreen)_/.test(id) ? 'frlg' : ''];
@@ -823,8 +854,10 @@ function readPartyCore(read, addr, size, gen, T) {
   const party = [];
   for (let i = 0; i < count; i++) {
     const m = pkMon(raw.subarray(i * size, (i + 1) * size), gen, T);
-    // the same mon twice: read halfway through a swap in the party menu (the copy is done, the old slot not yet)
-    if (!m || party.some((x) => x.pid === m.pid)) return null;
+    // the same PID twice with other data: a misread. The same mon twice is a read halfway through a swap in the party
+    // menu (the copy is done, the old slot not yet) – or a clone (a cloning glitch): keyClones tells them apart (a clone
+    // stays, a swap is gone a poll later)
+    if (!m || party.some((x) => x.pid === m.pid && !sameClone(x, m))) return null;
     party.push(m);
   }
   return party;
@@ -1219,9 +1252,106 @@ export function readSaveFile(entry, file, T) {
  */
 export function readLiveParty(entry, read, T, state = {}) {
   if (!entry) return null;
-  if (entry.gen <= 2) return readGB(entry, read, T, state);
+  if (entry.gen <= 2) return withClones(readGB(entry, read, T, state), state);
   const res = entry.gen >= 6 ? readGen67(entry, read, state) : entry.gen === 3 ? readGen3(entry, read, T, state) : readDS(entry, read, T, state);
-  return res?.party && !settled(res.party, state) ? { torn: true } : res;
+  const out = entry.gen >= 6 ? res : withClones(res, state);
+  return out?.party && !settled(out.party, state) ? { torn: true } : out;
+}
+
+// ---------------------------------------------------------------------------
+// Clones: a cloning glitch (Gen 1–4 – the PC box during a save, a trade cut off at the right moment) leaves the same
+// Pokémon twice in the team: one PID, every lasting detail alike. That is no misread – they are two Pokémon from then on.
+
+/**
+ * What two clones have alike for good: the key (PID / DVs and trainer ID), species, form, where and at what level they
+ * were met, egg, gender, shininess, IVs and nature. What playing changes (HP, level, experience, moves, EVs, item, the
+ * nickname) is left out – two clones drift apart there as soon as one of them fights.
+ */
+const cloneId = (m) => JSON.stringify([m.key, m.species, m.form || 0, m.metLocation ?? null, m.metLevel ?? null, m.eggLocation ?? null, !!m.isEgg,
+  m.gender ?? null, !!m.shiny, m.summary?.ivs ?? m.summary?.dvs ?? null, m.summary?.nature ?? null]);
+/** Are `a` and `b` (same PID) clones – the same Pokémon twice – rather than a misread of one struct as another? */
+export const sameClone = (a, b) => !!a && !!b && a.pid === b.pid && cloneId(a) === cloneId(b);
+/** How alike two readings of a clone are: what tells them apart once they play (higher: more alike). */
+function cloneLikeness(m, f) {
+  if (!f) return 0;
+  return (m.hp === f.hp) + (m.maxHp === f.maxHp) + (m.level === f.level) + (m.status === f.status) + (m.item === f.item)
+    + ((m.moves || []).join() === f.moves) + (m.nickname === f.nickname);
+}
+const cloneFp = (m) => ({ hp: m.hp, maxHp: m.maxHp, level: m.level, status: m.status, item: m.item, moves: (m.moves || []).join(), nickname: m.nickname });
+
+/**
+ * Clones in the team, as two Pokémon for the tracker (a death, a trade, a SoulLink pair – each one's own): the first
+ * keeps the key, each further one gets `<key>~2`, `~3` … Which one is which holds while the team is reordered: each takes
+ * the key whose last reading it matches best (HP, level, status, moves …), its slot only breaking a tie – a clone at
+ * 0 HP never hands its faint to the other. A clone new in the team counts once the next read shows it too (a read in
+ * the middle of a swap in the party menu shows one Pokémon twice for a poll). `state`: the reader's (one per session).
+ * → the party with the clones' keys, or null (read again).
+ */
+export function keyClones(party, state) {
+  const groups = new Map(); // cloneId → indexes in the party
+  party.forEach((m, i) => {
+    if (!m?.key) return;
+    const id = cloneId(m);
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(i);
+  });
+  const prev = state.clones || {}; // key → [{ key, at: index, fp }] of the last reading that had clones of it
+  const pendingBefore = state.clonesPending || {};
+  const next = {};
+  const pending = {};
+  let wait = false;
+  const out = party.slice();
+  for (const idx of groups.values()) {
+    const base = party[idx[0]].key;
+    const was = prev[base] || null;
+    if (idx.length < 2 && !was) continue;
+    if (idx.length > (was?.length || 1) && pendingBefore[base] !== idx.length) {
+      // more of them than last time: once more, to tell a clone from a swap in progress
+      pending[base] = idx.length;
+      wait = true;
+      continue;
+    }
+    // the keys to hand out: the last reading's (each keeps its own), then new ones
+    const names = (was || []).map((x) => x.key);
+    for (let n = 1; names.length < idx.length; n++) {
+      const k = n === 1 ? base : `${base}~${n}`;
+      if (!names.includes(k)) names.push(k);
+    }
+    // the best match over every way to give them distinct keys (at most 6 clones: a few hundred tries at worst)
+    let best = null;
+    const pick = (i, used, score, chosen) => {
+      if (i === idx.length) {
+        if (!best || score > best.score) best = { score, chosen: chosen.slice() };
+        return;
+      }
+      for (const k of names) {
+        if (used.has(k)) continue;
+        const w = was?.find((x) => x.key === k);
+        used.add(k);
+        chosen.push(k);
+        pick(i + 1, used, score + (w ? cloneLikeness(party[idx[i]], w.fp) * 2 + (w.at === idx[i] ? 1 : 0) : 0), chosen);
+        chosen.pop();
+        used.delete(k);
+      }
+    };
+    pick(0, new Set(), 0, []);
+    idx.forEach((pi, j) => {
+      if (best.chosen[j] !== party[pi].key) out[pi] = { ...party[pi], key: best.chosen[j] };
+    });
+    // (one of them left alone keeps the key it had – the tracker knows it by that one)
+    next[base] = idx.map((pi, j) => ({ key: best.chosen[j], at: pi, fp: cloneFp(party[pi]) }));
+  }
+  state.clonesPending = pending;
+  if (wait) return null;
+  state.clones = next;
+  return out;
+}
+
+/** A reader's result with its clones keyed apart (keyClones) – { torn } while a new clone waits for the next read. */
+function withClones(res, state) {
+  if (!res?.party?.length) return res;
+  const party = keyClones(res.party, state);
+  return party ? { ...res, party } : { torn: true };
 }
 
 /**
@@ -1231,8 +1361,9 @@ export function readLiveParty(entry, read, T, state = {}) {
  */
 function settled(party, state) {
   const known = state.dsStats || new Map();
-  const next = new Map(party.map((m) => [m.pid, `${m.level}:${m.maxHp}`]));
-  const changed = party.some((m) => known.has(m.pid) && known.get(m.pid) !== next.get(m.pid));
+  // (by key: two clones share a PID – keyClones)
+  const next = new Map(party.map((m) => [m.key, `${m.level}:${m.maxHp}`]));
+  const changed = party.some((m) => known.has(m.key) && known.get(m.key) !== next.get(m.key));
   const sig = [...next].join();
   if (changed && state.dsPending !== sig) {
     state.dsPending = sig;
@@ -1385,10 +1516,11 @@ const BMON3_LAYOUTS = [BMON3X, BMON3];
 
 /** The mons of a gen 3 party array (count, 100-byte structs): raw PID and OT ID next to the parsed mon. */
 function rawParty3(read, at, n, T) {
-  const raw = read(at, n * 100);
+  const S = pk3Size(T);
+  const raw = read(at, n * S);
   const out = [];
   for (let i = 0; raw && i < n; i++) {
-    const d = raw.subarray(i * 100, i * 100 + 100);
+    const d = pk3Slot(raw, i * S, T);
     const m = parsePk3(d, T);
     if (m && !m.bad && m.level >= 1 && m.level <= 100 && m.hp <= m.maxHp) out.push({ m, pid: u32le(d, 0), otId: u32le(d, 4) });
   }
@@ -1437,9 +1569,10 @@ function findEnemy3(read, T, state, mine) {
   if (state.lastEnemyScan3 && Date.now() - state.lastEnemyScan3 < 1000) return [];
   state.lastEnemyScan3 = Date.now();
   const own = new Set(mine.map((x) => x.pid));
-  for (const d of [600, 1200, -600, -1200]) {
+  const team = 6 * pk3Size(T);
+  for (const d of [team, 2 * team, -team, -2 * team]) {
     const at = state.party3 + d;
-    if (at < 0x02000000 || at + 600 > 0x02040000 || at === state.enemy3) continue;
+    if (at < 0x02000000 || at + team > 0x02040000 || at === state.enemy3) continue;
     const foes = rawParty3(read, at, 6, T);
     if (foes.length && !foes.some((x) => own.has(x.pid))) {
       state.enemy3 = at;
@@ -1487,7 +1620,7 @@ function battleGen3(entry, read, T, state = {}) {
     if (!state.party3) return null;
     const count = party3Count(read, T, state) ?? 0;
     const mine = count >= 1 && count <= 6 ? rawParty3(read, state.party3, count, T) : [];
-    let foes = rawParty3(read, state.enemy3 || state.party3 + 600, 6, T);
+    let foes = rawParty3(read, state.enemy3 || state.party3 + 6 * pk3Size(T), 6, T);
     // (none there, or the player's own Pokémon – a backup of the team: gEnemyParty is elsewhere)
     if (mine.length && (!foes.length || foes.some((x) => mine.some((y) => y.pid === x.pid)))) foes = findEnemy3(read, T, state, mine);
     if (!foes.length) return { kind: 'wild', enemy: null, active: null };
@@ -1543,8 +1676,9 @@ function battleGen3(entry, read, T, state = {}) {
   // gBattlerPartyIndexes: battler 1 is the opponent's first slot
   const idx = entry.liveBattleHp?.battlerPartyIndexesAddr ? read(hex(entry.liveBattleHp.battlerPartyIndexesAddr), 8) : null;
   const enemyIndex = idx ? u16le(idx, 2) : 0;
-  const raw = read(hex(entry.enemyPartyAddr) + (enemyIndex < 6 ? enemyIndex : 0) * 100, 100);
-  const m = raw && parsePk3(raw, T);
+  const S = pk3Size(T);
+  const raw = read(hex(entry.enemyPartyAddr) + (enemyIndex < 6 ? enemyIndex : 0) * S, S);
+  const m = raw && parsePk3(pk3Slot(raw, 0, T), T);
   // (the status condition from the party struct: the battle writes it there with every change – pokeemerald
   // BtlController_EmitSetMonData(REQUEST_STATUS_BATTLE) → the opponent controller's SetMonData into gEnemyParty; checked
   // live in Emerald and Sapphire: Spore on the wild Pokémon → its sleep turns here at once)
@@ -2287,13 +2421,13 @@ export function withBattleHp(party, battle, state = null) {
   }
   const out = state ? battleOut(state, party, battle) : null;
   if (battle.party) {
-    const byPid = new Map(battle.party.map((m) => [m.pid, m]));
-    return party.map((m) => {
-      const b = byPid.get(m.pid);
+    const twin = battleTwins(party, battle.party);
+    return party.map((m, i) => {
+      const b = twin[i];
       if (!b) return m;
       // (a Pokémon that grew a level in this battle: the battle has its new max HP, the save party the old one until the end)
       const hp = m.maxHp > 0 ? Math.min(b.hp, m.maxHp) : b.hp;
-      if (hp === 0 && m.hp > 0 && out?.size && !out.has(m.pid)) return m;
+      if (hp === 0 && m.hp > 0 && out?.size && !out.has(m.key)) return m;
       return { ...m, hp, ...(b.status !== undefined ? { status: b.status } : {}) };
     });
   }
@@ -2302,14 +2436,33 @@ export function withBattleHp(party, battle, state = null) {
   return party.map((m, i) => (i === a.index ? { ...m, hp: a.hp, ...(a.status !== undefined ? { status: a.status } : {}) } : m));
 }
 
-/** The PIDs of the player's Pokémon that have been out in the battle going on (state.battleOut), with this reading's. */
+/** The keys of the player's Pokémon that have been out in the battle going on (state.battleOut), with this reading's. */
 function battleOut(state, party, battle) {
   const out = state.battleOut || (state.battleOut = new Set());
   for (const a of [battle.active, ...(battle.actives || [])]) {
     const m = a && Number.isInteger(a.index) ? party[a.index] : null;
-    if (m?.pid !== undefined) out.add(m.pid);
+    if (m?.key) out.add(m.key);
   }
   return out;
+}
+
+/**
+ * The battle's party copy, per Pokémon of the team (index → its entry, or undefined): by PID – two clones share theirs,
+ * so the n-th of a PID in the team is the n-th of it in the copy (the battle copies the team in its order).
+ */
+export function battleTwins(party, copy) {
+  const byPid = new Map();
+  for (const b of copy || []) {
+    if (!byPid.has(b?.pid)) byPid.set(b?.pid, []);
+    byPid.get(b?.pid).push(b);
+  }
+  const nth = new Map();
+  return (party || []).map((m) => {
+    if (m?.pid === undefined) return undefined;
+    const k = nth.get(m.pid) || 0;
+    nth.set(m.pid, k + 1);
+    return byPid.get(m.pid)?.[k];
+  });
 }
 
 /**

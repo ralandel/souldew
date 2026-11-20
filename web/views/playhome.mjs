@@ -3,7 +3,7 @@ import { useApp } from '../lib/ui.mjs';
 import { Icon } from '../lib/icons.mjs';
 import { t } from '../lib/i18n.mjs';
 import { gameById, gameTitle, hackById } from '../lib/data.mjs';
-import { runMode } from '/shared/slots.mjs';
+import { runSection } from '/shared/slots.mjs';
 import { Cart, coverOf } from './library.mjs';
 import { RunCard, runState, useStatusPoll } from './soullink.mjs';
 
@@ -35,7 +35,7 @@ export function PlayHome() {
     ${runs.length > 0 && html`<section class="stack"><h2>${t('play.continueRuns', 'Continue a run')}</h2><div class="shelf">
       ${runs.map((r) => html`<${RunCard} key=${r.id} r=${r} onOpen=${() => navigate('play', { run: r.id })}
         actions=${html`<button class="btn small go" onClick=${() => navigate('play', { run: r.id })}><${Icon} name="play" size=${14} />${t('runs.continue', 'Continue')}</button>
-          <button class="btn small ghost" onClick=${() => navigate(runMode(r), { run: r.id })}>${t('runs.board', 'Board')}</button>`} />`)}</div></section>`}
+          <button class="btn small ghost" onClick=${() => navigate(runSection(r), { run: r.id })}>${t('runs.board', 'Board')}</button>`} />`)}</div></section>`}
     <section class="stack"><h2>${t('play.games', 'Just play')}</h2>
       ${roms.length === 0 ? html`<div class="row"><p class="muted">${t('play.noGamesText', 'Your library is empty – add a ROM to play it on its own.')}</p>
         <button class="btn small" onClick=${() => navigate('library')}><${Icon} name="plus" size=${14} />${t('play.addGames', 'Add games')}</button></div>` : html`<div class="shelf">

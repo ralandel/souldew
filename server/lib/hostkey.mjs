@@ -14,7 +14,7 @@ const keyFile = (id) => join(runDir(id), 'host-key.pem');
 const publicOf = (priv) => createPublicKey(priv).export({ format: 'jwk' }).x;
 
 /** Can this computer change the rules of run `m`? Only a SoulLink's creator (a solo run has no host key). */
-export const isHostComputer = (m) => !!m && !m.imported && runMode(m) === 'soullink';
+export const isHostComputer = (m) => !!m && !m.imported && runMode(m) !== 'nuzlocke'; // (a SoulLink or a Play together)
 
 /**
  * The run's private host key – made now when the creator's computer has none yet (a run from before 2.8.2): then the

@@ -268,7 +268,8 @@ export const sameCombo = (a, b) => !!a && !!b && a.keyCode === b.keyCode && MODS
 
 // What the system or souldew's own menu does with a combo – refused for the shortcuts (Settings › Controls says why).
 // mac: ⌘Q / ⌘W / ⌘H / ⌘M / ⌘Tab / ⌘Space …; Windows and Linux: Alt+F4, Alt+Tab, Ctrl+Alt+Del, Ctrl+Esc, the Windows /
-// Super key … – and the app menu's own (⌘, settings, ⌘1–5, ⌘O, ⌘B, ⌘/, the edit menu's ⌘Z / X / C / V / A, fullscreen).
+// Super key … – and the app menu's own (⌘, settings, ⌘1–5, ⌘O, ⌘B, ⌘/, the edit menu's ⌘Z / X / C / V / A, fullscreen) and
+// the play view's ⌘I (the dock).
 const L = (ch) => ch.toUpperCase().charCodeAt(0);
 const SYS_MAC = [
   [{ meta: 1 }, [L('q'), L('w'), L('h'), L('m'), TAB, 32, 192]], // quit, close, hide, minimize, app switcher, Spotlight, window switcher
@@ -285,7 +286,8 @@ const SYS_PC = [
   [{ alt: 1, shift: 1 }, [TAB]],
 ];
 const MENU = (mac) => [
-  [{ [mac ? 'meta' : 'ctrl']: 1 }, [188, 49, 50, 51, 52, 53, L('o'), L('b'), 191, L('z'), L('x'), L('c'), L('v'), L('a'), L('q'), L('w'), ...(mac ? [] : [L('y')])]],
+  // (⌘I / Ctrl+I: the play view's dock – views/play.mjs folds it before any shortcut sees the key)
+  [{ [mac ? 'meta' : 'ctrl']: 1 }, [188, 49, 50, 51, 52, 53, L('o'), L('b'), L('i'), 191, L('z'), L('x'), L('c'), L('v'), L('a'), L('q'), L('w'), ...(mac ? [] : [L('y')])]],
   [{ [mac ? 'meta' : 'ctrl']: 1, shift: 1 }, [L('z')]],
   ...(mac ? [] : [[{}, [122]]]), // F11: fullscreen (Windows, Linux)
 ];

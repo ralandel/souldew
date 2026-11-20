@@ -1,10 +1,24 @@
 # Privacy: what souldew sends
 
-souldew has no account and no analytics. Your games, save files and runs stay on your computer; between players
-only tracker data travels, encrypted with the key from your invite. The website's privacy policy (German, legally
-binding): <https://souldew.app/datenschutz.html>.
+> **souldew Renaissance** (this build) differs from the official souldew described below:
+>
+> - **No “playing now” count, no souldew account, no souldew+, no Discord live runs** – it never contacts
+>   api.souldew.app or accounts.souldew.app (`shared/edition.mjs`: `presence: false`, `accounts: false`,
+>   `liveRunsUrl: null`).
+> - **Playing with others** goes through the souldew Renaissance server, `souldew.pkmnrenaissance.com` (MQTT broker,
+>   Nostr relay for WebRTC signalling, STUN/TURN), end-to-end encrypted with the invite's key – not through public
+>   brokers and relays.
+> - **The update check** asks GitHub for `ralandel/souldew`'s latest release; it is the only thing sent by itself and
+>   can be switched off (Settings › About, or on the Windows installer's privacy page).
+> - Its data folder is `souldew Renaissance` (Windows: `%APPDATA%\souldew Renaissance`), never the official app's.
 
-This page is about the one thing souldew reports by itself: the anonymous **“playing now”** count.
+souldew collects no personal data and has no analytics. Your games, save files and runs stay on your computer;
+between players only tracker data travels, encrypted with the key from your invite. The privacy policy:
+<https://souldew.app/privacy.html> (the website's, German and legally binding: <https://souldew.app/datenschutz.html>).
+
+souldew sends two things by itself, and both can be switched off: the anonymous **“playing now”** count (below) and
+the **update check** (see [Other connections](#other-connections)). On Windows the installer shows this before it
+installs anything – see [The Windows installer](#the-windows-installer).
 
 ## “Playing now”
 
@@ -38,7 +52,7 @@ Content-Type: application/json
 |----------|---------------------------------------------------------------------------------------------------------|
 | `sid`    | 16 random bytes (base64url), made when the game starts. New for every game, never written to disk, not derived from anything – not from your computer, your name, the run or the game. |
 | `system` | `gb` (Game Boy and Game Boy Color), `gba`, `nds` or `3ds`.                                               |
-| `mode`   | `solo` (a game from the library), `nuzlocke` or `soullink`.                                              |
+| `mode`   | `solo` (a game from the library), `nuzlocke`, `soullink` or `together` (Play together).                  |
 | `v`      | the souldew version, e.g. `2.7.4`.                                                                       |
 
 When the game closes: `{"sid":"…","stop":true}`. If `api.souldew.app` gives no answer at all (some DNS filters), the
@@ -65,7 +79,8 @@ Anyone can read the totals: <https://api.souldew.app/presence> →
 
 ### Switching it off
 
-Settings › General › **“Count me in ‘playing now’ (anonymous)”** – on by default. Off applies at once: a running game
+Settings › Online › **“Count me in ‘playing now’ (anonymous)”** – on by default (also in the welcome tour and on the
+Windows installer's privacy page). Off applies at once: a running game
 sends “stopped” right away and nothing more. The setting is stored in your local `config.json` as `"presence": false`.
 
 The code: [`web/lib/presence.mjs`](../web/lib/presence.mjs) (when a game runs) and
@@ -75,10 +90,39 @@ The code: [`web/lib/presence.mjs`](../web/lib/presence.mjs) (when a game runs) a
 
 For completeness – none of these carry anything about you beyond the request itself:
 
-- **Updates:** at start and every four hours souldew asks GitHub for a new version.
+- **Updates:** at start and every four hours the desktop app downloads the signed `latest.json` of the newest release
+  from GitHub (`github.com/souldewapp/souldew/releases/latest/download/latest.json`) to see whether there is a new
+  version. Switch: Settings › About › **“Check for updates automatically”** (`"updateCheck": false` in `config.json`;
+  also in the welcome tour and on the Windows installer's page). Off: souldew only asks when you click “Check for
+  updates”; a download only ever starts when you click “Update”.
 - **Playing together:** SoulLink apps find each other over public Nostr relays and then connect directly (WebRTC),
   with a public MQTT broker as a fallback. Only encrypted tracker data – never games or saves.
 - **Pictures:** Pokémon sprites and game covers are loaded from public GitHub repositories (PokeAPI,
-  libretro-thumbnails) and cached.
+  libretro-thumbnails, `raw.githubusercontent.com`) and cached – the default sprites once in the background after the
+  first start, so boards work offline. The souldew+ preview pictures (the library's handheld tile, the souldew+ page)
+  come from `accounts.souldew.app/v1/previews`, signed, at most every 10 minutes – no sign-in, nothing about you.
+- **Your souldew account, only once you sign in:** `accounts.souldew.app` – the session, your profile, friends and
+  their online status, invites, souldew+. Signed out, nothing goes there.
 - **Discord, only if you set it up:** a Discord webhook you enter for a run, or Live runs (Settings › Discord), which
   post the events you share.
+
+## The Windows installer
+
+Before it installs anything, the Windows installer shows a **Privacy** page: the text above in short (what souldew
+sends by itself, what it sends only when you use a feature, and what the installer changes on your PC), a link to the
+privacy policy, and a checkbox for each of the two automatic connections – “Count me in ‘playing now’ (anonymous)” and
+“Check for updates automatically”. Both are ticked as your settings have them (on, unless you switched them off in
+the app). What you change there goes into `installer-choices.json` in your data folder; souldew applies it once at
+its next start and deletes the file. The in-app update runs the installer silently (`/S --updated`): no page, your
+settings stay as they are. (The code: [`build/installer.nsh`](../build/installer.nsh),
+[`electron/installerchoices.mjs`](../electron/installerchoices.mjs).)
+
+What the installer changes on your PC: souldew goes into `%LOCALAPPDATA%\Programs\souldew`, for your Windows user only
+and without administrator rights; the Start menu gets “souldew” and “souldew (safe graphics)”, the desktop a shortcut,
+and Settings › Apps an entry to uninstall it. No file types, no web links (URL protocols), no services, no autostart.
+Your data lives in `%APPDATA%\SoulLink Studio`.
+
+Uninstalling (Settings › Apps, or “Uninstall souldew.exe” in the install folder) asks whether your data folder should
+go too – “No” is the default and keeps your runs, saves, settings, trophies and library for a later installation –
+and removes the program, both Start menu entries, the desktop shortcut and the entry in Settings › Apps. An update
+never asks and never deletes anything.

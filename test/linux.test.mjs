@@ -86,7 +86,12 @@ test('release: the asset names are exactly what electron-builder builds (package
   assert.deepEqual(targets, ['AppImage:x64', 'deb:x64']);
   // the bundled Java for the randomizer, the window icon, the desktop entry that matches the window (app id)
   assert.deepEqual(pkg.build.linux.extraResources, [{ from: 'tools/jre/linux-x64', to: 'tools/jre/linux-x64' }, { from: 'tools/ctr/linux-x64', to: 'tools/ctr/linux-x64' },
-    { from: 'tools/native/linux-x64', to: 'tools/native/linux-x64', filter: ['retrohost*', '*_libretro.*', 'SOURCES.txt', 'LICENSE-*'] }]);
+    { from: 'tools/native/linux-x64', to: 'tools/native/linux-x64', filter: ['retrohost*', 'linkhost*', '*_libretro.*', 'SOURCES.txt', 'LICENSE-*'] }]);
+  // every platform bundles the link host (trades and battles) next to the fast player – build-native.mjs --check needs it
+  for (const os of ['mac', 'win', 'linux']) {
+    const native = pkg.build[os].extraResources.find((r) => r.from.startsWith('tools/native/'));
+    assert.ok(native?.filter.includes('linkhost*'), `${os}: the link host is bundled`);
+  }
   assert.ok(pkg.build.linux.files.includes('build/icon.png'));
   assert.equal(pkg.desktopName, `${pkg.build.linux.executableName}.desktop`);
   assert.equal(pkg.build.linux.executableName, 'souldew-renaissance'); // not the official app's 'souldew'

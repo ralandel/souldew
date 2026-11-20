@@ -96,6 +96,10 @@ test('the controller is read with the console buttons of Settings › Controller
   // shoulders, Start and X (the previous option of a select)
   const s = readPad(pad([4, 5, 9, 3]));
   assert.deepEqual([s.prev, s.next, s.menu, s.alt], [true, true, true, true]);
+  // Y (the favourite star of a focused look): left face button on the Nintendo layout, top on Xbox
+  assert.equal(readPad(pad([2])).extra, true);
+  assert.equal(readPad(pad([3])).extra, false);
+  assert.equal(readPad(pad([3]), { preset: 'xbox' }).extra, true);
 });
 
 test('directions come from the D-pad, else the left stick; the right stick scrolls', () => {
@@ -196,7 +200,7 @@ test('the game frames ignore their buttons while the app has the controller', as
   const play = readFileSync(new URL('../web/views/play.mjs', import.meta.url), 'utf8');
   assert.match(play, /useEffect\(\(\) => claimPad\(/);
   // (with the 3DS screen-layout menu and the "3DS player stopped" message – both are drawn over the game)
-  assert.match(play, /overlay: !!\(rulesOpen \|\| statesOpen \|\| soundOpen \|\| cheatOpen \|\| layoutOpen \|\| ctrFail \|\| confirmReset \|\| pendingLoad \|\| confirmCheat \|\| asked\)/);
+  assert.match(play, /overlay: !!\(rulesOpen \|\| statesOpen \|\| soundOpen \|\| cheatOpen \|\| layoutOpen \|\| ctrFail \|\| confirmReset \|\| pendingLoad \|\| confirmCheat \|\| asked \|\| giftFor \|\| watchFor\)/);
   // the stopped-3DS message: A starts with "Play 3DS games in Azahar", B is "Close game" (the game is gone already)
   assert.match(play, /data-pad-first disabled=\$\{busy\} onClick=\$\{toAzahar\}/);
   assert.match(play, /data-pad-back onClick=\$\{onClose\}>\$\{t\('play\.close'/);

@@ -68,6 +68,7 @@ read live – "hidden": no cap for that game). "–": the plan doesn't get there
 | Radical Red 4.1 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | hidden |
 | Too Many Types 1.6 (BPS and pre-patched) | ✅ | hidden | ✅ | ✅ | ✅ | ✅ | hidden |
 | Too Many Types 2 1.5.2 / 1.1.1 patch | ✅ | hidden | ✅ | ✅ | ✅ | ✅ | hidden |
+| Quetzal Alpha 9v1 (by hand, not a matrix plan) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | hidden |
 | Pearl | ✅ | – | ✅ | ✅ | ✅ | ✅ | ✅ 14 |
 | Platinum | ✅ | – | ✅ | ✅ | ✅ | ✅ | ✅ 14 |
 | Renegade Platinum 1.3.0 | – | – | – | – | – | ✅ | – |
@@ -176,6 +177,37 @@ console programs Vulkan in a virtual desktop – a Wine detail, not one of Windo
 souldew opens the Azahar app instead.
 
 Not checked: X/Alpha Sapphire/Moon/Ultra Moon (same code as their pairs).
+
+### The cheats menu (3.0)
+
+`node scripts/rom-matrix.mjs <roms> --live --cheats` (macOS, Apple Silicon, the browser player – HeartGold/SoulSilver
+and Black/White on DeSmuME –, hidden and muted, a scratch data folder): each game's plan up to its first team (or a
+check out of battle), then every cheat the play screen's way (`applyCheat`) with the amounts 1, 10, 99, 999 and 1
+again, each checked through a read of its own – exactly that many more, in its pocket, nothing else in the bag
+changed, the stack's cap answered with "max", still there five seconds later – and the money +₽1,000 / +₽10,000 /
++₽100,000 / max / +₽1,000. Then the game's own bag and trainer card where the plan could open them.
+
+| Game (ROM) | Items (8) | Money | In the game | Notes |
+|---|---|---|---|---|
+| Red, Blue (US/EU) | ✅ one bag | ✅ BCD | Blue: bag ×99 each, card ¥999999 | |
+| Yellow (US/EU) | ✅ | ✅ | – | plan: walk to the ball on Oak's table |
+| Gold, Silver (US/EU) | ✅ balls in the Ball pocket | ✅ | Gold: Items and Balls pockets, card ¥999999 | Ball pocket: 12 slots, never past them |
+| Crystal (US) | ✅ | ✅ | Items pocket | |
+| Ruby (US, German), Sapphire (German) | ✅ | ✅ | bag, Poké Ball pocket, card ₽999999 | |
+| Emerald (US) | ✅ | ✅ | bag, Poké Ball pocket, card ₽999999 | |
+| Emerald (German, from the acceptance save) | ✅ | ✅ | in a Pokémon Center: bag, Poké Ball pocket, card ₽999999 | the plan's new game doesn't get past a townsperson |
+| FireRed (US, German) | ✅ | ✅ | – | |
+| Diamond (US) | ✅ from an empty bag | ✅ | – (lakefront scene) | empty bag taken: save pointer + party + trainer block |
+| Platinum (US) | ✅ from an empty bag | ✅ | – | |
+| HeartGold, SoulSilver (US, from a save) | ✅ | ✅ | overworld: Items › Max Repel ×999 | SoulSilver loads the HeartGold save |
+| Black, White, Black 2, White 2 (US/EU) | ✅ from an empty bag; balls with the items | ✅ | – | empty bag taken: the party at its own address, trainer name, money |
+| Sun 1.0 (the app, free play, an Iki Town save) | ✅ through the menu's buttons, amounts ×1/×10/×99 | not offered | Medicine: Rare Candy ×10, Full Restore, Revive, Max Revive (NEW) after Continue | written on the title screen, kept when the game continues |
+| Ultra Moon 1.0 (a new game, player3ds.html) | ✅ after the intro had set the bag up | not offered | – | two writes during the intro's own set-up: refused ("changed") or undone by the game |
+| Y, Omega Ruby Rev 2 (a new game) | written and read back, but 2 of 40 undone by the game during the intro | not offered | – | **not offered** – no save to try them past the intro |
+
+The menu in the app (Sun): before the team is read "Available once live tracking has found your team." on every row;
+then the confirm bar ("Add 10 × Rare Candy to your bag?"), the flash ("+10 × Rare Candy in your bag"), the menu in the
+four colour schemes; Tab reaches ×1/×10/×99 and every item.
 
 ### With players' saves (2.5.0)
 
@@ -376,6 +408,18 @@ German FireRed/LeafGreen (2.3.1, issue #16) – the memory table was right, two 
   in White (one Pokémon in the test team).
 - Run & Bun: double battles aren't read as such – the panel follows the left Pokémon of each side, and its partner once the left one is down; both at once aren't shown (no double battle in the test run, checked with a test only).
 - Expanded-engine hacks (Run & Bun, Too Many Types, Unbound, Radical Red …): the Rare Candy cheat is off (other item numbers).
+- **Pokémon Quetzal Alpha 9v1** (Emerald header BPEE, title "PKM QUETZAL", SHA-1 c108cec7…, 3.0): recognised by its header
+  title (it used to be read as Emerald: no team, "Pokémon Emerald Version", the randomizer's check failing with
+  "unreadable"). Checked by hand in a new game (Kanto start): Sprigatito (species 1214 → #906) from Oak, the rival's
+  Squirtle (trainer, 13 → 7 → 0, a forced faint of the starter read as 0 HP), a wild Pidgey on Route 1 caught → "Route 1";
+  Pallet Town / Route 1 / Oak's lab from the ROM's place names (one pointer per language per section); held items by the
+  game's names (Gengarite, Rare Candy – as its summary screen shows them). Its party struct is 104 bytes (HP and status
+  packed in front of an unencrypted data block – shared/live/quetzal.mjs), SaveBlock1's position 0x470 bytes behind
+  gSaveBlock1Ptr 0x030055BC. Not read: the PC boxes (another box struct, unchecked), badges and level caps (the hack has
+  its own), shininess (it has "radiant" Pokémon of its own – unchecked), sprites of its own Pokémon (Browt, Pombon,
+  Gecqua: named, no picture). Off: cheats and gifts (its bag packs item and quantity into one encrypted word), souldew's
+  randomizer (UPR ZX refuses the 32 MB ROM – the hack has its own), link trades and battles, Shared World, raids. Only
+  the Kanto start and its first route were played; Johto/Hoenn starts and double wild battles (a new-game option) weren't.
 - Too Many Types 1/2: only the start of each game was played (to the first catch); double battles weren't met. Their
   moves' types aren't read (pokeemerald-expansion packs gBattleMoves differently): the battle helper shows matchups by
   the Pokémon's types only, not per move.

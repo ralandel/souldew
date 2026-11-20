@@ -474,3 +474,10 @@ test('a 2.8.1 fast-forward key souldew’s menu has here (F11 on Windows / Linux
     for (const k of ['ctl.refusedNow', 'ctl.refusedNone', 'ctl.keepKey', 'ctl.ownerMenu', 'ctl.ownerSystem']) assert.ok(j[k], `${lang}: ${k}`);
   }
 });
+
+test('3.0: ⌘I / Ctrl+I folds the play view\'s dock – no shortcut can take it (it would never fire)', async () => {
+  const C = await import('../web/lib/controls.mjs');
+  assert.equal(C.reservedCombo({ keyCode: 73, meta: true }, true), 'menu');
+  assert.equal(C.reservedCombo({ keyCode: 73, ctrl: true }, false), 'menu');
+  assert.equal(C.reservedCombo({ keyCode: 73 }, true), null, 'I alone stays free');
+});
