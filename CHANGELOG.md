@@ -2,7 +2,7 @@
 
 `npm run release` takes the release notes from the section of the version being released.
 
-## 3.0.0-r.1
+## 3.0.0-r.2
 
 **souldew Renaissance passe en 3.0** : tout le multijoueur de souldew 3.0 (détails dans la section 3.0.0 juste en
 dessous), avec ce qui fait souldew Renaissance.
@@ -22,8 +22,10 @@ dessous), avec ce qui fait souldew Renaissance.
   On invite toujours les autres joueurs avec le code d'invitation. Le bouton en bas de la barre latérale reste « Buy me
   a coffee » pour l'auteur original.
 - **Rising Ruby et Sinking Sapphire** restent reconnus comme des ROM hacks, à côté du nouveau Pokémon Quetzal.
-- Les runs créées avec souldew Renaissance 2.8.3 continuent ; chaque joueur doit passer en 3.0.0-r.1 pour les nouveautés
+- Les runs créées avec souldew Renaissance 2.8.3 continuent ; chaque joueur doit passer en 3.0.0-r.2 pour les nouveautés
   multijoueur.
+- **Windows uniquement** : souldew Renaissance n'est plus construit pour Linux (personne n'y joue). 3.0.0-r.1 n'a
+  jamais été publiée (build Windows arrêté par un test sensible au timing) : r.2 est la première 3.0.
 
 ## 3.0.0
 

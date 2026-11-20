@@ -4,14 +4,14 @@ name: Release
 # The tag must match "version" in package.json, and CHANGELOG.md needs a "## 2.1.0" section (the release notes).
 #
 # Windows: the installer is always built here (windows-latest).
-# Linux: the AppImage and the .deb are always built here (ubuntu-latest).
+# Linux: not built for souldew Renaissance releases (nobody plays it on Linux) – the feed has no Linux entry, so a
+# Linux install isn't offered updates. The Linux job is kept below, switched off: set LINUX_RELEASE to bring it back.
 # macOS: the DMG is built here only when the repository variable MACOS_RELEASE is "true" (Settings › Secrets and
 # variables › Actions › Variables) – macOS runners don't start for this repository at the moment.
 #
-# - DMG built here and SLS_RELEASE_KEY set: the release is published right away with the DMG, the Windows installer,
-#   the AppImage, the .deb and one signed latest.json for all of them. Installed apps find it within a few hours.
-# - Otherwise: a DRAFT release with the Windows installer and the Linux packages is created (installed apps don't see
-#   drafts). Finish it on a Mac – see docs/DEVELOPMENT.md › "Releasing": build the DMG, download the installer and the
+# - SLS_RELEASE_KEY set: the release is published right away with the Windows installer (and the DMG when macOS was
+#   built) and one signed latest.json for them. Installed apps find it within a few hours.
+# - Otherwise: a DRAFT release with the Windows installer is created (installed apps don't see drafts). Finish it on a Mac – see docs/DEVELOPMENT.md › "Releasing": build the DMG, download the installer and the
 #   AppImage from the draft, run `npm run release` (signs one latest.json for all), upload DMG + latest.json to the
 #   draft and publish it.
 #
@@ -33,12 +33,16 @@ concurrency:
 
 jobs:
   ctr:
-    name: The 3DS part for Windows and Linux
+    name: The 3DS part for Windows
     uses: ./.github/workflows/ctr.yml
+    with:
+      platforms: windows
 
   native:
-    name: The fast player part for Windows and Linux
+    name: The fast player part for Windows
     uses: ./.github/workflows/native.yml
+    with:
+      platforms: windows
 
   windows:
     name: Build the Windows installer
@@ -67,7 +71,8 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - run: npm ci
       - run: npm run lint
-      - run: npm test
+      # the suite, and the files that failed once more on their own (scripts/test-ci.mjs – timing-sensitive tests)
+      - run: npm run test:ci
       - run: node scripts/fetch-jre.mjs x64
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -93,6 +98,8 @@ jobs:
 
   linux:
     name: Build the Linux AppImage and .deb
+    # souldew Renaissance: Windows only (see the top); the ctr / native jobs above would need `platforms: windows,linux`
+    if: vars.LINUX_RELEASE == 'true'
     needs: [ctr, native]
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -105,7 +112,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: npm run test:ci
       - name: Virtual display for the smoke test; user namespaces for Chromium's sandbox (see linux.yml)
         run: |
           sudo apt-get update
@@ -148,7 +155,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: npm run test:ci
       - name: The 3DS part (host, Azahar core with the souldew patch, MoltenVK – npm run dist checks it)
         run: |
           brew install cmake ninja spirv-tools vulkan-headers git-lfs rgbds # (rgbds: SameBoy's boot ROMs – fast player and link host)
@@ -168,9 +175,9 @@ jobs:
   publish:
     name: Publish the GitHub release
     needs: [windows, linux, macos]
-    # runs when Windows and Linux succeeded – with the DMG when macOS was built, without it when macOS failed or was
-    # skipped (souldew Renaissance: a failed macOS build must not hold back the Windows and Linux update)
-    if: always() && needs.windows.result == 'success' && needs.linux.result == 'success'
+    # runs when Windows succeeded – with the DMG / the Linux packages when they were built, without them when they failed
+    # or were skipped (souldew Renaissance: only the Windows build has to succeed)
+    if: always() && needs.windows.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write # gh release create
@@ -199,9 +206,10 @@ jobs:
           if [ -n "$RELEASE_KEY" ]; then
             key="$RUNNER_TEMP/release-key.pem"
             (umask 077 && printf '%s\n' "$RELEASE_KEY" > "$key")
-            if [ -f "$dmg" ]; then mac=(--dmg "$dmg"); platforms="macOS + Windows + Linux"
-            else mac=(--no-mac); platforms="Windows + Linux"; echo "::warning::No macOS DMG – this release updates Windows and Linux only"; fi
-            node scripts/release.mjs --key "$key" "${mac[@]}" --win-exe "$exe" --appimage "$appimage" --deb "$deb"
+            platforms="Windows"
+            if [ -f "$dmg" ]; then mac=(--dmg "$dmg"); platforms="macOS + $platforms"; else mac=(--no-mac); fi
+            if [ -f "$appimage" ]; then lin=(--appimage "$appimage" --deb "$deb"); platforms="$platforms + Linux"; else lin=(--no-linux); fi
+            node scripts/release.mjs --key "$key" "${mac[@]}" --win-exe "$exe" "${lin[@]}"
             rm -f "$key"
             out="dist/release-$VERSION"
             # not a draft or pre-release: the apps read releases/latest/download/latest.json
@@ -216,9 +224,9 @@ jobs:
               const notes = changelogSection(readFileSync('CHANGELOG.md', 'utf8'), process.env.VERSION);
               if (notes == null) { console.error('CHANGELOG.md has no ## ' + process.env.VERSION + ' section'); process.exit(1); }
               writeFileSync('notes.md', notes + '\n');"
-            gh release create "v$VERSION" "$exe" "$appimage" "$deb" --draft --repo "$GITHUB_REPOSITORY" --title "souldew Renaissance $VERSION" --notes-file notes.md --verify-tag
+            gh release create "v$VERSION" "$exe" $([ -f "$appimage" ] && echo "$appimage $deb") --draft --repo "$GITHUB_REPOSITORY" --title "souldew Renaissance $VERSION" --notes-file notes.md --verify-tag
             {
-              echo "### Draft release v$VERSION created (Windows installer + Linux packages)"
+              echo "### Draft release v$VERSION created (Windows installer)"
               echo "Installed apps don't see it yet. Finish it on a Mac (docs/DEVELOPMENT.md › Releasing):"
               echo '```'
               echo "npm run dist"
