@@ -378,3 +378,37 @@ test('a Platinum save from melonDS reaches the run: the team, and a catch filed 
   assert.equal(noPc.boxes, null);
   assert.equal(R.snapshotFromSave(noPc).boxes, null);
 });
+
+// #43: a new game prepares its flash during the intro (Blaze Black 2 Redux, Black 2: the fast player hands souldew a
+// battery save half a minute in) – that file holds no save yet, and "Save file unreadable" at the intro of every new
+// run only alarmed players. A save that was readable and then isn't, or one that was there when the watch started and
+// can't be read, still says so.
+test('a new game\'s prepared flash (no save in it yet) is no error message; the first in-game save is read as always', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'souldew-savewatch-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const sav = join(dir, 'p1.sav');
+  const { w, events, last } = watcherFor(dir);
+  t.after(() => w.unwatch('r1'));
+  w.watch('r1', sav);
+  const prepared = new Uint8Array(0x80000).fill(0xff);
+  prepared.fill(0, 0x100, 0x400); // (not blank: the game wrote something, but no block passes)
+  writeFileSync(sav, prepared);
+  assert.ok(await until(() => w.status('r1').errorCode === 'saveNotFound'), 'read, and why it holds no save is in the status');
+  await sleep(300);
+  assert.equal(events.filter((e) => e.ev === 'save-error').length, 0, 'no message');
+  writeFileSync(sav, sinnohSave('pt', [{ p: 0, count: 1, party: [STARTER] }]));
+  assert.ok(await until(() => last() === '390'), 'the first in-game save');
+  assert.equal(w.status('r1').error, null);
+  // readable before, unreadable now: said
+  writeFileSync(sav, prepared);
+  assert.ok(await until(() => events.some((e) => e.ev === 'save-error')));
+  // a file there from the start that holds no save (a broken save of an older session): said too
+  const dir2 = mkdtempSync(join(tmpdir(), 'souldew-savewatch-'));
+  t.after(() => rmSync(dir2, { recursive: true, force: true }));
+  const sav2 = join(dir2, 'p1.sav');
+  writeFileSync(sav2, prepared);
+  const b = watcherFor(dir2);
+  t.after(() => b.w.unwatch('r2'));
+  b.w.watch('r2', sav2);
+  assert.ok(await until(() => b.events.some((e) => e.ev === 'save-error')));
+});

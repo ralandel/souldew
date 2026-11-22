@@ -157,6 +157,16 @@ export async function linkEmail(email) {
 }
 /** The VERIFIED entitlement (the local server checked the service's signed token – server/lib/accounts/enttoken.mjs). */
 export const entitlements = () => api.get('/api/account/entitlements');
+/** Start the 7-day souldew+ trial (§8.6: once per Discord account, nothing to pay or cancel). Errors carry vars.code
+ * ('trial_used', 'trial_unavailable' with vars.reason). */
+export async function startTrial() {
+  const r = await api.post('/api/account/trial');
+  await reloadAccount();
+  return r;
+}
+/** "Find a SoulLink partner" (§14): the post goes up in the souldew Discord's #find-a-partner → { url }. Errors carry
+ * vars.code ('lfg_active' with vars.url, 'lfg_not_member', 'lfg_unavailable', 'text_rejected', 'rate_limited'). */
+export const findPartner = (post) => api.post('/api/account/lfg', post);
 /** Unlink every membership from this account (§8.5): the pack key rotates, the local pack cache is wiped. */
 export async function unlinkMembership() {
   const r = await api.del('/api/account/link');

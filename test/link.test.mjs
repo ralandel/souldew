@@ -303,7 +303,7 @@ function browserGlobals() {
 }
 
 /** Two pages of one run (p1 = Sam, p2 = Tim): their channel, their servers (fetch), what reached the link hosts. */
-async function pair({ missingOnB = false, seamless = false, binary = false, saveStatus = 200, consoles = null, oldB = false, rules = {}, third = null, beforeRestore = undefined } = {}) {
+async function pair({ missingOnB = false, seamless = false, binary = false, saveStatus = 200, consoles = null, oldB = false, rules = {}, third = null, beforeRestore = undefined, system = 'gba' } = {}) {
   const g = browserGlobals();
   const { LinkSessions } = await import('../web/lib/linksession.mjs');
   const roms = { p1: 'a'.repeat(40), p2: 'b'.repeat(40), p3: 'c'.repeat(40) };
@@ -339,7 +339,7 @@ async function pair({ missingOnB = false, seamless = false, binary = false, save
     const s = server[who];
     const body = opts.body && typeof opts.body === 'string' ? JSON.parse(opts.body) : null;
     const json = (v) => ({ ok: true, status: 200, json: async () => v });
-    if (url.startsWith('/api/link/check')) return json({ tool: true, supported: true, system: 'gba', slots: { [who]: { rom: true, sha1: roms[who], crc: null } } });
+    if (url.startsWith('/api/link/check')) return json({ tool: true, supported: true, system, slots: { [who]: { rom: true, sha1: roms[who], crc: null } } });
     if (url === '/api/link/resolve') return json({ seats: {}, missing: s.missing });
     if (url === '/api/link/pick') { s.missing = []; return json({ ok: true }); }
     if (url.startsWith('/api/runs/')) return { ok: saveStatus === 200, status: saveStatus, arrayBuffer: async () => new TextEncoder().encode(`save of ${who}`).buffer };
@@ -608,6 +608,97 @@ test('linksession: hashes differ → the session ends on both, each run\'s save 
   assert.equal(server.p1.restores.length, 1);
   assert.equal(A.state.ended.restored.backup, 'p.link-x.sav');
   assert.equal(closed.p1 + closed.p2, 2);
+  A.stop(), B.stop();
+});
+
+test('linksession: a link that stands still is never silent – waiting at one frame for a minute ends it on both with a message, each game goes on', async () => {
+  const { A, B, g, settle, closed, emuLog } = await pair({ seamless: true });
+  const { STALL_MS } = await import('../web/lib/linksession.mjs');
+  const { diagDump } = await import('../web/lib/diag.mjs');
+  await A.invite('trade', ['p2']);
+  await settle(100);
+  await B.accept();
+  await settle(3500);
+  assert.equal(A.state.phase, 'running');
+  // the host waits at frame 500 (the page hears it every 250 ms) – a short wait is only shown, nothing ends
+  g.post({ type: 'emu-link-wait', seats: 2, frame: 500, ms: 250 });
+  await settle(100);
+  assert.equal(A.state.phase, 'running');
+  assert.ok(A.state.waiting, 'the bar says it waits');
+  // frames go on (a hash) and a wait at another frame: the clock starts again
+  A.stall.since -= STALL_MS - 1000;
+  g.post({ type: 'emu-link-hash', frame: 600, hash: 'aaaa', done: [600, 600], have: [604, 603] });
+  await settle(50);
+  assert.equal(A.stall, null, 'frames went on');
+  g.post({ type: 'emu-link-wait', seats: 2, frame: 700, ms: 250 });
+  await settle(50);
+  assert.equal(A.state.phase, 'running');
+  // a partner coming back (rejoin) has a reason and an end: no stall meanwhile
+  A.stall.since -= STALL_MS;
+  await A._in({ t: 'rejoin', sid: A.state.sid, from: 'p2' }).catch(() => {});
+  assert.equal(A.stall, null);
+  // still at frame 700 a minute later: the link ends – on both (the bye), with the message, each game alone again
+  g.post({ type: 'emu-link-wait', seats: 2, frame: 700, ms: 250 });
+  await settle(50);
+  A.stall.since -= STALL_MS;
+  B.stall = null; // (B's host is not the one waiting)
+  g.post({ type: 'emu-link-wait', seats: 2, frame: 700, ms: 250 });
+  await settle(800);
+  assert.equal(A.state.phase, 'ended');
+  assert.equal(B.state.phase, 'ended');
+  assert.equal(A.state.ended.reason, 'linkStalled');
+  assert.equal(B.state.ended.reason, 'linkStalled');
+  assert.equal(A.state.ended.mine, true);
+  assert.equal(closed.p1 + closed.p2, 2);
+  assert.ok(emuLog.p1.some((e) => e[0] === 'resume' && e[1] === null), 'A goes on alone from where the session left it');
+  assert.ok(emuLog.p2.some((e) => e[0] === 'resume' && e[1] === null), 'B too');
+  // what Help's "Save diagnostics" now holds of it: the start, the session running, the waits, the end
+  const log = diagDump().logs.link || [];
+  for (const type of ['start', 'run', 'wait', 'end']) assert.ok(log.some((e) => e.type === type), `diagnostics: ${type}`);
+  const run = log.find((e) => e.type === 'run' && e.frame === 600); // (the log is the page's: other tests' sessions are in it too)
+  assert.deepEqual([run?.done, run?.have], [[600, 600], [604, 603]]);
+  assert.ok(log.some((e) => e.type === 'end' && e.reason === 'linkStalled'));
+  assert.ok(log.some((e) => e.type === 'start' && e.fromState.length === 2), 'both seats from the running games');
+  A.stop(), B.stop();
+});
+
+test('linksession, DS: a partner on souldew 3.0.0 (no session clock) – the link doesn\'t start, both are told to update', async () => {
+  // (oldB: everything to and from B goes without caps, as an older build sends it)
+  const { A, B, settle } = await pair({ system: 'nds', oldB: true });
+  await A.invite('trade', ['p2']);
+  await settle(100);
+  await B.accept();
+  await settle(800);
+  assert.equal(B.state.phase, 'ended');
+  assert.equal(B.state.ended.reason, 'linkOlder');
+  assert.equal(A.state.phase, 'ended');
+  assert.equal(A.state.ended.reason, 'linkOlder');
+  A.stop(), B.stop();
+  // the same builds: a DS link goes ahead
+  const p = await pair({ system: 'nds' });
+  await p.A.invite('trade', ['p2']);
+  await p.settle(100);
+  await p.B.accept();
+  await p.settle(3500);
+  assert.equal(p.A.state.phase, 'running');
+  assert.equal(p.B.state.phase, 'running');
+  p.A.stop(), p.B.stop();
+});
+
+test('linksession: a console the link host reports stuck ends the link on both with a message (never a silent black game)', async () => {
+  const { A, B, g, settle, closed } = await pair({ seamless: true });
+  await A.invite('trade', ['p2']);
+  await settle(100);
+  await B.accept();
+  await settle(3500);
+  assert.equal(A.state.phase, 'running');
+  g.post({ type: 'emu-link-stuck', seats: 2, frame: 840, behind: 720 });
+  await settle(800);
+  assert.equal(A.state.ended.reason, 'linkStuck');
+  assert.equal(B.state.ended.reason, 'linkStuck');
+  assert.equal(closed.p1 + closed.p2, 2);
+  const { diagDump } = await import('../web/lib/diag.mjs');
+  assert.ok((diagDump().logs.link || []).some((e) => e.type === 'stuck' && e.behind === 720));
   A.stop(), B.stop();
 });
 

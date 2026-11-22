@@ -448,6 +448,9 @@ function ctrSlotKind(L, v, pocket) {
   const id = ctrId(L, v);
   const qty = ctrCount(L, v);
   if (!id) return qty ? 2 : 0; // (an empty slot has no count)
+  // Sun/Moon, Ultra Sun/Ultra Moon keep an item's id with count 0 when the last one leaves the bag (given to a Pokémon
+  // to hold, used up) – a slot of the bag all the same, just not a used one (#45)
+  if (L.gen === 7 && !qty && id <= L.maxId && !(v >>> 31)) return 0;
   if (id > L.maxId || qty < 1 || qty > 999 || (L.gen === 7 && v >>> 31)) return 2;
   if ((pocket === 'medicine' && !MED67.has(id)) || (pocket === 'tm' && !TM67.has(id))) return 2;
   return 1;

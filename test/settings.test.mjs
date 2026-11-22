@@ -50,7 +50,7 @@ set.soundsAll set.speedGuard set.speedGuardFull set.speedGuardHint set.system se
 set.wholePixels set.wholePixelsHint theme.classic theme.classicHint theme.contrast theme.contrastHint theme.deutan theme.deutanHint theme.tritan
 theme.tritanHint upd.restart
 ctl.alsoKey ctl.hotkeyUnbindable ctl.keepKey ctl.menu ctl.noKey ctl.none ctl.pressFor ctl.refusedNow ctl.resetBar ctl.sneakHint ctl.system
-ctl.tookOver2 ctl.undo guide.shortcuts pad.home pad.navHintHome pad.pressFor pad.sneak set.controlsText2 set.presence set.presenceHint set.presenceMore`.split(/\s+/);
+ctl.tookOver2 ctl.undo guide.shortcuts pad.home pad.navHintHome pad.pressFor pad.sneak set.controlsText2 set.presence set.presenceHint2 set.presenceMore`.split(/\s+/);
 
 test('every setting of the old page still has its entry, is rendered in its tab and still saves the same thing', () => {
   for (const [id, code] of OLD_SETTINGS) {

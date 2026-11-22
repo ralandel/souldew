@@ -65,6 +65,46 @@ test('Gen 1 (Red): party from WRAM', () => {
   assert.equal(readLiveParty(e, regionReader([{ addr: reg.addr, hex }]), T).party[0].nickname, 'BULBA');
 });
 
+test('Gen 1 (#83): the box chosen in the PC is read too – where a catch goes with a full team', () => {
+  const e = findEntry(TABLE, { platform: 'gb', title: 'POKEMON RED' });
+  const m = memory();
+  const cs = inv(L('charset_gen1.json'));
+  m.write(0xd163, [1, 0x99, 0xff]);
+  const mon = new Uint8Array(44);
+  mon[0] = 0x99;
+  mon[2] = 18;
+  mon[0x21] = 7;
+  mon[0x23] = 23;
+  m.write(0xd16b, mon);
+  m.write(0xd2b5, [...'BULBA'].map((c) => cs[c]).concat([0x50]));
+  // an empty box: count 0, terminator
+  m.write(0xda80, [0, 0xff]);
+  assert.deepEqual(readLiveParty(e, m.read, T, {}).box, []);
+  // a Pidgey caught into it (as Red wrote it, checked live: wNumInBox 1, species 0x24, terminator)
+  const box = new Uint8Array(33);
+  box[0] = 0x24;
+  box[2] = 16;
+  box[3] = 3; // the box level
+  box[0x0c] = 0x56; box[0x0d] = 0x50; // OT ID
+  box[0x1b] = 0x7b; box[0x1c] = 0x48; // DVs
+  m.write(0xda80, [1, 0x24, 0xff]);
+  m.write(0xda96, box);
+  m.write(0xde06, [...'PIDGEY'].map((c) => cs[c]).concat([0x50]));
+  const state = {};
+  let r = readLiveParty(e, m.read, T, state);
+  if (r.torn) r = readLiveParty(e, m.read, T, state); // (a changed box counts once it reads the same twice)
+  assert.deepEqual(r.box.map((x) => [x.species, x.level, x.nickname, x.key, x.inBox]), [[16, 3, 'PIDGEY', 'g1-5650-7b48', true]]);
+  assert.equal(r.party.length, 1, 'the team is the team');
+  assert.equal(r.boxes, undefined, 'one box is not the whole PC');
+  // what doesn't read as a box (a count over 20, no terminator, a species byte that doesn't match the list) is none
+  m.write(0xda80, [1, 0x25, 0xff]);
+  assert.equal(readLiveParty(e, m.read, T, {}).box, undefined);
+  m.write(0xda80, [21]);
+  assert.equal(readLiveParty(e, m.read, T, {}).box, undefined);
+  // Yellow and Gen 2 keep no such box (unchecked / in the cartridge's RAM)
+  assert.equal(findEntry(TABLE, { platform: 'gb', title: 'POKEMON YELLOW' }).box, undefined);
+});
+
 test('Gen 2 (Crystal): party with caught location', () => {
   const e = findEntry(TABLE, { platform: 'gbc', title: 'PM_CRYSTAL', code: 'BYTE' });
   const m = memory();

@@ -20,6 +20,10 @@
 //   - A packet carries its sender's clock; a non-blocking receive only sees packets sent at or before the receiver's
 //     clock, a blocking one those sent before its horizon. Every decision depends only on emulated state, so the same
 //     ROMs + saves + start time + per-frame inputs give the same consoles on every peer (and the same as a re-run).
+//   - "Clock" is a console's session clock: its emulated time since the session began (SysTimestamp minus what it was
+//     at the start). Consoles that join from the players' running games have been on for very different times
+//     (minutes apart, more with fast-forward) – on their own clocks the one on longest would stand still until the
+//     others caught up with it, and its player would see nothing but black (souldew 3.0.0, Union Room trades).
 // run_frame() runs the schedule until every console finished the session frame – or still waits for a packet past
 // another console's frame end (then it simply carries on in the next run_frame; consoles stay within a frame of each
 // other).
@@ -74,6 +78,8 @@ constexpr u64 kWaitCycles = kClock / 1000 * 4; // how long a blocking MP receive
 struct LinkNDS : public NDS {
   LinkNDS(NDSArgs &&args, void *user) : NDS(std::move(args), user) {}
   u64 Now() const { return SysTimestamp; }
+  /** The Wi-Fi chip is powered (POWCNT2 bit 1 and W_POWER_US) – as melonDS's Wifi::UpdatePowerOn decides it. */
+  bool WifiOn() { return (PowerControl7 & 0x0002) && !(Wifi.Read(0x04808036) & 1); }
 };
 
 struct Packet {
@@ -91,13 +97,14 @@ struct Seat {
   std::unique_ptr<LinkNDS> nds;
   std::thread thread;
   St st = St::Done;
+  u64 base = 0;    // SysTimestamp when the session began: the session's clock is SysTimestamp − base
   u64 t = 0;       // clock at the last yield
   u64 horizon = 0; // Waiting: times out when every other console passed this
   bool woken = false;
   int waitKind = 0; // 1 host packet, 2 replies
   std::deque<Packet> rx, replies;
   bool connected = false; // between MP_Begin and MP_End (the Wi-Fi chip is on)
-  u32 frames = 0;         // frames finished
+  u32 frames = 0;         // frames finished (in this session)
   std::deque<link_input> inputs; // inputs for the frames not started yet (front = next)
   link_input cur = 0;
   std::vector<u32> video; // 256 × 384, top screen above the bottom one (0x00BBGGRR)
@@ -115,7 +122,7 @@ bool solo = false;    // one console alone (see the header)
 int lastHost = -1;    // the seat that sent the last CMD frame (LocalMP's LastHostID)
 
 /** Pick the console that runs next (lock held). Returns -1 when the session frame is over. */
-int pick() {
+int pick(int *doneBest = nullptr) {
   int best = -1;
   u64 bv = 0;
   int bp = 0;
@@ -131,6 +138,7 @@ int pick() {
     }
     if (best < 0 || v < bv || (v == bv && p < bp)) best = i, bv = v, bp = p;
   }
+  if (doneBest) *doneBest = best >= 0 && seats[best].st == St::Done ? best : -1;
   if (best < 0 || seats[best].st == St::Done) return -1;
   return best;
 }
@@ -149,6 +157,8 @@ void yield(std::unique_lock<std::mutex> &lk, int me) {
 }
 
 Seat &seatOf(void *user) { return *static_cast<Seat *>(user); }
+/** The seat's session clock (see the header). */
+u64 clk(const Seat &s) { return s.nds->Now() - s.base; }
 
 /** Wake waiting consoles that now have what they wait for (lock held). */
 void wakeWaiters() {
@@ -164,7 +174,7 @@ void wakeWaiters() {
 int send(void *user, u32 type, const u8 *data, int len, u64 wifiTs) {
   Seat &me = seatOf(user);
   std::unique_lock<std::mutex> lk(lock);
-  me.t = me.nds->Now();
+  me.t = clk(me);
   Packet p{me.index, type, me.t, wifiTs, std::vector<u8>(data, data + (len > 0 ? len : 0))};
   if ((type & 0xFFFF) == 1) { // a CMD: this console is the host now, older replies are void
     lastHost = me.index;
@@ -194,7 +204,7 @@ std::optional<Packet> take(std::deque<Packet> &q, u64 limit) {
 /** A blocking receive: first let everyone behind catch up, then wait (emulated) for a packet. */
 std::optional<Packet> waitFor(Seat &me, std::unique_lock<std::mutex> &lk, int kind) {
   auto &q = kind == 2 ? me.replies : me.rx;
-  me.t = me.nds->Now();
+  me.t = clk(me);
   me.st = St::Ready;
   yield(lk, me.index);
   if (auto p = take(q, me.t + kWaitCycles)) return p;
@@ -236,7 +246,7 @@ void seatMain(Seat *s) {
       }
     }
     s->frames++;
-    s->t = s->nds->Now();
+    s->t = clk(*s);
     s->st = St::Done;
       const int next = pick();
       baton = next;
@@ -357,8 +367,12 @@ bool d_open(const struct link_open *o) {
       if (!s.nds->DoSavestate(&ss) || ss.Error) { host_log("ds: seat %d: state not loadable", i); return false; }
       const u8 *v = s.nds->GetNDSSave(); // (the battery save came back with the cartridge's state)
       if (v) s.sram.assign(v, v + s.nds->GetNDSSaveLength());
+      // a game in the middle of its wireless (standing in the Union Room alone): melonDS powers the chip on from the
+      // state without telling the platform (MP_Begin) – without this the console would never hear the others
+      s.connected = s.nds->WifiOn();
     }
-    s.t = s.nds->Now();
+    s.base = s.nds->Now(); // (every console's session clock starts at 0, at its frame end)
+    s.t = 0;
     s.st = St::Done;
   }
   for (int i = 0; i < n; i++) seats[i].thread = std::thread(seatMain, &seats[i]);
@@ -390,16 +404,37 @@ void d_set_input(int seat, link_input in) {
   while (seats[seat].inputs.size() > 8) seats[seat].inputs.pop_front();
 }
 
+/**
+ * One session frame: every console finishes one more frame. A console that waits mid-frame for a packet times out only
+ * once every other console passed its horizon – and the one that holds it back may already be at its frame end. That
+ * one then starts its next frame right away (with its next buttons if they are queued, else the ones it holds), so the
+ * waiting one can go on. (souldew 3.0.0 ended the session frame there instead: in a wireless exchange – the whole Union
+ * Room – the consoles took turns finishing their frames, the games ran at half speed and the input queue overflowed.)
+ * The order of everything the consoles do is the same either way; only the frames are counted out fairly.
+ */
 void d_run_frame() {
   std::unique_lock<std::mutex> lk(lock);
-  for (int i = 0; i < nseats; i++)
+  u32 target[LINK_MAX_SEATS];
+  for (int i = 0; i < nseats; i++) {
+    target[i] = seats[i].frames + 1;
     if (seats[i].st == St::Done) seats[i].st = St::Ready; // the next frame (a console still waiting mid-frame goes on)
-  const int next = pick();
-  if (next < 0) return;
-  baton = next;
-  seats[next].st = St::Running;
-  cv.notify_all();
-  cv.wait(lk, [&] { return baton == -1; });
+  }
+  for (int ahead = 0;;) {
+    int done = -1;
+    const int next = pick(&done);
+    if (next < 0) {
+      bool all = true;
+      for (int i = 0; i < nseats; i++) all = all && seats[i].frames >= target[i];
+      // (a console never runs more than a few frames ahead: the others' waits end within 4 ms of emulated time)
+      if (all || done < 0 || ++ahead > 3 * nseats) return;
+      seats[done].st = St::Ready; // the console holding the others back starts its next frame now
+      continue;
+    }
+    baton = next;
+    seats[next].st = St::Running;
+    cv.notify_all();
+    cv.wait(lk, [&] { return baton == -1; });
+  }
 }
 
 void d_video(int seat, const uint32_t **px, unsigned *w, unsigned *h, unsigned *stride) {
@@ -502,10 +537,11 @@ size_t d_state_size(int seat) {
   const u8 *b = static_cast<const u8 *>(ss.Buffer());
   me.stateCache.assign(b, b + ss.Length());
   using namespace mpstate;
-  put(me.stateCache, "LMP1", 4);
+  put(me.stateCache, "LMP2", 4); // (LMP1, souldew 3.0.0: no session clock – the consoles' own clocks were compared)
   put<u8>(me.stateCache, me.connected ? 1 : 0);
   put<u32>(me.stateCache, me.cur);
   put<s32>(me.stateCache, lastHost);
+  put<u64>(me.stateCache, me.base);
   putQueue(me.stateCache, me.rx);
   putQueue(me.stateCache, me.replies);
   return me.stateCache.size();
@@ -541,7 +577,8 @@ bool d_import(int seat, const void *in, size_t len) {
   std::vector<u8> copy(b, b + len);
   Savestate ss(copy.data(), static_cast<u32>(len), false);
   if (!me.nds->DoSavestate(&ss) || ss.Error) return false;
-  me.t = me.nds->Now();
+  me.base = me.nds->Now(), me.t = 0;
+  me.connected = me.nds->WifiOn();
   me.inputs.clear();
   return true;
 }
@@ -559,21 +596,25 @@ bool d_load_state(int seat, const void *in, size_t have) {
   std::vector<u8> copy(b, b + len);
   Savestate ss(copy.data(), len, false);
   if (!me.nds->DoSavestate(&ss) || ss.Error) return false;
-  me.t = me.nds->Now();
   const u8 *sv = me.nds->GetNDSSave(); // (the battery save came back with the cartridge's state)
   if (sv) me.sram.assign(sv, sv + me.nds->GetNDSSaveLength());
   me.inputs.clear();
   mpstate::Reader r{b + len, b + have};
-  if (have - len >= 4 && !memcmp(b + len, "LMP1", 4)) {
+  const bool v2 = have - len >= 4 && !memcmp(b + len, "LMP2", 4);
+  if (v2 || (have - len >= 4 && !memcmp(b + len, "LMP1", 4))) {
     r.p += 4;
     me.connected = r.get<u8>() != 0;
     me.cur = r.get<u32>();
     const s32 host = r.get<s32>();
     if (seat == 0) lastHost = host >= -1 && host < nseats ? host : -1;
+    me.base = v2 ? r.get<u64>() : 0; // (the session clock as the peers have it – the queued packets carry it)
+    me.t = clk(me);
     if (!r.queue(me.rx) || !r.queue(me.replies)) return false;
     return r.ok;
   }
-  me.rx.clear(), me.replies.clear(); // (an older state without the wireless part: the link drops)
+  me.rx.clear(), me.replies.clear(); // (a state without the wireless part: the link drops)
+  me.base = me.nds->Now(), me.t = 0;
+  me.connected = me.nds->WifiOn();
   return true;
 }
 
@@ -601,10 +642,15 @@ static int d_depth(int seat, int on, int x, int y, int w, int h, uint32_t *out) 
   return soft->SouldewDepth(x, y, w, h, out);
 }
 
+static uint32_t d_frames(int seat) {
+  std::lock_guard<std::mutex> g(lock);
+  return seat >= 0 && seat < nseats ? seats[seat].frames : 0;
+}
+
 extern "C" const struct link_backend link_backend_melonds = {
     "melonds", d_system, d_probe, d_open, d_close, d_set_input, d_run_frame, d_video, d_fps, d_sram, d_hash,
     d_mem, d_read8, d_write8, d_state_size, d_save_state, d_load_state, d_sample_rate, d_audio,
-    nullptr, d_export, d_import, d_depth,
+    nullptr, d_export, d_import, d_depth, d_frames,
 };
 
 // ---- melonDS's platform layer (what the core asks of a frontend) ---------------------------------------------------
@@ -761,7 +807,7 @@ int MP_SendAck(u8 *data, int len, u64 timestamp, void *userdata) { return send(u
 int MP_RecvPacket(u8 *data, u64 *timestamp, void *userdata) {
   Seat &me = seatOf(userdata);
   std::unique_lock<std::mutex> lk(lock);
-  me.t = me.nds->Now();
+  me.t = clk(me);
   me.st = St::Ready;
   yield(lk, me.index); // everyone behind this clock first: then every packet sent up to it is here
   auto p = take(me.rx, me.t);

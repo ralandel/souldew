@@ -135,9 +135,13 @@ test('which games get the new cheats: only bag layouts they were checked in – 
   assert.ok(cheatSupported(XY, 'fullRestore', { untried: true }));
 });
 
+// (This test "failed once" on 19.11 at 20:41 – not flaky: b12a56b had just taken White 2 out of shared/linkbattle.mjs
+// gameOfEntry to keep its link results off, and the money cheat finds a DS game's money through that table; 795f7cc
+// put it back three minutes later. Pure and deterministic since – 40 runs alone and 48 under load all passed. The
+// message names the coupling, so the next time says why.)
 test('money: offered where it was checked – the Game Boy, GBA and DS games with a known money address (Gen 3 in both languages), not the 3DS games', () => {
   for (const e of [RED, YELLOW, GOLD, CRYSTAL, RUBY, EMERALD, EMERALD_DE, FR, FR_DE, HG, DIAMOND, PLATINUM, BLACK, WHITE, BLACK2, entry({ platform: 'nds', code: 'IRDO' })]) {
-    assert.ok(moneySupported(e), e.id);
+    assert.ok(moneySupported(e), `${e.id}: no money cheat – its money comes from shared/linkbattle.mjs (GAMES / gameOfEntry); a game taken out there for its link results loses its money too`);
     assert.ok(cheatsFor(e).includes('money'), e.id);
   }
   for (const e of [SUN, UM, XY, ORAS, entry({ platform: 'nds', code: 'IPKD' }), { ...EMERALD, scan3: true, retail3: true }, { ...GOLD, wram: { delta: 11, moved: { '0xD5B7': 1 } } }]) {

@@ -129,6 +129,8 @@ function UnlinkModal({ tier, onClose, toast }) {
 
 function PlusGroup({ me, toast }) {
   const ent = me.entitlement || { tier: 'none', badges: [] };
+  // souldew+ from the 7-day trial alone (§8.6): its end, the membership to keep it – no "thank you", nothing to unlink
+  const onlyTrial = ent.tier === 'plus' && ent.trial?.state === 'running' && ent.trial.only === true;
   const [unlink, setUnlink] = useState(false);
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -158,13 +160,16 @@ function PlusGroup({ me, toast }) {
   return html`
       <div class="stack">
         <div class="row"><span class=${`chip ${isPlus(ent.tier) ? 'ok' : ''}`}>${tierName(ent.tier)}</span>
-          ${ent.until && html`<span class="small muted">${t('acct.until', 'until {date}', { date: dateOf(ent.until) })}</span>`}<${Badges} badges=${ent.badges} /></div>
-        <p class="small muted">${isPlus(ent.tier) ? t('acct.plusThanks', 'Thank you for supporting souldew! Your souldew+ banners, frames and nameplates are in the profile editor.')
+          ${onlyTrial ? html`<span class="small muted">${t('plus.trialEnds', 'Trial · ends {date}', { date: dateOf(ent.trial.until || ent.until) })}</span>`
+            : ent.until && html`<span class="small muted">${t('acct.until', 'until {date}', { date: dateOf(ent.until) })}</span>`}<${Badges} badges=${ent.badges} /></div>
+        ${onlyTrial && html`<div class="row"><button class="btn small go" onClick=${() => openExternal(LINKS.membership)}><${Icon} name="external" size=${14} />${t('plus.trialKeep', 'Keep it on Buy Me a Coffee')}</button></div>`}
+        <p class="small muted">${onlyTrial ? t('acct.trialText', 'Your souldew+ banners, frames and nameplates are in the profile editor. When the trial ends nothing renews – souldew goes back to its free looks and your picks wait for you.')
+          : isPlus(ent.tier) ? t('acct.plusThanks', 'Thank you for supporting souldew! Your souldew+ banners, frames and nameplates are in the profile editor.')
           : t('acct.plusText2', 'souldew stays free. If you support it on Buy Me a Coffee, souldew+ adds banners, frames and nameplates for your profile, the colour themes and everything for your handheld. Supporter gets a badge and the 3D launch with your own handheld.')}</p>
         ${!isPlus(ent.tier) && html`<div class="row"><a class="btn small go" href="#/plus"><${Icon} name="plus" size=${12} />${t('acct.seePlus', 'See souldew+')}</a>
           <button class="btn small ghost" onClick=${() => openExternal(LINKS.coffee)}><${Icon} name="coffee" size=${14} />${t('acct.toCoffee', 'Buy Me a Coffee')}</button></div>`}
         ${!isPlus(ent.tier) && html`<${PlusShowcase} />`}
-        ${ent.tier !== 'none' && html`<div class="row"><button class="btn small ghost" onClick=${() => setUnlink(true)}>${t('acct.unlink', 'Unlink membership …')}</button>
+        ${ent.tier !== 'none' && !onlyTrial && html`<div class="row"><button class="btn small ghost" onClick=${() => setUnlink(true)}>${t('acct.unlink', 'Unlink membership …')}</button>
           <span class="small muted">${t('acct.unlinkHint', 'Takes it off this account, e.g. to move it to another one. Re-linking the email waits 30 days.')}</span></div>`}
         ${unlink && html`<${UnlinkModal} tier=${ent.tier} toast=${toast} onClose=${() => setUnlink(false)} />`}
         <details class="group"><summary>${t('acct.linkTitle', 'Link a membership you already have')}</summary>
@@ -326,15 +331,16 @@ function useSignedIn(acct, toast) {
  */
 export function AccountSection({ toast }) {
   const acct = useAccount();
-  const on = acct.loaded && acct.session.signedIn;
+  // (known: the saved sign-in has been read – before that "signed out" only means "not read yet")
+  const on = acct.known && acct.session.signedIn;
   const parts = useSignedIn(acct, toast);
   return html`
     <${Group} title=${t('acct.title', 'souldew account')}>
-      <${Item} id="account">${!acct.loaded ? html`<p class="muted small">${t('common.loading', 'Loading …')}</p>` : on ? parts.who : html`<${SignedOut} acct=${acct} toast=${toast} />`}<//>
+      <${Item} id="account">${!acct.known ? html`<p class="muted small">${t('common.loading', 'Loading …')}</p>` : on ? parts.who : html`<${SignedOut} acct=${acct} toast=${toast} />`}<//>
     <//>
     ${on && parts.privacy && html`<${Group} title=${t('acct.privacy', 'Privacy')}><${Item} id="account-privacy">${parts.privacy}<//><//>`}
     ${on && parts.plus && html`<${Group} title="souldew+"><${Item} id="plus">${parts.plus}<//><//>`}
-    ${acct.loaded && !on && html`<${Group} title="souldew+"><${Item} id="plus-show"><div class="stack">
+    ${acct.known && !on && html`<${Group} title="souldew+"><${Item} id="plus-show"><div class="stack">
       <p class="small muted">${t('acct.plusText2', 'souldew stays free. If you support it on Buy Me a Coffee, souldew+ adds banners, frames and nameplates for your profile, the colour themes and everything for your handheld. Supporter gets a badge and the 3D launch with your own handheld.')}</p>
       <${PlusShowcase} /></div><//><//>`}
     ${on && html`<${Group} title=${t('acct.devices', 'Signed-in devices')}><${Item} id="account-sessions">${parts.sessions}<//><//>`}

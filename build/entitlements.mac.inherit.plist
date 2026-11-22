@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Every other program and library in souldew.app (electron-builder signs them with this file): Electron's helpers, and
+     the programs souldew starts itself –
+       tools/jre/…/bin/java       the bundled Java (the randomizer): HotSpot compiles to machine code (MAP_JIT) and loads
+                                  its own libjvm / libjava
+       tools/native/…/retrohost   the fast player: melonDS DS's and mGBA's JIT, the cores it loads (dlopen)
+       tools/native/…/linkhost    trades and battles (interpreter only, the same rules for simplicity)
+       tools/ctr/…/ctrhost        the 3DS player: Azahar's JIT (dynarmic), its core and MoltenVK (dlopen)
+     They are all signed with souldew's own Developer ID; library validation stays off all the same (as for the app),
+     so a core the host opens by path never fails on a signature detail (MoltenVK comes from Azahar's release). -->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

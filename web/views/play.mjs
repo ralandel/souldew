@@ -14,7 +14,7 @@ import { applyCheat, cheatsFor, cheatBlock, cheatAllowed, bagLayoutKey, CHEATS, 
 import { CheatMenu, cheatConfirmText, cheatDoneText, cheatFailText } from './cheatmenu.mjs';
 import { DeathReveal, effectiveSpeed } from '../lib/reveal.mjs';
 import { MusicKeyTracker } from '/shared/live/location.mjs';
-import { probeGen67, runningVersion } from '/shared/live/gen67.mjs';
+import { probeGen67, runningVersion, locateCtrParty } from '/shared/live/gen67.mjs';
 import { PlayHome } from './playhome.mjs';
 import { PartyGrid } from './party.mjs';
 import { PartnerScreens, PartnerTiles, usePartnerLayout, useScreenShare } from './partnerscreen.mjs';
@@ -24,6 +24,7 @@ import { LocationSign, readHere, nextHere, areaOfHere, musicInfo, loadRomLocatio
 import { FeatureCheck, romFeatures } from '/shared/live/features.mjs';
 import { gymCapsFamily } from '/shared/routes.mjs';
 import { shiftEntry } from '/shared/live/romwram.mjs';
+import { TeamGuard } from '/shared/live/teamguard.mjs';
 import { RulesTab } from './board.mjs';
 import { ChoicesTab } from './playtogether.mjs';
 import { LaunchStage, insertCover } from './launchstage.mjs';
@@ -33,7 +34,7 @@ import { play as playCue } from '../lib/sound.mjs';
 import { addSample, typicalReach, offeredSteps, beyondReach, HELD } from '../lib/reach.mjs';
 import { SlowWatch, slowTips } from '../lib/slowdown.mjs';
 import { FfScaleWatch } from '../lib/ffhint.mjs';
-import { MissedTracker, openQuestions, queueQuestions, dropQuestion } from '../lib/missed.mjs';
+import { MissedTracker, openQuestions, queueQuestions, dropQuestion, missedWait } from '../lib/missed.mjs';
 import { gpuBackends } from '/shared/gpu.mjs';
 import { CTR_LAYOUTS, ctrLayoutAspect } from '/shared/ctrlayout.mjs';
 import { SharedWorld, WorldToggle, WORLD_SYSTEMS, worldEnabled, setWorldEnabled, followEnabled, setFollowEnabled } from '../lib/sharedworld.mjs';
@@ -949,6 +950,7 @@ export function GameSession({ session, mode }) {
     // Closed from the UI (lib/lastmoment.mjs): the last battery save and "where you left off" while the player is still
     // there – the fast player and the 3DS player answer getState through their frame, which the cleanup below is too
     // late for. The close waits for the state's bytes (returned); their upload goes on after the frame is gone.
+    // Quitting the app waits for the uploads too (the second function: the chain they are queued on).
     let lastTaken = false;
     const offLast = lastMoment?.set(() => {
       if (stopped || !loadedOk) return null;
@@ -958,7 +960,7 @@ export function GameSession({ session, mode }) {
       const st = grabState();
       saveAuto(st);
       return st;
-    });
+    }, () => chain);
     window.addEventListener('sl-save-now', flushNow);
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('beforeunload', onPageHide);
@@ -1112,6 +1114,8 @@ export function GameSession({ session, mode }) {
       let fcOwn = null; // the ROM data fc was made from
       const ctrNoTeam = { since: 0, told: false, found: false }; // 3DS: since when memory comes without a team (diagnostics)
       let seenKeys = null; // the Pokémon of the first team read – one that joins later is a catch
+      const teamGuard = new TeamGuard();
+      let lastTeam = null; // the team the guard let through last
       let lastBalls = 0; // when the bag was last looked at for Poké Balls
       setFeatures(null);
       const tick = () => {
@@ -1157,7 +1161,15 @@ export function GameSession({ session, mode }) {
             // ROM's types and badge flags (the battle's current types, Gen 3 badges)
             const own = romOwnNow();
             const TT = (sp ? T.withSpecies(sp, own) : T).withRom(own).withShinyOdds(target.shinyOdds);
-            const res = readLiveParty(ent, e.read, TT, state);
+            const read0 = readLiveParty(ent, e.read, TT, state);
+            // a team with none of the last team's Pokémon is held back until it has stood outside a battle for a while
+            // (shared/live/teamguard.mjs, #89: an opponent's party read as the player's must not end the run)
+            // (while one is held, whether a battle runs is asked with the team let through last – the battle readers go by it)
+            if (read0?.party && teamGuard.pending && lastTeam) inBattle = !!readLiveBattle(ent, e.read, TT, state, lastTeam);
+            const kept = read0?.party ? teamGuard.see(read0.party, { inBattle }) : read0?.party;
+            if (kept?.length) lastTeam = kept;
+            if (read0?.party && !kept && teamGuard.held === 1) diag('live', { type: 'teamSwapHeld', size: read0.party.length, down: read0.party.filter((m) => m && m.maxHp > 0 && m.hp === 0).length, inBattle });
+            const res = read0?.party && !kept ? null : read0;
             // 3DS: the party's address moved to another update's (a copy that stood still, ticket #35)
             for (const ev of state.g67Log?.splice(0) || []) diag('live', { type: 'ctrPartySwitch', ...ev, runs: state.ctrVersion ?? null });
             // (again when the ROM's data came only on a later try – the server couldn't read the file at first)
@@ -1176,12 +1188,29 @@ export function GameSession({ session, mode }) {
             // 3DS: memory comes in but no team for a minute – what each update's address holds goes into the diagnostics
             // once (ticket #21: a team that wasn't found any more after reopening the game), and when one turns up later
             if (entry.gen >= 6) {
+              // Gen 6: the party object searched for in the heap (gen67.mjs locateCtrParty) – when no known address has
+              // held a team for a while in the game (the place sign reads), at most every 3 minutes; and once, a while
+              // after the first team, to make sure no other party object is the game's (a catch that didn't show, #37).
+              // (only in the game: on the title screen the save's team is loaded but the party object isn't set up yet)
+              const searchParty = (why, team) => {
+                ctrNoTeam.searched = Date.now();
+                ctrNoTeam.searches = (ctrNoTeam.searches || 0) + 1;
+                locateCtrParty(ent, { read: e.read, watch: e.watch }, state, { team })
+                  .then((r) => r && diag('live', { type: 'ctrPartySearch', why, ...r }), () => {});
+              };
+              const canSearch = entry.gen === 6 && e.watch && !inBattle && !state.g67Search && !state.ctrBagSearch && (ctrNoTeam.searches || 0) < 6;
               if (res?.party?.length) {
-                if (ctrNoTeam.told && !ctrNoTeam.found) diag('live', { type: 'ctrTeamFound', after: Math.round((Date.now() - ctrNoTeam.since) / 1000), version: state.g67 != null ? entry.partyAddrs?.[state.g67]?.version || null : null, runs: state.ctrVersion ?? null });
+                if (ctrNoTeam.told && !ctrNoTeam.found) diag('live', { type: 'ctrTeamFound', after: Math.round((Date.now() - ctrNoTeam.since) / 1000), version: state.g67 != null ? entry.partyAddrs?.[state.g67]?.version || null : null, found: state.g67Extra?.[0]?.addr && state.g67 >= (entry.partyAddrs?.length || 0) ? state.g67Extra[0].addr : null, runs: state.ctrVersion ?? null });
                 ctrNoTeam.found = true;
                 ctrNoTeam.since = 0;
+                ctrNoTeam.teamAt ||= Date.now();
+                if (canSearch && hereNow && !ctrNoTeam.checked && Date.now() - ctrNoTeam.teamAt > 45000) {
+                  ctrNoTeam.checked = true;
+                  searchParty('check', res.party);
+                }
               } else if (!e.paused?.()) {
                 ctrNoTeam.since ||= Date.now();
+                if (canSearch && hereNow && Date.now() - ctrNoTeam.since > 20000 && Date.now() - (ctrNoTeam.searched || 0) > 180000) searchParty('noTeam', lastTeam);
                 if (!ctrNoTeam.told && Date.now() - ctrNoTeam.since > 60000) {
                   ctrNoTeam.told = true;
                   const rd = romDataNow();
@@ -1205,12 +1234,13 @@ export function GameSession({ session, mode }) {
               setMine(shown.party);
               setBattle(shown.battle);
               // (every poll – a stray reading must not decide whether the battle was a wild one)
+              missedTr.current.wait = missedWait(entry.gen); // (the 3DS games file a catch only after its Pokédex and nickname screens)
               const ended = isRun ? missedTr.current.see(fight, Date.now(), hereNow) : null;
               if (ended) wildEndRef.current?.(ended);
               setDemo(!!seen && !fight);
               inBattle = !!seen;
-              noteMons([...res.party, ...(res.boxes || [])]);
-              liveRead.current = { boxes: Array.isArray(res.boxes), party: res.party.length };
+              noteMons([...res.party, ...(res.boxes || []), ...(res.box || [])]);
+              liveRead.current = { boxes: Array.isArray(res.boxes) || Array.isArray(res.box), party: res.party.length }; // (Gen 1: the box chosen in the PC – where a catch with a full team goes)
               setLiveState({ status: 'live', entry: entry.name });
               if (Number.isInteger(entry.gen)) setLiveGen((g) => (g === entry.gen ? g : entry.gen));
               setLiveGame((g) => (g === entry.id ? g : entry.id || ''));
@@ -1238,7 +1268,7 @@ export function GameSession({ session, mode }) {
               // (a game still in a link room after its session ended – it says so itself: nothing of it is the run's)
               const g0 = isRun && !target.link ? gameOfEntry(ent) : null;
               const linkedGame = !!g0 && gameLinked(g0, e.read, { inBattle: !!seen });
-              if (isRun) snapRef.current?.({ source: 'live', party, boxes: res.boxes || null, game: entry.id, here: hereNow, ...(res.badges !== undefined ? { badges: res.badges } : {}), ...(romCaps !== undefined ? { romCaps } : {}), ...(linkedGame ? { linkedGame: true } : {}) }, { battle: fight, held: shown.held });
+              if (isRun) snapRef.current?.({ source: 'live', party, boxes: res.boxes || null, ...(res.box ? { box: res.box } : {}), game: entry.id, here: hereNow, ...(res.badges !== undefined ? { badges: res.badges } : {}), ...(romCaps !== undefined ? { romCaps } : {}), ...(linkedGame ? { linkedGame: true } : {}) }, { battle: fight, held: shown.held });
               const g = pay && gameNow();
               if (g) {
                 if (ent.gen === 3 && world3?.from !== ent) world3 = { from: ent, t: worldTable(ent) };
@@ -1255,7 +1285,7 @@ export function GameSession({ session, mode }) {
                 const balls = readBalls(ent, e.read, state);
                 if (balls > 0) bw.seen(party.filter((m) => m?.key && m.maxHp > 0 && m.hp === 0).map((m) => m.key));
                 // a 3DS bag that isn't where souldew knows it: searched for nearby, at most once a minute
-                else if (balls === null && ent.platform === '3ds' && e.watch && Date.now() - (state.ctrBagSearched || 0) > 60000) {
+                else if (balls === null && ent.platform === '3ds' && e.watch && !state.g67Search && Date.now() - (state.ctrBagSearched || 0) > 60000) {
                   state.ctrBagSearched = Date.now();
                   locateCtrBag(ent, { read: e.read, watch: e.watch }, state).then((r) => r && diag('live', { type: 'ctrBagSearch', ...r }), () => {});
                 }
@@ -1646,6 +1676,9 @@ export function GameSession({ session, mode }) {
   // Shared World (docs/MULTIPLAYER.md › 9, lib/sharedworld.mjs): the partners walk in this game when they're on the
   // same map – never in a link session, a solo run or a game without the tables (the player page checks the ROM)
   const worldOk = isRun && !solo && !target.link && WORLD_SYSTEMS.includes(target.system) && !!link && others.length > 0;
+  // (a DS game in another language – found by its family, its party searched for: the Shared World's tables are the
+  // English version's; the switch isn't there, a line says why – a French Platinum's players didn't see each other)
+  const worldLanguage = (e) => !!e?.scanOnly && !!e.world && e.platform === 'nds';
   const [worldOn, setWorldOnState] = useState(() => worldEnabled(target.runId));
   const [worldNear, setWorldNear] = useState(0);
   const [worldSupported, setWorldSupported] = useState(false); // the player page knows this game's memory
@@ -1987,6 +2020,7 @@ ${!target.link && html`          ${btn(paused ? 'resume' : 'pause', t('keys.paus
   const teamEl = html`
     <${LiveStatus} status=${liveState.status} phase=${phase} names=${names} me=${me} others=${others}
       extra=${html`${worldOk && worldSupported && html`<${WorldToggle} on=${worldOn} onChange=${setWorldOn} live=${worldNear} follow=${followOn} onFollow=${worldOwnFollow ? setFollowOn : null} />`}
+        ${worldOk && !worldSupported && worldLanguage(liveRef.current?.entry) && html`<span class="tiny muted">${t('world.needsEnglish', 'Showing partners in your game needs the English (US) version of this game – the other languages keep their memory elsewhere. Trading and battling in the Union Room work in every language.')}</span>`}
         ${ownGame && html`<${PingButton} />`}`} />
     ${liveState.status === 'unsupported' && html`<span class="small muted">${isRun
       ? t('play.liveUnsupportedRun', 'This ROM isn’t in the memory table (other language or a hack with a changed layout). The run still works – enter catches by hand.')
@@ -2084,7 +2118,7 @@ function MissedPrompt({ missed, here, onDone }) {
       key = `custom-${Date.now().toString(36)}`;
       doc.set(`area:${key}`, { name: name.trim(), order: Date.now() });
     }
-    markMissed(doc, manifest, key, me, { species: missed.species, by: me });
+    markMissed(doc, manifest, key, me, { species: missed.species, by: me, asked: true });
     onDone(false);
   };
   return html`<div class="screen-confirm" role="group" data-pad-layer aria-live="polite" aria-label=${t('play.missedAria', 'Missed encounter')}>

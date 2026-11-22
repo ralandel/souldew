@@ -11,7 +11,7 @@ import { players as getPlayers, rules as getRules, slotsOf, isTogether, together
 import { inviteBlock } from '/shared/playtogether.mjs';
 import { gameById, gameTitle } from '../lib/data.mjs';
 import { sameLinkSystem, LINK_SYSTEMS, linkUnavailable } from '/shared/link.mjs';
-import { wagerGame, battleFormats, moneyText, MONEY_MAX } from '/shared/linkbattle.mjs';
+import { wagerGame, wagerNeedsEnglish, battleFormats, moneyText, MONEY_MAX } from '/shared/linkbattle.mjs';
 import { useTogether } from '../lib/together.mjs';
 import { wagerRules, agreedWager, sessionsIn, outcomeOf, headToHead, wagerStatus } from '../lib/wager.mjs';
 import { currentLang } from '../lib/i18n.mjs';
@@ -40,6 +40,9 @@ export const reasonText = (code, name) => ({
   linkDesync: t('linkplay.desync2', 'The games fell out of step, so the link was stopped. To keep it fair, both of you are back at your saves from before the link – the session’s last save is kept as a backup in the run folder.'),
   linkStart: t('linkplay.startFailed', 'The linked games didn’t start.'),
   linkRejoinGone: t('linkplay.rejoinGone', 'Nobody answered – the others have left the link.'),
+  linkOlder: t('linkplay.older', '{name} has an older souldew – DS trades and battles need the newest souldew on every computer. Update souldew on both computers and try again.', { name }),
+  linkStalled: t('linkplay.stalled', 'The link stood still for a minute – the games stopped hearing each other, so the link was stopped. Your game goes on from where it was.'),
+  linkStuck: t('linkplay.stuck', 'One of the linked games stopped running, so the link was stopped. Your game goes on from where it was. If it happens again, please send “Save diagnostics” (in the sound menu) from both computers.'),
   linkRejoinBusy: t('linkplay.rejoinBusy', 'The others’ games are in the middle of a wireless exchange right now, so you can’t rejoin – the link has ended.'),
   busy: t('linkplay.busy', '{name} is in another link right now.', { name }),
   linkNoAnswer: t('linkplay.noAnswer', '{name} didn’t answer.', { name }),
@@ -135,6 +138,8 @@ export function LinkButtons({ slot }) {
   const battleWhy = tradeWhy || gamesWhy(doc, manifest, me, [slot], 'battle', names);
   // a battle may be for money (the run's wager rule): first the challenge – format and wager – then the invite
   const challenge = wagerRules(getRules(doc, manifest)).on && wagerGame(manifest?.game?.id);
+  // (wagers on by the rules, but this language of the game keeps its money elsewhere: said, not left out silently)
+  const wagerLang = wagerRules(getRules(doc, manifest)).on && wagerNeedsEnglish(manifest?.game?.id);
   if (setup) {
     return html`<${BattleSetup} names=${[name]} seats=${2} onCancel=${() => setSetup(false)}
       onSend=${async (opts) => { setSetup(false); setBusy(true); try { await linkSessions.invite('battle', [slot], opts); } catch (e) { toast({ kind: 'death', title: t('linkplay.title', 'Link'), text: reasonText(e.code, name) }); } finally { setBusy(false); } }} />`;
@@ -145,7 +150,8 @@ export function LinkButtons({ slot }) {
       onClick=${() => start('trade')}><${Icon} name="link" size=${14} />${t('linkplay.trade', 'Trade')}</button>`}
     ${linkAllowed(doc, manifest, 'battle') && html`<button class="btn small" disabled=${busy || !idle || !!why || !!battleWhy} title=${battleWhy || why || (isTogether(manifest) ? t('linkplay.battleHintCasual', 'A link battle – just for fun') : t('linkplay.battleHint2', 'A link battle – by the run’s rules, losing there doesn’t count'))}
       onClick=${() => (challenge ? setSetup(true) : start('battle'))}><${Icon} name="bolt" size=${14} />${t('linkplay.battle', 'Battle')}</button>`}
-  </div>`;
+  </div>
+  ${wagerLang && linkAllowed(doc, manifest, 'battle') && html`<span class="tiny muted">${t('linkplay.wagerEnglish', 'Battles here are without a wager: souldew reads the money only in the English (US) version of this game.')}</span>`}`;
 }
 
 /**

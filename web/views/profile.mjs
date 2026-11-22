@@ -123,7 +123,7 @@ export function ProfileView() {
     if (!own && acct.session?.signedIn) profileOf(id).then(setOther, (e) => setError(e));
   }, [id, acct.session?.signedIn]);
   const ownPresence = useMemo(() => (own ? presenceFrom({ route: 'profile', session, manifest, doc, me: slot, taken: manifest ? takenSlots(manifest, { me: slot, doc, linkStatus }) : [] }) : null), [own, session, manifest]);
-  if (!acct.loaded) return null;
+  if (!acct.known) return html`<div class="empty-state"><p class="muted">${t('common.loading', 'Loading …')}</p></div>`;
   if (!acct.session?.signedIn) return html`<div class="stack-l"><${SignInFirst} what=${t('pf.signInTitle', 'Your souldew profile')} /></div>`;
   const prof = own ? acct.me : other;
   if (!prof) {

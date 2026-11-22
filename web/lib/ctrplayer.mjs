@@ -6,6 +6,7 @@
 import * as controls from '/lib/controls.mjs';
 import { setLang, guessLang, t } from '/lib/i18n.mjs';
 import { serverErrorText } from '/lib/errors.mjs';
+import { openHostStream } from '/lib/hoststream.mjs';
 import { findEntry, regionsFor } from '/shared/live/parse.mjs';
 import { cheatRegions } from '/shared/live/cheats.mjs';
 import { CTR_LAYOUTS, ctrLayout, ctrTouchAt, blackPicture } from '/shared/ctrlayout.mjs';
@@ -474,6 +475,7 @@ function onFfSound(p) {
 // ---- memory (the regions the live reader needs – and the bag for the cheats – ten times a second) ---------------------
 let addresses = null;
 let extraRegions = []; // __emu.watch(): more regions on top of the game's (the bag's search, diagnostics, research)
+const extraByKey = new Map(); // (who asked for which: the bag, the party found, a search – each keeps its own)
 /** Tell the host what to read; → the regions asked for (at most 16 – the game's own first). */
 async function watchFor(titleId) {
   try {
@@ -629,9 +631,9 @@ function showError(text, code = null) {
 
 // ---- the stream from the host ------------------------------------------------------------------------------------
 async function pump() {
-  const res = await fetch(`/api/ctr/stream?id=${st.id}`);
-  if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
-  const reader = res.body.getReader();
+  // a WebSocket (an endless HTTP response filled antivirus caches on Windows – #38, lib/hoststream.mjs)
+  const reader = await openHostStream(`/api/ctr/stream?id=${st.id}`);
+  st.streamKind = reader.kind;
   let buf = new Uint8Array(0);
   // the chunks of a message that isn't complete yet: joined once it is (a picture is 768 KB – up to 7 MB at 3× – in
   // many chunks; copying everything so far on each chunk cost more than the picture itself)
@@ -1041,6 +1043,7 @@ window.__emu = {
   },
   perf: () => ({
     fps: st.fps, speed: st.hostSpeed, frames: st.hostFrame, shown: st.frames, title: st.title, liveMemory: st.liveMemory, error: st.error, renderer: st.renderer, scale: st.scale, log: st.log.slice(-20),
+    stream: st.streamKind || null, // 'ws' – or 'http' when the WebSocket couldn't be opened (#38)
     picture: { lit: black.lit, blackSeconds: Math.round(black.ms / 1000) }, // (a game that only ever showed black)
     sound: audio.ctx ? { contextRate: audio.ctx.sampleRate, state: audio.ctx.state, baseLatencyMs: +(audio.ctx.baseLatency * 1000).toFixed(1), outputLatencyMs: +((audio.ctx.outputLatency || 0) * 1000).toFixed(1) } : null,
     last: audio.last,
@@ -1093,13 +1096,17 @@ window.__emu = {
   },
   /**
    * More memory to read (at most 16 regions of 64 KB together with the game's own) – the 3DS bag's search
-   * (shared/live/cheats.mjs locateCtrBag), diagnostics and research; replaces what was asked before. Resolves true
+   * (shared/live/cheats.mjs locateCtrBag), the party's (shared/live/gen67.mjs locateCtrParty), diagnostics and
+   * research; replaces what was asked before under the same `key`. Resolves true
    * once the host has sent all of them (read() has them then – unmapped ones read null), false when they didn't fit
    * in or no memory came.
    */
-  async watch(regions = []) {
+  async watch(regions = [], key = 'extra') {
     const want = regions.filter((r) => Number.isInteger(r.addr) && Number.isInteger(r.len) && r.len > 0 && r.len <= 65536);
-    extraRegions = want;
+    // `key`: whose regions these are – they replace only that one's (the party found stays while the bag is searched)
+    if (want.length) extraByKey.set(key, want);
+    else extraByKey.delete(key);
+    extraRegions = [...extraByKey.values()].flat();
     st.watching = '';
     if (!st.liveMemory || st.ended) return false;
     const sent = await watchFor(st.title && !/^0+$/.test(st.title) ? st.title : null);

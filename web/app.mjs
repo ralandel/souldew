@@ -66,6 +66,7 @@ import { HandheldView } from './views/handheld.mjs';
 import { railGroups, FOOT_SECTIONS } from './lib/railnav.mjs';
 import { accountEvent, useAccount, signIn, cancelSignIn, cosmeticsPackAccess } from './lib/account.mjs';
 import { useSocial } from './lib/socialapp.mjs';
+import { thankedFor } from './lib/pluspage.mjs';
 import { Avatar } from './views/social.mjs';
 import { initUiScale, watchUiScaleKeys, useUiScale, setUiScale, stepUi, suggestUiScale, uiScaleKeys } from './lib/uiscale.mjs';
 import { uiScaleLabel } from '/shared/uiscale.mjs';
@@ -197,7 +198,14 @@ function RailPlus({ thanks = false, here = false, float = false, fx = null, onOp
 function RailSignIn({ toast }) {
   const acct = useAccount();
   const [busy, setBusy] = useState(false);
-  if (!EDITION.accounts || !acct.loaded || acct.session?.signedIn || acct.session?.off) return null;
+  if (!EDITION.accounts || acct.session?.signedIn || acct.session?.off) return null;
+  // the saved sign-in is still being read (the keychain may take a moment): neither "Sign in" nor a profile yet
+  if (!acct.known) {
+    return html`<div class="rail-signin-wrap"><div class="rail-me rail-signin rail-acct-loading" role="status">
+      <span class="rail-signin-mark" aria-hidden="true"><${Icon} name="user" size=${18} /></span>
+      <span class="stack-s" style="gap:0"><b class="ellipsis">${t('common.loading', 'Loading …')}</b>
+        <span class="tiny ellipsis">${t('rail.acctLoading', 'your account')}</span></span></div></div>`;
+  }
   const pending = !!acct.session?.pending;
   const go = async () => {
     setBusy(true);
@@ -442,11 +450,16 @@ function App() {
     return m;
   }, []);
   // Only re-renders when the inbox content actually changed (live snapshots arrive every frame).
+  const inboxNow = useRef(NO_INBOX);
+  // Takes the new inbox, or a function of the current one (the board's "Assign" / "Ignore" pass one – read as an object
+  // it would empty the whole inbox until the next snapshot refilled it).
   const setInbox = useCallback((x) => {
+    if (typeof x === 'function') x = x(inboxNow.current);
     const next = { inbox: x?.inbox || [], alerts: x?.alerts || [] };
     const key = JSON.stringify(next);
     if (key === inboxKey.current) return;
     inboxKey.current = key;
+    inboxNow.current = next;
     setInboxState(next);
   }, []);
 
@@ -1134,6 +1147,11 @@ function App() {
   }, [fs, playFold, railHidden, setHidden]);
   const playing = !!session;
   useEffect(() => { window.sls?.setPlaying?.(playing); }, [playing]);
+  // Quitting the app (window closed, Cmd+Q, an update's restart): the running game's "where you left off" and battery
+  // save are taken and uploaded first, as "Close game" does – the shell waits for the answer (electron/main.mjs)
+  useEffect(() => window.sls?.on?.('quitting', () => {
+    lastRef.current.quit().finally(() => window.sls?.quitReady?.());
+  }), []);
   fxBusy.current = playing || fs || boot || showOnboarding;
   const native = !!window.sls?.native;
   // The rail has no "Play" item: the game belongs to the section of what it plays – a run to SoulLink or Nuzlocke,
@@ -1148,7 +1166,7 @@ function App() {
     : route.route !== 'play' ? route.route
     : showsSession && session ? playingIn : rp.run ? sectionOf(rp.run) : 'library';
   // souldew+ at the rail's foot says "thank you" to every member (supporter, souldew+, patron)
-  const thanks = !!social.signedIn && (social.me?.entitlement?.tier || 'none') !== 'none';
+  const thanks = !!social.signedIn && thankedFor(social.me?.entitlement);
   const NAV = [
     { id: 'library', label: t('nav.library', 'Library'), icon: 'library', accent: '#e0a458' },
     // the board's to-do count shows at the section of the open run

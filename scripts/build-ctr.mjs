@@ -23,6 +23,7 @@ import { coreStamp as stampOf, staleCore } from './ctrstamp.mjs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { prefixMapFlags, prefixMapEnv, prefixMapCmake, filesWithPath } from './buildpaths.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -47,6 +48,12 @@ if (has('check')) {
   const need = [os === 'win32' ? 'ctrhost.exe' : 'ctrhost', `azahar_libretro.${ext}`, 'SOULDEW_CORE', ...(os === 'darwin' ? ['libMoltenVK.dylib'] : [])];
   const missing = need.filter((f) => !existsSync(join(out, f)));
   const stale = !missing.length && staleCore(readFileSync(join(out, 'SOULDEW_CORE'), 'utf8'), coreStamp());
+  // (built on this computer: no file may carry its home folder – the account name – scripts/buildpaths.mjs)
+  const leaks = existsSync(out) ? filesWithPath(out) : [];
+  if (leaks.length) {
+    console.error(`3DS part: ${leaks.join(', ')} in ${out} contain this computer's home folder – rebuild them with \`npm run ctr\` (it maps the paths away).`);
+    process.exit(1);
+  }
   if (!missing.length && !stale) {
     console.log(`3DS part: ${out} ✓`);
     process.exit(0);
@@ -61,9 +68,11 @@ if (has('check')) {
   process.exit(1);
 }
 mkdirSync(out, { recursive: true });
+// every compile maps the checkout and the home folder away (no account name in the binaries – scripts/buildpaths.mjs)
+const PREFIX_MAP = prefixMapFlags(root);
 const run = (cmd, a, o = {}) => {
   console.log(`$ ${cmd} ${a.join(' ')}`);
-  const r = spawnSync(cmd, a, { stdio: 'inherit', ...o });
+  const r = spawnSync(cmd, a, { stdio: 'inherit', env: prefixMapEnv(PREFIX_MAP), ...o });
   if (r.status !== 0) throw new Error(`${cmd} failed (${r.status})`);
 };
 
@@ -86,7 +95,7 @@ function buildHost() {
   }
   const cc = process.env.CC || (os === 'win32' ? (cross ? 'x86_64-w64-mingw32-gcc' : 'gcc') : 'cc');
   const libs = os === 'linux' ? ['-ldl', '-lpthread', '-lm'] : os === 'win32' ? ['-static', '-lm'] : [];
-  run(cc, ['-O2', '-Wall', ...inc, '-o', exe, join(src, 'ctrhost.c'), ...libs]);
+  run(cc, ['-O2', '-Wall', ...PREFIX_MAP, ...inc, '-o', exe, join(src, 'ctrhost.c'), ...libs]);
   if (os !== 'win32') chmodSync(exe, 0o755);
 }
 
@@ -106,7 +115,7 @@ function buildCore() {
     const build = join(src, 'build-souldew');
     if (cross) throw new Error('building the core for another platform: use --core with a built one (.github/workflows/ctr.yml builds them)');
     const extra = process.platform === 'darwin' ? [`-DCMAKE_OSX_ARCHITECTURES=${process.arch === 'arm64' ? 'arm64' : 'x86_64'}`] : process.platform === 'linux' ? ['-DENABLE_LTO=OFF'] : [];
-    run('cmake', ['-G', 'Ninja', '-DENABLE_LIBRETRO=ON', '-DCMAKE_BUILD_TYPE=Release', ...extra, '-S', src, '-B', build]);
+    run('cmake', ['-G', 'Ninja', '-DENABLE_LIBRETRO=ON', '-DCMAKE_BUILD_TYPE=Release', ...prefixMapCmake(PREFIX_MAP), ...extra, '-S', src, '-B', build]);
     run('cmake', ['--build', build, '--target', 'citra_libretro', '--config', 'Release']);
     const found = [join(build, 'bin', 'Release', `azahar_libretro.${ext}`), join(build, 'bin', `azahar_libretro.${ext}`)].find(existsSync);
     if (!found) throw new Error('built core not found');

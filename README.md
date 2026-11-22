@@ -161,7 +161,7 @@ souldew runs on **macOS with Apple silicon (arm64)**, on **Windows 10 and 11 (x6
 **macOS**
 
 1. Open `souldew-<version>-arm64.dmg` (from the [releases page](https://github.com/souldewapp/souldew/releases/latest), or `dist/` after building) and drag **souldew** into Applications.
-2. First start: the app is only ad-hoc signed (not notarized by Apple), so macOS blocks it once. Open it, then go to **System Settings › Privacy & Security** and click **Open Anyway**. On older macOS versions, right-click the app › **Open** › **Open** works too.
+2. Start it like any other app: souldew is signed with a Developer ID and notarized by Apple (since 3.0.1).
 
 **Windows**
 

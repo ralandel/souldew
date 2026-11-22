@@ -28,6 +28,7 @@
 .plus-h1-2 { color: var(--ink-2); }
 .plus-lede { margin: 0; max-width: 58ch; font-size: 16px; line-height: 1.6; color: var(--ink-2); }
 .plus-fine { margin: 0; max-width: 62ch; line-height: 1.5; }
+.plus-trial-msg { flex-basis: 100%; margin: 0; }
 .plus-member { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; border-radius: var(--r-l); background: var(--shell-2); border: 1px solid var(--sk-line, #0f0e12); }
 
 .plus-you { margin: 0; padding: 0; overflow: hidden; border-radius: var(--r-xl); background: var(--shell-2); border: 1px solid var(--sk-line, #0f0e12); box-shadow: inset 0 1px 0 #ffffff08, 0 10px 30px -12px #000a; }

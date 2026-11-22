@@ -188,8 +188,9 @@ The page keeps sending retrohost's INPUT message (libretro joypad bits plus poin
 |---|---|---|
 | host → `12 LINPUT` | `u32 seat, u32 first, u32 inputs[]` | The local seat's inputs, to send to the peers. |
 | host → `14 SEATSRAM` | `u32 seat, bytes` | Every seat's battery save (on FLUSH). |
-| EVENT `hash` | `{frame, hash}` | Every 120 frames. |
+| EVENT `hash` | `{frame, hash, done, have}` | Every 120 frames; `done`: each console's frames finished, `have`: each seat's buttons known (diagnostics). |
 | EVENT `wait` | `{seats, frame, ms}` | Stalled for a peer. |
+| EVENT `stuck` | `{seats, frame, behind}` | A console more than 600 frames behind the session (a backend with `frames()`, the DS) – the page ends the link with a message (§5). |
 | → host `21 RINPUT` | `u32 seat, u32 first, u32 inputs[]` | A peer's inputs. Repeats and out-of-order frames are fine. |
 | → host `20 VIEW` | `u32 seat` | Show another seat (tests, spectating). |
 | → host `24 UNTIL` | `u32 frame` | Pause at an absolute frame, the same on every peer. |
@@ -290,6 +291,30 @@ Since November 2026 (branch `feat/engine`, Settings › Emulators › **"souldew
 
 **Pacing.** Each host paces itself at 59.73 fps and waits when inputs are missing. Both start from the same frame (inputs for frames < D are "nothing pressed" for everyone). A host that falls behind never makes the other run faster: the other one simply waits.
 
+**A stall is never silent** (since 3.0.1). Two ways a link can stand still, both end it with a message on every
+computer, and each game goes on alone from where it was (`resumeSolo`, as after "Leave link"):
+- *Lockstep:* our host waits at one frame for a partner's buttons (`wait`, every 250 ms) for 60 s (`STALL_MS` in
+  `web/lib/linksession.mjs`; a partner rejoining restarts it) → "The link stood still for a minute …"
+  (`linkStalled`, a `bye` tells the others – by then they wait for ours too).
+- *A console:* frames go on but one console doesn't finish them (a DS console can stop mid-frame for a wireless packet –
+  never for long by design). The link host compares each console's finished frames with the session's (`frames()` in
+  the backend interface, `watch_*` in `linkhost.c`) and reports `stuck` past 600 frames; every computer computes the
+  same consoles, so all see it at the same frame → `linkStuck`. Until a console has finished its first frame, the host
+  sends no picture of it (the page keeps the game as it was before the link instead of a black screen).
+
+What happened in 3.0.0 (tickets #36 and #47 HeartGold, #44 Pearl, GitHub #88 Platinum – trades and battles, Union Room and
+Pokémon Center, all reported from Windows, reproduced on a Mac with the 3.0.0 binaries): the DS backend ordered the consoles by their own
+emulated clocks (`SysTimestamp`, time since the console was switched on). Consoles that join from running games have
+been on for very different times – minutes apart, much more with fast-forward – so the one on longer stood still
+until the others caught up; its picture stayed at the link host's empty (black) buffer, frames and hashes went on
+(nothing waited, nothing differed), and nobody was told. Every e2e had started both consoles at the same moment (from
+saves, or states exported at one frame of a recording), so it never showed. Fixed with a session clock per console
+(MULTIPLAYER-DS.md). Found on the way: in a wireless exchange the DS consoles finished only every other session
+frame (half speed in the Union Room, dropped presses) – fixed too, which is what makes "behind the session" a reliable
+sign of a stuck console. A 3.0.0 partner computes other DS consoles: the invite/accept carry the cap `dsclock1`, a DS
+link without it on every seat doesn't start (`linkOlder`, "update souldew on both computers"); the diagnostics now carry the link (`diag('link', …)`: start, every 10 s the frame / each
+console's `done` / `have` / buttons sent and received / last frame received per seat, waits, `stuck`, the end).
+
 **Desync detection.**
 - Every 120 frames (2 s) each host emits `hash`: an FNV-1a over every seat's work RAM, CPU registers and timing. The page sends it as `link-hash`.
 - On a mismatch: stop both hosts at once, show "The games fell out of step – the session ended, nothing was saved", and keep the pre-session saves.
@@ -379,7 +404,7 @@ the same hash sha256 on both, the route "direct". The real Mac ↔ Windows run i
 | 1 | R/B/Y (+hacks) | GB serial | SameBoy (link host) | Cable Club trade ✅ app | Colosseum ✅ app | Gen 1 has no exit from the Trade Center/Colosseum: the game saved, the session ends by "Leave link" (on hardware: switching off). |
 | 2 | G/S/C, Polished Crystal, Crystal Legacy | GB serial | SameBoy (link host) | Trade Center ✅ app | Colosseum ✅ app | The cartridge clock travels in the save (VBA-M footer) both ways; the fast player keeps it now too. The Cable Club needs `EVENT_GAVE_MYSTERY_EGG_TO_ELM`; a trade needs a second non-egg Pokémon. Time Capsule (Gen 1 ↔ 2): both seats are CGBs in one backend – not tried yet (~1 d). |
 | 3 | R/S/E, FR/LG, hacks (Unbound, Radical Red …) | GBA SIO link cable | mGBA (link host) | Cable Club ✅ app | Colosseum single ✅ app; Multi Battle (4 players) ✅ app | FR/LG: FireRed US ↔ German LeafGreen linked from the running games in the app (3.0 acceptance: lockstep, back alone; nothing traded – no recording yet) – their Cable Club works by cable, the location sign doesn't know their link rooms yet. The Union Room needs the wireless adapter: skipped (decision). Hacks: anything with the vanilla link code should work; check per hack. |
-| 4 | D/P/Pt, HG/SS | DS local wireless | melonDS's core ×N in one process, deterministic MP layer (MULTIPLAYER-DS.md) | Union Room ✅ app (Platinum) | Union Room battle ✅ app | Diamond ↔ Pearl and HeartGold ↔ SoulSilver recorded and replayed in the app (trade, battle, wager; HG/SS with an in-game save after it, 19 Nov); the sign knows the Union Room and the Colosseums of D/P, Platinum and HG/SS (pret's map ids; Platinum's Union Room measured). Rejoin only between wireless exchanges. Interpreter only: 4 consoles ≈ 1.6× real time on an M1 – slow PCs may struggle with 4 players. |
+| 4 | D/P/Pt, HG/SS | DS local wireless | melonDS's core ×N in one process, deterministic MP layer (MULTIPLAYER-DS.md) | Union Room ✅ app (Platinum) | Union Room battle ✅ app | Diamond ↔ Pearl and HeartGold ↔ SoulSilver recorded and replayed in the app (trade, battle, wager; HG/SS with an in-game save after it, 19 Nov); the sign knows the Union Room and the Colosseums of D/P, Platinum and HG/SS (pret's map ids; Platinum's Union Room measured). Rejoin only between wireless exchanges. 3.0.1: consoles linked from games running for different times, or from inside the Union Room, run and see each other at once (MULTIPLAYER-DS.md › session clock). Interpreter only: 4 consoles ≈ 1.6× real time on an M1 – slow PCs may struggle with 4 players. |
 | 5 | B/W, B2/W2 (+Blaze Black 2 Redux/Volt White) | DS local wireless (the C-Gear's IR: no) | as Gen 4 | Union Room ✅ app (Black ↔ Black) | Union Room → Colosseum ✅ app | Upstairs in every Pokémon Center, the left counter; it opens with the C-Gear (`FE_CGEAR_GET`, MULTIPLAYER-DS.md › Gen 5). Recorded and replayed in the app: Black ↔ Black trade and battle, each also seamless; the sign knows the Union Room (zone 422) and the Colosseum (150, 151). Black ↔ White and Black ↔ Black 2 recorded and replayed in the app too (trade, battle, wager, in-game save; 19 Nov). White 2: a save past the C-Gear (Black 2's, saved by White 2 under another trainer with other Pokémon) links and trades with Black 2 in the link host, but no session of it went through the app yet – its battles don't count and its sign stays off. Blaze Black 2 Redux: the same. Volt White: no patch here. The C-Gear's infrared doesn't link: melonDS's IR cartridge has no send/receive. |
 | 6–7 | X/Y, ORAS, S/M, US/UM | 3DS local wireless | Azahar rooms (libretro core has no room client) or 2 instances | Player Search System | PSS battles | Research. Azahar's network room needs a room server (souldew's Hetzner box) and a core patch. **Later.** |
 

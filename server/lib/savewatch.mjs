@@ -101,6 +101,10 @@ export class SaveWatcher {
     this.watches.set(runId, w);
     // every place as it is right now: anything written from here on – even this very moment – differs from it
     for (const p of list) w.seen.set(p, fingerprintNow(p));
+    // no save anywhere yet (a new game): what the game writes before its first in-game save – a DS game prepares its
+    // flash during the intro – holds no save, and that's no error worth a message (#43: "Save file unreadable" at the
+    // intro of every new randomized Blaze Black 2 Redux run)
+    w.fresh = !list.some((p) => w.seen.get(p));
     w.poller = setInterval(() => this.poll(runId, w), this.interval);
     if (list.some((p) => w.seen.get(p))) this.read(runId);
     return this.status(runId);
@@ -178,6 +182,7 @@ export class SaveWatcher {
       const parse = this.parserFor?.(runId) || ((bytes, o) => parseHgssSave(bytes, { ...this.data, ...o }));
       const parsed = parse(new Uint8Array(buf), { shinyOdds: this.shinyOdds(runId) });
       w.lastHash = hash;
+      w.valid = true;
       w.lastAt = new Date(after?.mtimeMs ?? hit.s.mtimeMs).toISOString();
       w.error = w.errorCode = null;
       w.retries = 0;
@@ -192,6 +197,8 @@ export class SaveWatcher {
       } else {
         w.error = e.message;
         w.errorCode = e.code || null;
+        // not saved in the game yet (a new game's prepared flash): kept in the status, no message – the next write reads again
+        if (e.code === 'saveNotFound' && w.fresh && !w.valid) return null;
         this.emit('save-error', { runId, error: e.message, code: e.code, vars: e.vars }); // (shared/gen4save.mjs saveError: the page words it)
       }
       return null;

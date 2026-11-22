@@ -22,6 +22,7 @@ import { copyFileSync, existsSync, mkdirSync, writeFileSync, chmodSync, readFile
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cpus } from 'node:os';
+import { prefixMapFlags, prefixMapEnv, prefixMapCmake, filesWithPath } from './buildpaths.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -68,6 +69,12 @@ const HOST = win ? 'retrohost.exe' : 'retrohost';
 if (has('check')) {
   const need = [HOST, ...Object.values(SOURCES).map((s) => s.file).filter(Boolean)]; // (the link host included: trades and battles)
   const missing = need.filter((f) => !existsSync(join(out, f)));
+  // (built on this computer: no file may carry its home folder – the account name – scripts/buildpaths.mjs)
+  const leaks = existsSync(out) ? filesWithPath(out) : [];
+  if (leaks.length) {
+    console.error(`fast player part: ${leaks.join(', ')} in ${out} contain this computer's home folder – rebuild them with \`npm run native\` (it maps the paths away).`);
+    process.exit(1);
+  }
   if (!missing.length) {
     console.log(`fast player part: ${out} ✓`);
     process.exit(0);
@@ -81,15 +88,19 @@ if (has('check')) {
   process.exit(1);
 }
 
-const run = (cmd, a, o = {}) => {
-  console.log(`$ ${cmd} ${a.join(' ')}`);
-  const r = spawnSync(cmd, a, { stdio: 'inherit', ...o });
-  if (r.status !== 0) throw new Error(`${cmd} failed (${r.status})`);
-};
-
+// Every compile maps the checkout and the home folder away (no account name in the binaries – scripts/buildpaths.mjs):
+// the compilers called here get the flags first, CMake and make through CFLAGS & co. (and CMake's own variables).
+const PREFIX_MAP = prefixMapFlags(root);
 const MINGW = 'x86_64-w64-mingw32';
 const cc = process.env.CC || (win ? (cross ? `${MINGW}-gcc` : 'gcc') : 'cc');
 const cxx = process.env.CXX || (win ? (cross ? `${MINGW}-g++` : 'g++') : 'c++');
+
+const run = (cmd, a, o = {}) => {
+  const words = cmd === cc || cmd === cxx ? [...PREFIX_MAP, ...a] : a;
+  console.log(`$ ${cmd} ${words.join(' ')}`);
+  const r = spawnSync(cmd, words, { stdio: 'inherit', env: prefixMapEnv(PREFIX_MAP), ...o });
+  if (r.status !== 0) throw new Error(`${cmd} failed (${r.status})`);
+};
 
 /** A checkout of `s` at its ref in _ref/native (cloned once; `dir`: shared with another part built from the same source). */
 function source(key) {
@@ -123,7 +134,7 @@ function onecoreStub() {
 
 /** CMake arguments for the target platform (the compiler, Windows cross build, a static runtime). */
 function cmakeTarget() {
-  const a = ['-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'];
+  const a = ['-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5', ...prefixMapCmake(PREFIX_MAP)];
   if (os === 'darwin') a.push(`-DCMAKE_OSX_ARCHITECTURES=${arch === 'arm64' ? 'arm64' : 'x86_64'}`, '-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0');
   if (win) {
     const st = `-static -static-libgcc -static-libstdc++${onecoreStub()}`;
@@ -208,6 +219,10 @@ function buildGb() {
   run('make', [...mk, 'clean'], { stdio: 'ignore' }); // (its objects sit next to the sources: none of another platform's)
   run('make', [...mk, `-j${jobs}`]);
   copyFileSync(join(bin, SOURCES.gb.file), join(out, SOURCES.gb.file));
+  // SameBoy's libretro Makefile links with -install_name set to the full build path (LC_ID_DYLIB) – the prefix map
+  // can't reach that, so the shipped core would carry the build folder (the account name). Nothing links against it
+  // (libretro cores are dlopen'ed by path), so a plain name is enough.
+  if (os === 'darwin' && !cross) run('install_name_tool', ['-id', `@rpath/${SOURCES.gb.file}`, join(out, SOURCES.gb.file)]);
   license('gb', src);
 }
 

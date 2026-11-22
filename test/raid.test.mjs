@@ -317,6 +317,18 @@ test('support per game: verified engines take part, the others say why', () => {
   assert.deepEqual(H.raidSupport(null), { ok: false, why: 'unknown' });
 });
 
+test('another language of a DS game (French Platinum, German HeartGold): "not in this version yet" – not "this ROM hack"', async () => {
+  const { findEntry } = await import('../shared/live/parse.mjs');
+  for (const code of ['CPUF', 'IPKD', 'IPGS']) {
+    const e = findEntry(addresses, { platform: 'nds', code });
+    assert.ok(e.scanOnly, code);
+    assert.deepEqual(H.raidSupport(e), { ok: false, why: 'version' }, code);
+  }
+  // a hack whose memory moved stays a hack
+  assert.deepEqual(H.raidSupport({ ...entryOf('crystal_us'), wram: { delta: 11 } }), { ok: false, why: 'hack' });
+  assert.deepEqual(H.raidSupport({ ...entryOf('emerald_us'), scan3: true }), { ok: false, why: 'hack' });
+});
+
 test('stream tools: a finished raid is a `raid` event, its log entry carries the result', async () => {
   const { eventsBetween, EVENT_TYPES } = await import('../shared/streamapi.mjs');
   assert.ok(EVENT_TYPES.includes('raid'));

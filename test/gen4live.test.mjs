@@ -210,3 +210,32 @@ test('Platinum: the trainer\'s Pokémon that is out comes from the battle\'s own
   out(foes[2], 0);
   assert.equal(battlePolls(pt, r, state, 1).enemy.species, 399);
 });
+
+test('#89 German HeartGold: after a trainer battle the beaten trainer\'s party in the heap is never taken for the team', () => {
+  const e = findEntry(TABLE, { platform: 'nds', code: 'IPKD' });
+  const r = ram();
+  const base = 0x0227d4a0;
+  const mine = [pk4({ pid: 0x0a0a0001, species: 155, level: 14 }), pk4({ pid: 0x0a0a0002, species: 16, level: 12 })];
+  saveImage(r, e, base, { mons: mine, johto: 0b00000001 });
+  // the trainer's party, lower in RAM than the save: its Pokémon belong to someone else and are all down
+  const foeCore = 0x02150000;
+  partyAt(r, foeCore, [pk4({ pid: 0x7e000001, species: 74, level: 12, tid: 9, sid: 9, hp: 0 }), pk4({ pid: 0x7e000002, species: 95, level: 14, tid: 9, sid: 9, hp: 0 })]);
+  const state = {};
+  assert.deepEqual(readLiveParty(e, r.read, T, state).party.map((m) => m.species), [155, 16], 'the scan takes the save\'s party, not the lowest one');
+  assert.equal(state.partyAddr, base + 0xa0);
+  // the game rewrites the party after the battle (count 0 for a moment) – the next search must not settle on the foe's
+  r.u32(base + 0xa0 + 4, 0);
+  state.lastScan = 0;
+  assert.equal(readLiveParty(e, r.read, T, state), null, 'no team for that poll rather than the opponent\'s');
+  state.lastScan = 0;
+  assert.equal(readLiveParty(e, r.read, T, state), null);
+  r.u32(base + 0xa0 + 4, 2);
+  state.lastScan = 0;
+  assert.deepEqual(readLiveParty(e, r.read, T, state).party.map((m) => m.species), [155, 16], 'and the team again once it is back');
+  // with the module params pointing at the save data, the save's party is read straight away
+  r.u32(0x02000ba8, 0x02111900);
+  r.u32(0x02111920, base);
+  const s2 = {};
+  assert.deepEqual(readLiveParty(e, r.read, T, s2).party.map((m) => m.species), [155, 16]);
+  assert.equal(s2.saveBase, base);
+});

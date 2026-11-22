@@ -24,6 +24,24 @@ local wireless in Diamond/Pearl/Platinum, HeartGold/SoulSilver, Black/White and 
     the horizon when it is waiting.
   - So the same ROMs, saves, RTC start and per-frame inputs give bit-identical consoles on every peer. The shared
     host's input-delay lockstep, hash checks and save exchange work unchanged.
+  - **The session clock** (since 3.0.1). "Clock" above is each console's emulated time *since the session began*
+    (`SysTimestamp` minus its value at the start, `Seat::base`), not since it was switched on. Seats that join from the
+    players' running games (§4a) have been on for very different times; on their own clocks the console on longest
+    stood still until the others caught up – in 3.0.0 its player saw black for minutes (tickets #36, #44). The base
+    comes from the agreed state, so it is the same on every peer; whole-session states carry it (`LMP2`; an `LMP1`
+    state of 3.0.0 keeps the old meaning).
+  - **Every console finishes every session frame** (since 3.0.1). A waiting console times out only once every other
+    console passed its horizon; when the one holding it back already stood at its frame end, 3.0.0 ended the session
+    frame there, and in a wireless exchange the consoles took turns finishing frames: the games ran at half speed for
+    the whole Union Room visit and the input queue (8 frames) overflowed, dropping presses. `run_frame` now lets that
+    console start its next frame right away (with its next buttons if queued, else the ones it holds) until every
+    console has finished one more frame. The order of what the consoles do is the same; only the frames are counted
+    out fairly. Recordings made with 3.0.0 replay differently (re-recorded: Diamond ↔ Pearl trade from two running
+    games 4,000 frames apart, both linked inside the Union Room). Measured: 2 consoles through a Union Room trade
+    170 session frames a second on an M-series Mac (2.8× real time, was 266 at half the work).
+  - **A game whose wireless was on** (standing in the Union Room alone when the link started): melonDS powers the Wi-Fi
+    chip on from the state without calling `MP_Begin`, so such a console never received anything. The backend now
+    reads the chip's power (POWCNT2 and `W_POWER_US`) after loading a state and counts it as connected.
 - **Save states** (`state_size` / `save_state`) only work while every console is at a frame end. A console waiting
   mid-frame for a packet lives on its thread's stack. `state_size` then returns 0, and the host must retry on a later
   frame (or between MP exchanges). Loading a state in the middle of a Union Room session drops the link, because the
@@ -42,6 +60,9 @@ local wireless in Diamond/Pearl/Platinum, HeartGold/SoulSilver, Black/White and 
   a Union Room visit (25 / 25 hashes equal after loading at frame 12,001). It can still only be taken when every console
   is at its frame end – otherwise "not now", and a rejoin then fails ("state-busy").
 - **Sound.** The local seat's SPU output (48 kHz) goes to the page.
+- **Frames.** `frames()` tells the host how many frames each console finished; the host reports a console far behind
+  the session as `stuck` (docs/MULTIPLAYER.md › "Netcode"), and sends no picture of a console that hasn't finished a
+  frame yet.
 - **e2e.** Platinum ↔ Platinum Union Room trade through the whole app (invite, saves, lockstep over the peer channel):
   both run saves equal to the recording's. The sign says "Union Room" (Platinum map 466).
 

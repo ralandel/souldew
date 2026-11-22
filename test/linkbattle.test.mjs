@@ -561,3 +561,13 @@ test('wager: the check after the write reads the core (the fast player\'s fresh)
   assert.equal(doc.get('lbpay:abc123:p1').checked, undefined);
   assert.deepEqual(await pay.tick(io), { checked: true, now: 5000 });
 });
+
+test('wagers in other languages: the English version can – said instead of left out (a French Platinum)', async () => {
+  const { wagerGame, wagerNeedsEnglish } = await import('../shared/linkbattle.mjs');
+  for (const id of ['pokemon-platinum-eu', 'pokemon-heartgold-de', 'pokemon-soulsilver-eu', 'pokemon-emerald-de']) {
+    assert.equal(wagerGame(id), false, id);
+    assert.equal(wagerNeedsEnglish(id), true, id);
+  }
+  // a language whose addresses are known, a game without wagers at all, the English one: nothing to say
+  for (const id of ['pokemon-ruby-de', 'pokemon-platinum', 'pokemon-x', 'pokemon-omega-ruby', 'pokemon-white-2-de']) assert.equal(wagerNeedsEnglish(id), false, id);
+});

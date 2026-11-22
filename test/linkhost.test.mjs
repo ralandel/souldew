@@ -164,6 +164,87 @@ test('link host: NEED answers with the seat\'s buttons it knows', { skip }, asyn
   A.send(6);
 });
 
+// ---- the DS (melonDS): a tiny homebrew cartridge – its ARM9 counts a word in main RAM up forever, its ARM7 waits ----------
+function dsRom() {
+  const r = Buffer.alloc(0x20000);
+  r.write('SOULDEWLINK', 0, 'latin1'), r.write('####', 0x0c, 'latin1'), r.write('00', 0x10, 'latin1');
+  const w = (o, v) => r.writeUInt32LE(v >>> 0, o);
+  w(0x20, 0x200), w(0x24, 0x02000000), w(0x28, 0x02000000), w(0x2c, 0x100); // ARM9: ROM offset, entry, RAM address, size
+  w(0x30, 0x400), w(0x34, 0x02380000), w(0x38, 0x02380000), w(0x3c, 0x100); // ARM7
+  w(0x80, 0x20000), w(0x84, 0x4000);
+  r[0x15c] = 0x56, r[0x15d] = 0xcf; // (the logo CRC backend_melonds.cpp's probe looks for)
+  let crc = 0xffff;
+  for (let i = 0; i < 0x15e; i++) { crc ^= r[i]; for (let k = 0; k < 8; k++) crc = crc & 1 ? (crc >>> 1) ^ 0xa001 : crc >>> 1; }
+  r.writeUInt16LE(crc, 0x15e);
+  // ldr r0,[pc,#12] (=0x02100000); loop: ldr r1,[r0]; add r1,r1,#1; str r1,[r0]; b loop; .word 0x02100000
+  [0xe59f000c, 0xe5901000, 0xe2811001, 0xe5801000, 0xeafffffb, 0x02100000].forEach((x, i) => w(0x200 + i * 4, x));
+  w(0x400, 0xeafffffe); // ARM7: b .
+  return r;
+}
+const dsFile = join(dir, 'tiny.nds');
+writeFileSync(dsFile, dsRom());
+
+test('link host, DS: consoles that joined from games running for very different times both run from the first frame (3.0.0: the one on longer stood still – black)', { skip }, async () => {
+  // two running games, as the fast player keeps them: one on for 60 frames, the other for 960 (the souldew engine alone
+  // writes states in the fast player's format)
+  const S = startHost(host, ['--solo', '--rom', dsFile]);
+  await S.loaded;
+  await S.step(60);
+  const young = join(dir, 'ds-young.state');
+  writeFileSync(young, await S.saveState());
+  await S.step(900);
+  const old = join(dir, 'ds-old.state');
+  writeFileSync(old, await S.saveState());
+  S.send(6);
+  const run = async () => {
+    const ev = [];
+    const L = startHost(host, ['--rom', dsFile, '--state', old, '--rom', dsFile, '--state', young, '--rtc', '1763200000000'],
+      { onEvent: (e) => (e.event === 'hash' || e.event === 'stuck') && ev.push(e) });
+    await L.loaded;
+    const count = async () => [(await L.read(0, 0x02100000, 4)).readUInt32LE(0), (await L.read(1, 0x02100000, 4)).readUInt32LE(0)];
+    const before = await count();
+    await L.step(720);
+    const after = await count();
+    L.send(6);
+    return { ev, before, after };
+  };
+  const a = await run();
+  // every 120 frames the hash carries each console's frames: both kept up with the session
+  const hashes = a.ev.filter((e) => e.event === 'hash');
+  assert.deepEqual(hashes.map((e) => e.frame), [120, 240, 360, 480, 600, 720]);
+  for (const e of hashes) assert.deepEqual(e.done, [e.frame, e.frame], `frame ${e.frame}: ${e.done}`);
+  assert.ok(!a.ev.some((e) => e.event === 'stuck'), 'nothing stuck');
+  // both consoles ran all 720 frames – the same work each (the older one did not wait for the younger to catch up)
+  const ran = [a.after[0] - a.before[0], a.after[1] - a.before[1]];
+  assert.ok(ran[0] > 0 && Math.abs(ran[0] - ran[1]) < ran[1] / 50, `counted ${ran}`); // (± a frame: they start at different moments of it)
+  // and the same on every computer
+  const b = await run();
+  assert.deepEqual(b.ev.map((e) => e.hash), a.ev.map((e) => e.hash));
+});
+
+test('link host, DS: a session state (with the session clock) loads into a fresh host and goes on the same (rejoin)', { skip }, async () => {
+  const argv = ['--rom', dsFile, '--state', join(dir, 'ds-old.state'), '--rom', dsFile, '--state', join(dir, 'ds-young.state'), '--rtc', '1763200000000'];
+  const hashes = (box) => (e) => e.event === 'hash' && (box[e.frame] = e.hash);
+  const ha = {}, hb = {};
+  const A = startHost(host, argv, { onEvent: hashes(ha) });
+  await A.loaded;
+  await A.step(130);
+  const state = await A.saveState();
+  assert.ok(state.length > 1000, 'every console at its frame end: a state now');
+  const tail = state.lastIndexOf(Buffer.from('LSES', 'latin1'));
+  const at = state.readUInt32LE(tail + 4);
+  assert.ok(state.indexOf(Buffer.from('LMP2', 'latin1')) > 0, 'the wireless part with the session clock');
+  const until = (h, f) => { const w = h.wait((m) => m.event?.event === 'stepped'); h.send(24, h.u32(f)); return w; };
+  await until(A, 370);
+  const file = join(dir, 'ds.session');
+  writeFileSync(file, state);
+  const B = startHost(host, [...argv, '--load', file], { onEvent: hashes(hb) });
+  assert.equal((await B.loaded).event.frame, at);
+  await until(B, 370);
+  assert.ok(ha[360] && ha[360] === hb[360], `hash at frame 360: ${ha[360]} / ${hb[360]}`);
+  A.send(6), B.send(6);
+});
+
 test('the link host build is there when the native part is (npm run native builds it)', { skip }, () => {
   assert.ok(existsSync(host));
 });

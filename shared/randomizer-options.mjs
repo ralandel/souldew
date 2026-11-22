@@ -586,6 +586,34 @@ export function buildValues(values, gen) {
   if (v[TMS_FOLLOW_MOVES] !== true || !fieldActive(FIELDS.get(TMS_FOLLOW_MOVES), v)) delete v[TMS_FOLLOW_MOVES];
   return v;
 }
+/**
+ * What the loaded game can't have randomized – the bridge's info (POST /api/rom/inspect): UPR writes these into the
+ * game at fixed places, which a ROM hack may have changed (#43: Blaze Black 2 Redux went black in the intro because the
+ * starters were written into its own intro script). → Map option key → why ('starters' | 'tutors' | 'shops'). The
+ * options that depend on one go with it (fieldActive).
+ */
+export function lockedOptions(info) {
+  const out = new Map();
+  if (info?.startersSupported === false) out.set('startersMod', 'starters');
+  if (info?.tutorsSupported === false) out.set('moveTutorMovesMod', 'tutors');
+  if (info?.shopsSupported === false) out.set('shopItemsMod', 'shops');
+  return out;
+}
+
+/**
+ * The values as this game gets built: locked options at their default (lockedOptions), and only the code tweaks the
+ * game offers (info.miscTweaks – the bridge leaves out those that patch code or scripts a hack changed). Stored in the
+ * run like that, so a partner's older app builds the same – and nothing is written where it doesn't belong.
+ */
+export function valuesForGame(values, info) {
+  const locked = lockedOptions(info);
+  if (!locked.size && !Array.isArray(info?.miscTweaks)) return values;
+  const v = { ...values };
+  for (const k of locked.keys()) if (k in v || BASE[k] !== undefined) v[k] = BASE[k];
+  if (Array.isArray(info?.miscTweaks) && Array.isArray(v['@miscTweaks'])) v['@miscTweaks'] = v['@miscTweaks'].filter((x) => info.miscTweaks.includes(x));
+  return v;
+}
+
 /** Can the user change this field right now? (dependsOn chain on, not overridden by "new every level") */
 export const fieldEnabled = (f, values) => fieldActive(f, values) && !(values.evolutionsMod === 'RANDOM_EVERY_LEVEL' && EVERY_LEVEL_OFF.includes(f.key));
 

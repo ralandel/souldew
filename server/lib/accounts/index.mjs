@@ -59,6 +59,9 @@ async function readJson(req) {
   return body;
 }
 
+/** A message on Discord (§14 "Find a SoulLink partner"): the only links the app opens from those answers. */
+export const DISCORD_MESSAGE = /^https:\/\/discord\.com\/channels\/\d{15,22}\/\d{15,22}\/\d{15,22}$/;
+
 /** A service answer that isn't a success → the error the page gets: { error, code: 'acct', vars: { code, field, retryAfter } }. */
 function serviceError(r) {
   if (r.status === 0) return httpError(503, 'The account service can’t be reached', 'acctOffline');
@@ -68,6 +71,8 @@ function serviceError(r) {
   if (typeof e.field === 'string' && /^[a-z_.]{1,40}$/.test(e.field)) vars.field = e.field;
   if (Number.isFinite(e.retry_after)) vars.retryAfter = Math.max(1, Math.ceil(e.retry_after));
   if (typeof e.reason === 'string') vars.reason = cleanText(e.reason, 80);
+  // §14: an open partner post's link (lfg_active)
+  if (typeof e.url === 'string' && DISCORD_MESSAGE.test(e.url)) vars.url = e.url;
   return httpError(r.status >= 400 && r.status < 600 ? r.status : 502, `Account service: ${vars.code}`, 'acct', vars);
 }
 
@@ -198,11 +203,18 @@ export function createAccounts({ secure = null, port, emit = () => {}, openExter
       packKey: plus && ent.packKey && ent.packKeyId === c.packKeyId ? ent.packKey : null,
       sources: c ? ent.sources : [], offlineGraceDays: ent.offlineGraceDays,
       preview: ent.preview, verified: !!c, ...(reason ? { unverified: reason } : {}),
+      trial: c ? trialOf(ent, plus) : null,
     };
+  }
+  /** §8.6: the trial for the page – `only`: souldew+ comes from the running trial alone (no paid membership beside it). */
+  function trialOf(ent, plus) {
+    if (!ent.trial) return null;
+    const paid = (ent.sources || []).some((x) => x.kind !== 'trial' && isPlusTier(x.tier));
+    return { ...ent.trial, only: plus && ent.trial.state === 'running' && !paid };
   }
   function setOwn(view) {
     const before = own?.tier;
-    own = { tier: view.tier, badges: view.badges, until: view.until, graceUntil: view.graceUntil, packKeyId: view.packKeyId, at: now() };
+    own = { tier: view.tier, badges: view.badges, until: view.until, graceUntil: view.graceUntil, packKeyId: view.packKeyId, trial: view.trial || null, at: now() };
     if (me) session.rememberAccount(brief(me));
     if (before !== undefined && before !== own.tier) emit('account', { kind: 'session' });
   }
@@ -210,7 +222,7 @@ export function createAccounts({ secure = null, port, emit = () => {}, openExter
   function self(m) {
     if (!m) return m;
     const e = own || NO_ENT;
-    return { ...m, entitlement: { tier: e.tier, until: e.until, badges: e.badges }, badges: e.badges };
+    return { ...m, entitlement: { tier: e.tier, until: e.until, badges: e.badges, trial: e.trial || null }, badges: e.badges };
   }
 
   /** Reads and verifies the entitlement; wipes the pack cache when the key went away or changed. → the page's view. */
@@ -228,7 +240,7 @@ export function createAccounts({ secure = null, port, emit = () => {}, openExter
       // kept for the offline grace: the token itself (re-verified offline), the key it allows and the latest time seen
       // (the service's clock or this computer's, whichever is later) – a clock set back behind it counts as expired
       const seen = Math.max(serviceClock(r.headers) ?? 0, Math.floor(now() / 1000), kept?.seen || 0);
-      session.setExtra('entitlement', view.verified ? { token: cleanEntitlements(r.body).token, packKey: view.packKey, packKeyId: view.packKeyId, offlineGraceDays: view.offlineGraceDays, at: now(), seen } : null);
+      session.setExtra('entitlement', view.verified ? { token: cleanEntitlements(r.body).token, packKey: view.packKey, packKeyId: view.packKeyId, offlineGraceDays: view.offlineGraceDays, trial: view.trial?.only ? { state: 'running', until: view.trial.until, only: true } : null, at: now(), seen } : null);
       setOwn(view);
       return view;
     }
@@ -240,7 +252,9 @@ export function createAccounts({ secure = null, port, emit = () => {}, openExter
       const v = rolledBack ? { ok: false, reason: 'clock' } : verifyEntitlementToken(kept.token, { keys: trusted, iss: service, sub: accountId(), sid: session.sid, now: nowS, offline: true });
       if (v.ok) {
         if (nowS > (kept.seen || 0)) session.setExtra('entitlement', { ...kept, seen: nowS });
-        const view = { ...viewOf(v.claims, { packKey: kept.packKey, packKeyId: kept.packKeyId, sources: [], offlineGraceDays: kept.offlineGraceDays, preview: null }), offline: true, preview: null, lastPack: session.extra('pack') };
+        const view = { ...viewOf(v.claims, { packKey: kept.packKey, packKeyId: kept.packKeyId, sources: [], offlineGraceDays: kept.offlineGraceDays, preview: null }), offline: true, preview: null, lastPack: session.extra('pack'),
+          // a trial-only souldew+ stays a trial offline (the page says "Trial · ends …", not "thank you")
+          trial: kept.trial?.only && kept.trial.until > now() ? kept.trial : null };
         setOwn(view);
         return view;
       }
@@ -772,6 +786,29 @@ export function createAccounts({ secure = null, port, emit = () => {}, openExter
     });
     await loadMe(true).catch(() => null);
     return { ok: true, tier: after?.tier || 'none' };
+  });
+  // §8.6: the 7-day souldew+ trial (once per Discord account; nothing to pay or cancel) – then the entitlement as after
+  // any change (token, pack key)
+  route('POST', '/trial', async () => {
+    signedIn();
+    await call(API.trial, { method: 'POST' });
+    const view = await readEntitlement();
+    await loadMe(true).catch(() => null);
+    return { ok: true, tier: view.tier, until: view.until, trial: view.trial };
+  });
+  // §14 "Find a SoulLink partner": the post goes up in the souldew Discord's #find-a-partner as this player's Discord
+  // account – the answer is its link (opened by the page)
+  route('POST', '/lfg', async (req) => {
+    signedIn();
+    const b = await readJson(req);
+    const partners = Number(b.partners);
+    if (![1, 2, 3].includes(partners)) throw httpError(400, 'Pick 1 to 3 partners', 'acct', { code: 'invalid_field', field: 'partners' });
+    const rules = typeof b.rules === 'string' ? b.rules.replace(/\r\n?/g, '\n').split('\n').map((l) => cleanText(l, 300)).filter(Boolean).slice(0, 6).join('\n').slice(0, 300) : '';
+    const body = { game: cleanText(b.game, 60), partners, rules, lang: cleanText(b.lang, 60), schedule: cleanText(b.schedule, 100) };
+    for (const k of ['game', 'lang', 'schedule']) if ([...body[k]].length < 2) throw httpError(400, `Missing ${k}`, 'acct', { code: 'invalid_field', field: k });
+    const r = await call(API.lfg, { method: 'POST', json: body });
+    if (typeof r.url !== 'string' || !DISCORD_MESSAGE.test(r.url)) throw httpError(502, 'Unexpected answer', 'acct', { code: 'internal' });
+    return { url: r.url };
   });
   route('GET', '/packs', async () => {
     signedIn();

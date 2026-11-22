@@ -252,12 +252,22 @@ export function cleanCatalog(v) {
 }
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
+/** §8.6: the 7-day souldew+ trial – available | running (until) | used (until) | unavailable (reason); null when absent. */
+export function cleanTrial(v) {
+  const t = obj(v);
+  const state = oneOf(t?.state, ['available', 'running', 'used', 'unavailable'], null);
+  if (!state) return null;
+  const until = time(t.until);
+  if ((state === 'running' || state === 'used') && !until) return null;
+  return { state, days: int(t.days, 1, 31) ?? 7, until: state === 'running' || state === 'used' ? until : null, reason: oneOf(t.reason, ['member', 'had_plus', 'account_age'], null) };
+}
 /** Entitlements (§8.2) – the token and pack key go to the page only through getPackAccess() (web/lib/account.mjs). */
 export function cleanEntitlements(v) {
   const o = obj(v) || {};
   return {
     ...cleanEntitlementSummary(o),
-    sources: arr(o.sources, 10).map(obj).filter(Boolean).map((s) => ({ kind: oneOf(s.kind, ['bmc', 'grant', 'discord'], 'bmc'), tier: oneOf(s.tier, TIERS, 'none'), status: cleanText(s.status, 20) || null, until: time(s.until) })),
+    // (an unknown future kind still counts as a source – it reads as 'bmc', as 3.0.0 did with 'trial')
+    sources: arr(o.sources, 10).map(obj).filter(Boolean).map((s) => ({ kind: oneOf(s.kind, ['bmc', 'grant', 'discord', 'trial'], 'bmc'), tier: oneOf(s.tier, TIERS, 'none'), status: cleanText(s.status, 20) || null, until: time(s.until) })),
     token: typeof o.token === 'string' && o.token.length < 4096 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(o.token) ? o.token : null,
     packKey: typeof o.pack_key === 'string' && o.pack_key.length === 43 && B64URL.test(o.pack_key) ? o.pack_key : null,
     packKeyId: typeof o.pack_key_id === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(o.pack_key_id) ? o.pack_key_id : null,
@@ -265,5 +275,6 @@ export function cleanEntitlements(v) {
     // §10.4: the running live theme preview, or null
     preview: obj(o.preview) && /^pv_[A-Za-z0-9_-]{22}$/.test(o.preview.id || '') && catalogId(o.preview.pack_id) && time(o.preview.expires_at)
       ? { id: o.preview.id, packId: o.preview.pack_id, expiresAt: time(o.preview.expires_at) } : null,
+    trial: cleanTrial(o.trial),
   };
 }

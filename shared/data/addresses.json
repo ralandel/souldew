@@ -26,6 +26,16 @@
    "otNamesAddr": "0xD273",
    "nicknamesAddr": "0xD2B5",
    "nameLength": 11,
+   "box": {
+    "countAddr": "0xDA80",
+    "speciesAddr": "0xDA81",
+    "monsAddr": "0xDA96",
+    "otNamesAddr": "0xDD2A",
+    "nicknamesAddr": "0xDE06",
+    "structSize": 33,
+    "maxBox": 20,
+    "source": "pokered wram.asm: wNumInBox, wBoxSpecies, wBoxMons (box_struct, 33 bytes), wBoxMonOT, wBoxMonNicks – the box chosen in the PC; checked live in Red (US): a catch with a full party lands there (#83)"
+   },
    "charset": "charset_gen1.json",
    "speciesTable": "gen1_index_to_dex.json",
    "inBattle": {
@@ -125,6 +135,16 @@
    "otNamesAddr": "0xD273",
    "nicknamesAddr": "0xD2B5",
    "nameLength": 11,
+   "box": {
+    "countAddr": "0xDA80",
+    "speciesAddr": "0xDA81",
+    "monsAddr": "0xDA96",
+    "otNamesAddr": "0xDD2A",
+    "nicknamesAddr": "0xDE06",
+    "structSize": 33,
+    "maxBox": 20,
+    "source": "pokered wram.asm: wNumInBox, wBoxSpecies, wBoxMons (box_struct, 33 bytes), wBoxMonOT, wBoxMonNicks – the box chosen in the PC; checked live in Red (US): a catch with a full party lands there (#83)"
+   },
    "charset": "charset_gen1.json",
    "speciesTable": "gen1_index_to_dex.json",
    "inBattle": {

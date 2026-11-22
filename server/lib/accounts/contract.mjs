@@ -67,6 +67,9 @@ export const API = {
   entitlements: '/v1/entitlements',
   linkEmail: '/v1/entitlements/link-email',
   unlink: '/v1/entitlements/link',
+  trial: '/v1/entitlements/trial',
+  // §14 "Find a SoulLink partner" – the accounts service hands the post to the souldew Discord bot
+  lfg: '/v1/lfg',
   // §10 packs
   packs: '/v1/packs',
   packDownload: (id) => `/v1/packs/${seg(id)}/download`,

@@ -113,6 +113,7 @@ function helper() {
       // (itemLabel: the name the play view would show – '' for an item it can't name)
       party: parse.withBattleHp(res.party, fight).map((m) => ({ species: m.species, name: name(m.species), nickname: m.nickname, level: m.level, hp: m.hp, maxHp: m.maxHp, status: m.status, metLocation: m.metLocation ?? null, metLevel: m.metLevel ?? null, isEgg: !!m.isEgg, key: m.key, item: m.item || 0, ...(m.itemName ? { itemName: m.itemName } : {}), itemLabel: m.item ? (m.itemOwn ? m.itemName || '' : ctx.data?.itemName?.(m.item, entry.gen) || '') : '', moves: m.moves || [] })),
       boxes: Array.isArray(res.boxes) ? res.boxes.length : null,
+      ...(Array.isArray(res.box) ? { box: res.box.map((m) => ({ species: m.species, level: m.level, nickname: m.nickname, key: m.key })) } : {}),
       badges: res.badges ?? null,
       battle: fight ? { kind: fight.kind, enemy: fight.enemy ? { species: fight.enemy.species, name: name(fight.enemy.species), level: fight.enemy.level, hp: fight.enemy.hp, maxHp: fight.enemy.maxHp, moves: fight.enemy.moves || [], ...(fight.enemy.types ? { types: fight.enemy.types } : {}), ...(fight.enemy.status !== undefined ? { status: fight.enemy.status } : {}), ...(fight.enemy.catchRate ? { catchRate: fight.enemy.catchRate } : {}) } : null, active: fight.active || null, ...(fight.balls ? { balls: fight.balls } : {}) } : null,
     };
@@ -129,7 +130,7 @@ function helper() {
         const fight = ctx.parse.readLiveBattle(ctx.entry, e.read, ctx.T, ctx.state, res.party);
         const p = place();
         const here = p?.shown ? { gen: p.gen, id: p.id, name: p.shown } : null; // (as the play view passes it)
-        const out = R.applySnapshot(doc, manifest, gen, 'p1', { source: 'live', party: ctx.parse.withBattleHp(res.party, fight), boxes: res.boxes || null, game: ctx.entry.id, here }, { battle: fight });
+        const out = R.applySnapshot(doc, manifest, gen, 'p1', { source: 'live', party: ctx.parse.withBattleHp(res.party, fight), boxes: res.boxes || null, ...(res.box ? { box: res.box } : {}), game: ctx.entry.id, here }, { battle: fight });
         for (const i of out.inbox || []) run.inbox = [...(run.inbox || []).filter((x) => x.key !== i.mon.key), { key: i.mon.key, species: i.mon.species, reason: i.reason, where: i.where }];
       }
       const encs = Object.entries(doc.scan('enc:')).map(([k, v]) => ({ area: k.replace(/:p1$/, ''), name: R.areaName(doc, manifest, k.replace(/:p1$/, '')), species: v.species, metLocation: v.metLocation ?? null, outcome: v.outcome }));

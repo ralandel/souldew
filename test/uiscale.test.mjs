@@ -138,7 +138,7 @@ test('the window: the size from config.json from the first picture on, checked, 
   // the page may only ask through the preload's one call and hear the one channel
   const pre = read('electron/preload.cjs');
   assert.match(pre, /uiScale: \(v\) => \(v === undefined \? ipcRenderer\.invoke\('ui-scale'\) : ipcRenderer\.invoke\('ui-scale', v\)\),/);
-  assert.match(pre, /'fullscreen', 'ui-scale'\]\.includes\(channel\)/);
+  assert.match(pre, /'fullscreen', 'ui-scale', 'quitting'\]\.includes\(channel\)/);
   // at 100 % exactly the old traffic-light position and Windows title bar height
   assert.deepEqual(windowChromeAt(1), { lights: { x: 16, y: 18 }, titleBar: 36 });
   assert.deepEqual(windowChromeAt(1.5), { lights: { x: 24, y: 27 }, titleBar: 54 });

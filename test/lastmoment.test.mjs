@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { lastMoment, LAST_STATE_WAIT_MS } from '../web/lib/lastmoment.mjs';
+import { lastMoment, LAST_STATE_WAIT_MS, LAST_UPLOAD_WAIT_MS } from '../web/lib/lastmoment.mjs';
 
 /** A player like the fast one: a state asked for comes a moment later – and never once its frame is gone. */
 function framePlayer(state = new Uint8Array([1, 2, 3])) {
@@ -124,4 +124,55 @@ test('lastmoment: every close from the UI goes through it, and the play view tak
   assert.match(take, /const st = grabState\(\);\s*saveAuto\(st\);\s*return st;/, 'the state promise goes back to the close');
   assert.match(play, /stopped = true;\s*offLast\?\.\(\);/, 'the cleanup unregisters');
   assert.match(play, /if \(!lastTaken\) saveAuto\(loadedOk \? grabState\(\) : null\);/, 'closed another way: the cleanup still tries');
+});
+
+// ---- quitting the whole app (3.0.1): the same moment, and the shell waits for the uploads ----------------------------
+
+test('lastmoment: quitting takes the state and waits for its upload – the game is not ended, the state taken once', async () => {
+  const lm = lastMoment();
+  const player = framePlayer();
+  let uploaded = false;
+  const ended = false;
+  const upload = () => new Promise((res) => setTimeout(() => { uploaded = true; res(); }, 10));
+  lm.set(() => player.getState(), upload);
+  await Promise.all([lm.quit(), lm.quit()]);
+  assert.equal(player.asked, 1);
+  assert.equal(uploaded, true, 'resolved only after the upload');
+  assert.equal(ended, false);
+  // nothing running: at once
+  const empty = lastMoment();
+  let t0 = Date.now();
+  await empty.quit();
+  assert.ok(Date.now() - t0 < 50);
+  // a game that went is not asked
+  const off = empty.set(() => { throw new Error('asked'); }, () => Promise.resolve());
+  off();
+  t0 = Date.now();
+  await empty.quit();
+  assert.ok(Date.now() - t0 < 50);
+});
+
+test('lastmoment: quitting with a stuck player or a stuck upload waits at most the two bounds', async () => {
+  const waits = [];
+  const lm = lastMoment({ setTimer: (f, ms) => { waits.push(ms); setTimeout(f, 1); return 1; }, clearTimer: () => {} });
+  lm.set(() => new Promise(() => {}), () => new Promise(() => {}));
+  await lm.quit();
+  assert.deepEqual(waits, [LAST_STATE_WAIT_MS, LAST_UPLOAD_WAIT_MS]);
+});
+
+test('lastmoment: the desktop shell asks the page before the window closes while a game runs, bounded', () => {
+  const main = readFileSync(new URL('../electron/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /if \(closeOk \|\| !unsaved\) return lastMomentFirst\(e\);/, 'after the unsaved question (or without one)');
+  const fn = main.slice(main.indexOf('function lastMomentFirst'), main.indexOf("ipcMain.on('quit-ready'"));
+  assert.match(fn, /awake === null/, 'only while a game runs');
+  assert.match(fn, /setTimeout\(resolve, LAST_MOMENT_MS\)/, 'bounded');
+  assert.match(fn, /send\('quitting'\)/);
+  assert.match(main, /ipcMain\.on\('quit-ready', \(e\) => \{\s*if \(trusted\(e\)\) quitReady\?\.\(\);/, 'only the app page answers');
+  const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
+  assert.match(preload, /'quitting'\]\.includes\(channel\)/);
+  assert.match(preload, /quitReady: \(\) => ipcRenderer\.send\('quit-ready'\)/);
+  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
+  assert.match(app, /window\.sls\?\.on\?\.\('quitting', \(\) => \{\s*lastRef\.current\.quit\(\)\.finally\(\(\) => window\.sls\?\.quitReady\?\.\(\)\);/);
+  const play = readFileSync(new URL('../web/views/play.mjs', import.meta.url), 'utf8');
+  assert.match(play, /return st;\s*\}, \(\) => chain\);/, 'the uploads are the chain the state and the save go on');
 });

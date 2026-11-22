@@ -8,7 +8,7 @@ import { play } from '../lib/sound.mjs';
 import {
   progression, pairState, setEncounter, markDead, revive, markExtraDead, party, live, counts, checks, feedList, feed, feedText, causeText, msg, areaName, joinNames,
   players as getPlayers, rules as getRules, levelCap, dupeOf, resumeRun, slotsOf, encounter, openAreas, runStats, isNuzlocke, logRulesChange,
-  stampLivesChange, allowedRulesPatch, hostSlotOf, canEditRules, lives as getLives, livesFor, lastWildAt, genOfRun, shinyNote, beforeBalls,
+  stampLivesChange, allowedRulesPatch, hostSlotOf, canEditRules, lives as getLives, livesFor, lastWildAt, genOfRun, shinyNote, beforeBalls, linkCandidates,
 } from '../lib/run.mjs';
 import { writeHostRules } from '../lib/hostrules.mjs';
 import { PartyPanel, PartyGrid, TeamColumns, unhatched } from './party.mjs';
@@ -647,7 +647,7 @@ function RoutesTab() {
 }
 
 function EncounterModal({ area, slot, onClose }) {
-  const { doc, manifest, me, runData } = useApp();
+  const { doc, manifest, me, runData, inbox, setInbox } = useApp();
   const existing = doc.get(`enc:${area}:${slot}`, null);
   const [outcome, setOutcome] = useState(existing?.outcome || 'caught');
   const [species, setSpecies] = useState(existing?.species || null);
@@ -664,8 +664,19 @@ function EncounterModal({ area, slot, onClose }) {
     if (o === 'missed' && !species && seen) setSpecies(seen.species);
   };
   const dupe = species ? dupeOf(doc, manifest, runData, species, slot, area) : null;
+  // "Caught" by hand: the Pokémon of that species waiting in "From your game" (or untracked in the team) can be linked,
+  // so live tracking follows it (level, HP, its death) – one of them is picked by itself, several are offered
+  const cands = outcome === 'caught' && !existing?.key ? linkCandidates(doc, slot, species, slot === me ? inbox?.inbox : []) : [];
+  const [linkKey, setLinkKey] = useState(undefined); // undefined: not chosen yet – the only candidate is linked
+  const linked = cands.find((c) => c.key === (linkKey === undefined && cands.length === 1 ? cands[0].key : linkKey)) || null;
   const save = () => {
-    setEncounter(doc, manifest, area, slot, { outcome, species, nickname: outcome === 'caught' ? nickname.trim() : '', level: outcome === 'caught' ? Number(level) || null : null, shiny: outcome === 'caught' && shiny, key: (outcome === 'caught' && existing?.key) || null }, { by: me });
+    const caught = outcome === 'caught';
+    const key = (caught && (existing?.key || linked?.key)) || null;
+    setEncounter(doc, manifest, area, slot, {
+      outcome, species, nickname: caught ? nickname.trim() || (linked?.nickname ?? '') : '', level: caught ? Number(level) || linked?.level || null : null,
+      shiny: caught && (shiny || !!linked?.shiny), key, ...(caught && linked?.form ? { form: linked.form } : {}),
+    }, { by: me });
+    if (linked && slot === me) setInbox?.({ ...inbox, inbox: (inbox?.inbox || []).filter((it) => it.mon.key !== linked.key) });
     onClose();
   };
   const dupeText = dupe && (dupe.missed
@@ -698,6 +709,12 @@ function EncounterModal({ area, slot, onClose }) {
       <${SpeciesPicker} value=${species} onChange=${setSpecies} autoFocus=${!existing} maxId=${runData.maxSpecies()} extra=${runData.ownSpecies()} typesOf=${(id) => runData.types(id, slot)} />
       ${shown}
       ${dupeText && html`<div class="warning">${dupeText}</div>`}
+      ${cands.length > 0 && html`<div class="stack-s" role="group" aria-label=${t('enc.linkTitle', 'In your game')}>
+        <b class="small">${t('enc.linkTitle', 'In your game')}</b>
+        ${cands.map((c) => html`<label class="check"><input type="radio" name="enc-link" checked=${linked?.key === c.key} onChange=${() => setLinkKey(c.key)} />
+          <span>${t('enc.linkMon', '{name} (Lv. {lv}) – live tracking follows it', { name: c.nickname || speciesName(c.species), lv: c.level ?? '?' })}</span></label>`)}
+        <label class="check"><input type="radio" name="enc-link" checked=${!linked} onChange=${() => setLinkKey(null)} /><span>${t('enc.linkNone', 'Don’t link – not in my game')}</span></label>
+      </div>`}
       <div class="grid-3">
         <label class="field"><span>${t('enc.nickname', 'Nickname')}</span><input type="text" maxLength="12" value=${nickname} onInput=${(e) => setNickname(e.target.value)} /></label>
         <label class="field"><span>${t('enc.level', 'Level')}</span><input type="number" min="1" max="100" value=${level} onInput=${(e) => setLevel(e.target.value)} /></label>

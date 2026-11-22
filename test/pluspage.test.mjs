@@ -114,3 +114,26 @@ test('“Get souldew+” without the page wired up yet opens the Buy Me a Coffee
   const links = readFileSync(new URL('../shared/edition.mjs', import.meta.url), 'utf8');
   assert.match(links, /membership: 'https:\/\/buymeacoffee\.com\/souldew\/membership'/);
 });
+
+test('the 7-day trial: offered only while available; a running trial-only souldew+ is its own state – the looks, no thanks', () => {
+  const withTrial = (tier, trial) => acct(tier, { entitlement: { tier, until: tier === 'none' ? null : 1797559246000, trial } });
+  const avail = P.plusState(withTrial('none', { state: 'available', days: 7, until: null }));
+  assert.equal(avail.kind, 'free');
+  assert.equal(P.trialOffered(avail), true);
+  assert.equal(P.trialOffered(P.plusState(withTrial('supporter', { state: 'available' }))), true, 'a Supporter may try souldew+');
+  for (const s of ['used', 'unavailable']) assert.equal(P.trialOffered(P.plusState(withTrial('none', { state: s }))), false, s);
+  assert.equal(P.trialOffered(P.plusState(acct('none'))), false, 'no answer about the trial: no offer');
+  assert.equal(P.trialOffered(P.plusState(null)), false);
+  const running = P.plusState(withTrial('plus', { state: 'running', until: 1797559246000, only: true }));
+  assert.equal(running.kind, 'trial');
+  assert.equal(P.hasPlusLooks(running), true);
+  assert.equal(P.isMember(running), false);
+  assert.deepEqual(P.TIERS.map((x) => P.tierAction(running, x.id)), ['join', 'join', 'join']);
+  // a paid membership beside the trial: a member like any other
+  assert.equal(P.plusState(withTrial('plus', { state: 'running', until: 1, only: false })).kind, 'member');
+  // the rail thanks members, not a trial
+  assert.equal(P.thankedFor({ tier: 'plus', trial: { state: 'running', only: true } }), false);
+  assert.equal(P.thankedFor({ tier: 'plus', trial: { state: 'running', only: false } }), true);
+  assert.equal(P.thankedFor({ tier: 'supporter' }), true);
+  assert.equal(P.thankedFor({ tier: 'none' }), false);
+});

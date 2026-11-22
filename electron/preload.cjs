@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('sls', {
   setUnsaved: (info) => ipcRenderer.send('unsaved', info || null),
   // A game is running: the display stays awake (a controller is no input the OS notices).
   setPlaying: (on) => ipcRenderer.send('playing', !!on),
+  // The app is quitting ('quitting'): the running game's last moment is uploaded – then this says so.
+  quitReady: () => ipcRenderer.send('quit-ready'),
   // Labels of the menu bar in the UI language: { settings, file, addGames, … }.
   setMenuLabels: (labels) => ipcRenderer.send('menu-labels', labels || null),
   // Windows: colours of the title bar buttons ({ color, symbolColor } as #rrggbb), matching the colour scheme.
@@ -33,7 +35,7 @@ contextBridge.exposeInMainWorld('sls', {
     showDownload: () => ipcRenderer.invoke('update-show'),
   },
   on: (channel, fn) => {
-    if (!['navigate', 'emu', 'menu', 'update', 'fullscreen', 'ui-scale'].includes(channel)) return () => {};
+    if (!['navigate', 'emu', 'menu', 'update', 'fullscreen', 'ui-scale', 'quitting'].includes(channel)) return () => {};
     const listener = (e, ...args) => fn(...args);
     ipcRenderer.on(channel, listener);
     return () => ipcRenderer.removeListener(channel, listener);

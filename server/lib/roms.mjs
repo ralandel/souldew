@@ -73,7 +73,14 @@ export function preparePatchedRom(romId, patchId, onLog = () => {}, config = {})
   const patchMb = (patch.length / 1048576).toFixed(1);
   onLog(logLine('patchApplying', `Applying the patch (${format}, ${patchMb} MB) …`, { format, mb: patchMb }));
   const t = Date.now();
-  const out = applyPatch(rom, patch);
+  let out;
+  try {
+    out = applyPatch(rom, patch);
+  } catch (e) {
+    // a patch for another copy of the game (or a damaged one) – an answer with a code, not a bare error 500 (#43: the
+    // new-run assistant's check failed twice with nothing to say why)
+    throw httpError(422, `The patch doesn't fit this ROM (${e.message})`, 'patchNoFit', { detail: String(e.message || '').slice(0, 200) });
+  }
   const crc = crc32Hex(out);
   const s = ((Date.now() - t) / 1000).toFixed(1);
   onLog(logLine('patchApplied', `Patch applied in ${s} s – result CRC32 ${crc}`, { s, crc }));

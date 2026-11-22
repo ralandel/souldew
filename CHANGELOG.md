@@ -2,6 +2,131 @@
 
 `npm run release` takes the release notes from the section of the version being released.
 
+## 3.0.1-r.1
+
+**souldew Renaissance passe en 3.0.1** (tous les détails, en anglais, dans la section 3.0.1 juste en dessous).
+
+**Tout le monde doit mettre à jour :** un link DS ne démarre plus entre une 3.0.0 et une 3.0.1.
+
+- **Échanges et combats DS** : plus d'écran noir pour l'un des joueurs, Salon Union à pleine vitesse, et un message quand
+  un link se bloque.
+- **3DS** : le lecteur ne remplit plus `C:\Windows\Temp` avec certains antivirus. En X/Y et ROSA, souldew cherche
+  l'équipe quand elle n'est pas à l'endroit attendu, et laisse une minute avant de demander si un Pokémon a été raté.
+- **Suivi** : l'équipe d'un dresseur battu n'est plus prise pour la tienne (fausse fin de Nuzlocke), les captures
+  envoyées au PC comptent en Rouge et Bleu, et une capture saisie à la main se relie au Pokémon du jeu.
+- **Quitter souldew pendant une partie** garde l'endroit où tu en étais, comme « Fermer le jeu ».
+- **Triches en Soleil/Lune et Ultra-Soleil/Ultra-Lune** : le sac est de nouveau trouvé après avoir donné un objet.
+- **Randomizer** : plus d'écran noir dans l'intro de Blaze Black 2 Redux.
+- **Ce qui ne change pas** : jusqu'à 8 joueurs, le serveur de souldew Renaissance, les ROM hacks 3DS, Windows uniquement.
+- **Absents de souldew Renaissance**, car liés aux serveurs de souldew officiel : le comptage d'usage quotidien, l'essai
+  souldew+, les rôles Discord et la recherche de partenaire.
+
+## 3.0.1
+
+- **DS trades and battles: no more black screen for one of you.** When two players linked their running DS games
+  (Gen 4 and 5) – “Trade” or “Battle” on the board, in the Union Room or anywhere else – the game of the player who
+  had been playing longer (or used fast-forward more) went black right away and could stay black for minutes, with
+  nothing said, until “Leave link”. The linked consoles were lined up by how
+  long each had been switched on, so the older one waited for the younger one to catch up. Now every console's clock
+  starts together when the link starts, and both games play on at once. Tested with Diamond and Pearl linked from
+  games running for very different times, from inside the Union Room, through a whole trade.
+- **The Union Room at full speed.** While the linked DS games talked to each other (the whole time in the Union
+  Room), they ran at half speed and quick button presses could get lost. Now they run at the speed the computer
+  manages, up to normal speed, and every press counts.
+- **Already standing in the Union Room when you link? You now see each other.** A game that was in the Union Room
+  (or anywhere its wireless was on) when the link started never heard the others until it walked out and back in.
+- **Mixed versions say so.** A DS link with a partner who still has souldew 3.0.0 doesn't start; both of you are told
+  to update.
+- **A link that stands still always says so.** If a link stops moving for a minute – the games no longer hear
+  each other – or one of the linked games stops running, both of you get a message, the link ends and each game goes
+  on from where it was; “Leave link” still works at any time.
+- **Diagnostics include the link.** “Save diagnostics” now records the link session too – when it started, from which
+  games, the connection, every console's frames, the buttons sent and received, waits and how it ended – so a report
+  about a trade or battle shows where it went wrong.
+- **Try souldew+ free for 7 days.** The souldew+ page offers it once per Discord account (if it's at least 30 days old
+  and never had souldew+ or Legend): no payment details, nothing renews, nothing to cancel. While it runs, the page and
+  Settings › Account show “Trial · ends …” and how to keep it on Buy Me a Coffee; when it ends, souldew goes back to
+  its free looks and your picks wait for you – exactly like an ended membership. Once it's used, the offer is gone.
+- **No partner yet? Find one on the souldew Discord.** When you set up a SoulLink without a souldew friend in the other
+  seats, and on the Friends page while you have no friends there yet, a small link opens the partner finder: game,
+  how many partners, language and time zone, when you play and rules – prefilled where souldew knows them. “Post on
+  Discord” puts it in #find-a-partner under your Discord name, with the same “I'm in” button and private group thread
+  as the bot's own form, and opens it. Signed out, the link offers the sign-in instead.
+- **Your souldew+ tier on Discord follows your account.** Once a membership is on your souldew account, the matching
+  role – 💧 Supporter, 🔗 souldew+ (also during the trial and with the Lifetime role) or 🏆 Legend – comes on the souldew
+  Discord by itself within about 10 minutes, and goes again when the tier does.
+- **A daily anonymous usage count**, under the same switch as “playing now” (Settings › Online): once a day souldew
+  tells the team that it was used – version, system, processor, the week of first use and on how many recent days it
+  ran, with a random value that's new every day. No id for you or your computer. What exactly is sent:
+  [docs/PRIVACY.md](docs/PRIVACY.md#daily-usage-count).
+- **Blaze Black 2 Redux with the randomizer: no more black screen in the intro.** The Classic preset's "National
+  Pokédex from the start" works by rewriting Black 2's intro – in a ROM hack with an intro of its own that broke the
+  game: it kept running, but stayed black before you could pick your name (#43). Not "Every Pokémon can learn every
+  HM", as it first looked. The randomizer now checks every place it would change in a Gen 5 game: what a ROM hack
+  changed there isn't offered for it (greyed out, with the reason) – in Blaze Black 2 Redux "National Pokédex from
+  the start" and "Fastest text" go, and the starters stay the hack's own, since they sit in that same intro. Tested
+  with Blaze Black 2 Redux 1.4.1 and three seeds of the Classic preset, from the intro into the player's room.
+- **No "Save file unreadable" at the start of a new game.** A DS game prepares its save while the intro plays; souldew
+  read that, found no save in it yet and said "Save file unreadable – save once in the game first". A save that was
+  readable and isn't any more still says so.
+- **A ROM hack whose patch doesn't fit your copy of the game says so** in the new-run assistant, instead of failing
+  without a reason.
+- **Playing a 3DS game no longer fills up your Windows drive.** The built-in 3DS player sent its picture and sound to
+  souldew's window as one endless download. Antivirus programs that check web traffic (a "web shield") kept all of it
+  in `C:\Windows\Temp` until the game was closed – about 25 MB a second, tens of gigabytes in an evening (#38). The
+  3DS player and the fast player now send it over a connection those programs don't hold on to. Measured on the same
+  game before and after: the same pictures a second and the same smoothness.
+- **Quitting souldew keeps "where you left off".** Closing the whole app while a game runs – the window's close button,
+  ⌘Q or Alt+F4, or a restart for an update – now keeps the moment you were at and your latest save, as "Close game"
+  already did. Next time the game picks up right there.
+- **"Java crashes on this Mac" instead of "Java wasn't found".** On macOS 27 with System Integrity Protection turned
+  off, Java can't start on Apple Silicon – the Java that comes with souldew and any other (#40). souldew said Java was
+  missing, and reinstalling Java didn't help. Now it says what's going on: turn System Integrity Protection back on,
+  then try again. Checking for Java also waits longer the very first time (macOS checks a new program first) and tries
+  once more, and "Save diagnostics" lists every Java souldew tried and how it ended.
+- **Your account shows "Loading …" at the start** while souldew reads your saved sign-in, instead of "Sign in" for a
+  moment – in the sidebar, Settings › Account, Friends, your profile and souldew+.
+- **The Mac app is signed and notarized by Apple.** It opens like any other app – no more "Open Anyway" in System
+  Settings. Signed in, macOS asked for your keychain password after every update; this update may ask one last time,
+  later ones won't.
+- **Cheats in Sun/Moon and Ultra Sun/Ultra Moon no longer stop after you give an item away.** When the last one of an
+  item leaves the bag (given to a Pokémon to hold, used up), these games can keep its id in the slot with a count of 0.
+  souldew took that for a sign it wasn't looking at the bag and said "souldew didn't find your
+  bag in the game's memory" for every cheat (#45).
+- **A beaten trainer's team is never taken for yours any more** (#89). In HeartGold and SoulSilver, Platinum, Diamond and
+  Pearl in languages other than English, souldew finds your team by searching the game's memory. After a trainer
+  battle it could settle on the trainer's party left behind there, with every Pokémon of it at 0 HP, and say your
+  team was wiped and the Nuzlocke over. Now it takes only the team that belongs to your trainer in the game's save data.
+  And whatever game: a team with none of your Pokémon in it is held back until it has stood for a while outside a
+  battle (the game never swaps the whole team at once). A team where every Pokémon is down never comes in that way, so a
+  wrong read can't end a run.
+- **X/Y and Omega Ruby/Alpha Sapphire: souldew looks for your team when it isn't where it expects it** (ticket #37,
+  #82). souldew reads the team of these games at a fixed place per update, and for some players the team wasn't there
+  (no team at all for minutes) or a new catch never showed up, until they saved, reset and loaded the game again. Now,
+  when no team turns up for a while in the game, and once a while after the team was first read, souldew searches the
+  game's memory for its team and reads it there too; when that place gets a new Pokémon the old one doesn't show,
+  souldew moves over. "Save diagnostics" notes the search and where it found the team.
+- **Red and Blue: a catch that goes to the PC counts** (#83). With six Pokémon in your team, the game sends a catch to
+  the PC box, and souldew only read the team, so the catch was never filed for its area. souldew now also reads the
+  box you have chosen in the PC: a Pokémon that lands there right after a wild battle is filed under the place you are,
+  like one that joins the team.
+- **3DS: "Wild … not caught" no longer comes while you name your catch.** X/Y and the other 3DS games put a catch
+  into your team only after the Pokédex entry and the nickname screen, and souldew asked after 10 seconds. It now waits
+  a minute on the 3DS. And when you did press "Mark as spent" and that Pokémon turns up in your team within a few
+  minutes after all, souldew files it as the area's catch instead of keeping the area spent.
+- **A catch you enter by hand is linked to the Pokémon in your game** (ticket #37). Entering "Caught" on the board
+  left live tracking without a link to the Pokémon in the game: it only said "in box", and its level, HP and death
+  never came. Now the dialog shows the Pokémon of that species waiting in "From your game" (or in your team without an
+  area) and links it: the only one by itself, one of several by your pick, or none with "Don't link".
+- **DS games in other languages say what they can't do yet.** Showing partners in your game, raids and battling for
+  money read the game's memory at places known for the English (US) versions of Platinum and HeartGold/SoulSilver.
+  In other languages these were simply missing (two players with a French Platinum didn't see each other, with no word
+  why). Now the play view says that showing partners needs the English version, a raid says "not in this version of
+  the game yet" (it said "not in this ROM hack"), and the Battle button says battles go without a wager. Trading and
+  battling in the Union Room work in every language.
+- **“Assign” and “Ignore” in the Live tab's inbox no longer empty it for a moment.** Using either briefly cleared every
+  waiting Pokémon until the next live update brought them back.
+
 ## 3.0.0-r.2
 
 **souldew Renaissance passe en 3.0** : tout le multijoueur de souldew 3.0 (détails dans la section 3.0.0 juste en
@@ -26,6 +151,7 @@ dessous), avec ce qui fait souldew Renaissance.
   multijoueur.
 - **Windows uniquement** : souldew Renaissance n'est plus construit pour Linux (personne n'y joue). 3.0.0-r.1 n'a
   jamais été publiée (build Windows arrêté par un test sensible au timing) : r.2 est la première 3.0.
+
 
 ## 3.0.0
 

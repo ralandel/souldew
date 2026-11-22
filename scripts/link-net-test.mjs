@@ -7,7 +7,9 @@
 //
 //   node scripts/link-net-test.mjs --host <linkhost> --rom a.gba --rom b.gba --sram a.sav --sram b.sav --rtc <ms>
 //        --script <rec> --frames N [--rtt 80] [--jitter 10] [--delay auto|D] [--speed 1|max] [--out <dir>]
-//        [--expect <dir with seat0.sav, seat1.sav>] [--random <seed>]
+//        [--expect <dir with seat0.sav, seat1.sav>] [--random <seed>] [--state <seat0.state|-> …] (the seats from the
+//        players' running games, the fast player's format) [--speeds 1,0.5] (each peer's own pace – a slow computer that
+//        only manages half of real time; the others wait for it)
 // Never commit ROMs or saves.
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -17,7 +19,7 @@ import { linkDelay } from '../shared/link.mjs';
 const args = process.argv.slice(2);
 const opt = (n, d = null) => (args.includes(`--${n}`) ? args[args.indexOf(`--${n}`) + 1] : d);
 const all = (n) => args.flatMap((a, i) => (a === `--${n}` ? [args[i + 1]] : []));
-const roms = all('rom'), srams = all('sram');
+const roms = all('rom'), srams = all('sram'), states = all('state');
 const frames = Number(opt('frames', '3000'));
 const rtt = Number(opt('rtt', '80')), jitter = Number(opt('jitter', '10'));
 // the input delay for this round trip (linkcable's rule of thumb: half the RTT with a margin, plus 3 frames)
@@ -44,14 +46,15 @@ if (opt('random')) { // u32 frame + u32 input per seat, buttons held for a few f
 }
 
 const hashes = Array.from({ length: N }, () => ({}));
-const waits = new Array(N).fill(0);
+const waits = new Array(N).fill(0), stuck = new Array(N).fill(0);
 const hosts = [...Array(N).keys()].map((seat) => startHost(opt('host'), [
-  ...roms.flatMap((r) => ['--rom', r]), ...srams.flatMap((s) => ['--sram', s]), '--rtc', opt('rtc', '1763150000000'),
+  ...roms.flatMap((r) => ['--rom', r]), ...srams.flatMap((s) => ['--sram', s]), ...states.flatMap((s) => ['--state', s]), '--rtc', opt('rtc', '1763150000000'),
   '--local', String(seat), '--net', '--delay', String(delay), ...(script ? ['--script', script] : []),
 ], {
   onEvent: (e) => {
     if (e.event === 'hash') hashes[seat][e.frame] = e.hash;
     if (e.event === 'wait') waits[seat]++;
+    if (e.event === 'stuck') stuck[seat]++;
   },
   onMessage: (m) => { if (m.type === 12) relay(seat, m.payload); },
 }));
@@ -77,8 +80,11 @@ function relay(from, payload) {
 await Promise.all(hosts.map((h) => h.loaded));
 const t0 = Date.now();
 const f32 = (x) => Buffer.from(new Float32Array([x]).buffer);
-for (const h of hosts) h.send(2, f32(speed));
-await Promise.all(hosts.map((h) => { const w = h.wait((m) => m.event?.event === 'stepped'); h.send(24, h.u32(frames)); return w; }));
+const speeds = String(opt('speeds', '')).split(',').filter(Boolean).map(Number);
+hosts.forEach((h, k) => h.send(2, f32(speeds[k] > 0 ? speeds[k] : speed)));
+const slowest = Math.min(...hosts.map((_, k) => (speeds[k] > 0 ? speeds[k] : speed)));
+const limit = Math.max(600000, (frames / 60 / Math.min(slowest, 1)) * 2000); // (a slow peer takes its time – the others wait for it)
+await Promise.all(hosts.map((h) => { const w = h.wait((m) => m.event?.event === 'stepped', limit); h.send(24, h.u32(frames)); return w; }));
 const dt = (Date.now() - t0) / 1000;
 const saves = await Promise.all(hosts.map((h) => h.flush(roms.length)));
 for (const h of hosts) h.send(6);
@@ -96,8 +102,9 @@ if (out) {
 }
 const res = {
   peers: N, frames, rtt, jitter, delay, speed: speed >= 1000 ? 'max' : speed, seconds: dt, fps: +(frames / dt).toFixed(1),
-  hashChecks: common.length, hashMismatches: bad.length, firstMismatch: bad[0] ?? null, waitEvents: waits,
+  hashChecks: common.length, hashMismatches: bad.length, firstMismatch: bad[0] ?? null, waitEvents: waits, stuckEvents: stuck,
+  ...(speeds.length ? { speeds } : {}),
   messages: sent, bytesPerSecondPerPeer: Math.round(bytes / dt / N), savesEqualBetweenPeers: sameSaves, savesEqualToLocalSession: expectOk,
 };
 console.log(JSON.stringify(res, null, 2));
-process.exit(bad.length || !sameSaves || expectOk === false ? 1 : 0);
+process.exit(bad.length || !sameSaves || expectOk === false || stuck.some(Boolean) ? 1 : 0);

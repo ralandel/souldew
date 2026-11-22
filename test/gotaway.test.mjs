@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import { findEntry, readLiveParty, readLiveBattle, playerBattle, LiveTables } from '../shared/live/parse.mjs';
 import { encryptPK4 } from '../shared/gen4save.mjs';
-import { MissedTracker, MISSED_WAIT, MAX_WAITING, openQuestions, queueQuestions, dropQuestion, wildBattle } from '../web/lib/missed.mjs';
+import { MissedTracker, MISSED_WAIT, MISSED_WAIT_3DS, missedWait, MAX_WAITING, openQuestions, queueQuestions, dropQuestion, wildBattle } from '../web/lib/missed.mjs';
 
 const ROOT = new URL('../', import.meta.url).href;
 registerHooks({
@@ -211,6 +211,50 @@ test('Platinum SoulLink: Shinx flees on Route 204, the next wild battle comes 2 
   const res = snap(d, 'p2', [...team, mon({ key: 'b2', species: 406, nickname: 'BUDEW', metLocation: 19 })]);
   assert.equal(d.get('enc:m4-19:p2').outcome, 'missed');
   assert.deepEqual(res.inbox.map((i) => [i.mon.key, i.reason]), [['b2', 'occupied']]);
+});
+
+test('3DS: the question waits a minute – X/Y file a catch only after the Pokédex entry and the nickname screen', () => {
+  assert.equal(missedWait(6), MISSED_WAIT_3DS);
+  assert.equal(missedWait(7), MISSED_WAIT_3DS);
+  assert.equal(missedWait(4), MISSED_WAIT);
+  assert.ok(MISSED_WAIT_3DS >= 60000);
+  const tr = new MissedTracker({ wait: missedWait(6) });
+  const t = play(tr, [[wild(511), 10], [null, 1]], 1000);
+  // the player names Pansage: 40 s after the battle nothing is asked yet
+  assert.deepEqual(tr.due(t + 40000), []);
+  tr.newMon(t + 45000, 511);
+  const [r] = tr.due(t + MISSED_WAIT_3DS);
+  assert.equal(tr.caughtAt(r), t + 45000, 'the catch answers it – no question');
+});
+
+test('"Mark as spent", then the Pokémon turns up after all: the area becomes the catch (not the inbox)', () => {
+  const d = mkDoc({ dupes: 'player' });
+  snap(d, 'p1', [mon({ key: 'a1' })]);
+  const team = [mon({ key: 'b1', species: 390, nickname: 'CHIMCHAR' })];
+  snap(d, 'p2', team);
+  const area = R.areaForCatch(d, PT, 4, 19);
+  assert.equal(R.markMissed(d, PT, area, 'p2', { species: 403, by: 'p2', asked: true }), true);
+  assert.equal(R.pairState(d, area, PT).state, 'failed');
+  // another species there: stays the inbox's (the miss stands)
+  let res = snap(d, 'p2', [...team, mon({ key: 'b2', species: 406, nickname: 'BUDEW', metLocation: 19 })]);
+  assert.deepEqual(res.inbox.map((i) => [i.mon.key, i.reason]), [['b2', 'occupied']]);
+  // the Shinx it asked about joins: caught after all
+  res = snap(d, 'p2', [...team, mon({ key: 'b3', species: 403, nickname: 'SHINX', metLocation: 19 })]);
+  assert.deepEqual(res.newCatches, [area]);
+  assert.deepEqual([d.get(`enc:${area}:p2`).outcome, d.get(`enc:${area}:p2`).key], ['caught', 'b3']);
+  assert.notEqual(R.pairState(d, area, PT).state, 'failed');
+  // a miss entered on the board (not the question's), or one long ago, isn't taken back
+  const d2 = mkDoc({ dupes: 'player' });
+  snap(d2, 'p2', team);
+  R.markMissed(d2, PT, area, 'p2', { species: 403, by: 'p2' });
+  res = snap(d2, 'p2', [...team, mon({ key: 'b3', species: 403, nickname: 'SHINX', metLocation: 19 })]);
+  assert.equal(d2.get(`enc:${area}:p2`).outcome, 'missed');
+  const d3 = mkDoc({ dupes: 'player' });
+  snap(d3, 'p2', team);
+  R.markMissed(d3, PT, area, 'p2', { species: 403, by: 'p2', asked: true });
+  d3.set(`enc:${area}:p2`, { ...d3.get(`enc:${area}:p2`), at: Date.now() - R.CAUGHT_AFTER_MISS - 1 });
+  snap(d3, 'p2', [...team, mon({ key: 'b3', species: 403, nickname: 'SHINX', metLocation: 19 })]);
+  assert.equal(d3.get(`enc:${area}:p2`).outcome, 'missed');
 });
 
 // ---- the Gen 4 battle readers on synthetic RAM: a wild battle that is fled ----

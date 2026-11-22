@@ -161,6 +161,12 @@ export function gameOfEntry(entry) {
 export const wagerGame = (id) => /^pokemon-(red|blue|yellow|gold|silver|crystal|ruby|sapphire|emerald|firered|leafgreen|diamond|pearl|platinum|heartgold|soulsilver|black|white|black-2)$/.test(String(id || ''))
   || /^pokemon-(ruby|sapphire|firered|leafgreen)-de$/.test(String(id || ''));
 
+/**
+ * A catalog game that can't battle for a wager only because of its language (Platinum and HeartGold/SoulSilver from
+ * Europe or Germany, …): the English version of it can – the play view says so instead of leaving the wager out.
+ */
+export const wagerNeedsEnglish = (id) => !wagerGame(id) && /-(eu|de|fr|es|it|jp)$/.test(String(id || '')) && wagerGame(String(id).replace(/-(eu|de|fr|es|it|jp)$/, ''));
+
 /** The battle formats a link battle can be (picked in the game; the invite names it): per system and seats. */
 export function battleFormats(system, seats) {
   if (seats === 4) return system === 'gba' ? ['multi'] : []; // (a Gen 3 multi battle – four DS players in the Union Room may battle in pairs)

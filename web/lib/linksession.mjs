@@ -45,6 +45,7 @@ import { LINK_CMD, linkDelay, sameLinkSystem } from '/shared/link.mjs';
 import { b64, unb64, deflate, inflate, sha1 } from './bytes.mjs';
 import { LinkResult } from './linkresult.mjs';
 import { WAGER_CAP, wagerRules, agreedWager, resultEntry } from './wager.mjs';
+import { diag } from './diag.mjs';
 
 // Seamless (docs/MULTIPLAYER.md › "Seamless"): a player whose game runs here in the fast player doesn't restart it for
 // the link. Once every seat's game is found, that game stops for a moment ("Linking…"), its save state goes to every
@@ -58,6 +59,15 @@ const REJOIN_MAX_MS = 30 * 60 * 1000;
 export { linkDelay };
 const INVITE_TIMEOUT_MS = 60 * 1000; // an invite nobody answers ends by itself
 const MAX_SAVE_BYTES = 4 * 1024 * 1024; // (server/lib/native.mjs MAX_SAVE: a partner's save can't be bigger)
+// A link that stands still never does so silently (souldew 3.0.0: a DS console stood still, its player saw black and
+// nothing was said): our link host waiting this long at one frame for a partner's buttons ends the link with a message
+// (both sides – the other one waits for ours by then too), and each game goes on alone. A rejoin under way restarts it.
+export const STALL_MS = 60 * 1000;
+// What this build's DS link host does differently from souldew 3.0.0 (the consoles' session clock, docs/MULTIPLAYER-DS.md):
+// a 3.0.0 computer would compute other consoles – a DS link only starts when every seat says it has this.
+export const DS_CLOCK_CAP = 'dsclock1';
+const hasDsClock = (caps) => Array.isArray(caps) && caps.includes(DS_CLOCK_CAP);
+const DIAG_EVERY_MS = 10 * 1000; // a running session's state into the diagnostics (Help › "Save diagnostics")
 // A session the others are told about ('linked'): from the moment every seat said yes until it ends. While only invited,
 // a player is asked once more – the "in another link" answer covers that short moment.
 const LINKED_PHASES = ['preparing', 'need', 'running', 'rejoining'];
@@ -136,6 +146,9 @@ export class LinkSessions {
     this.early = [];
     this.resendTo = [];
     this.needAt = {};
+    this.stall = null; // { frame, since }: our host waits at this frame for a partner's buttons, since then
+    this.lastIn = {}; // seat → the last frame of its buttons that reached us (diagnostics)
+    this.diagAt = 0;
     this.going = false;
     this.measuring = this.rtt = null;
     this.own = null;
@@ -278,7 +291,7 @@ export class LinkSessions {
     const sid = this.state.sid;
     this.inviteTimer = setTimeout(() => this.state.sid === sid && this.state.phase === 'inviting' && this._fail('linkNoAnswer'), INVITE_TIMEOUT_MS);
     this.inviteTimer?.unref?.();
-    this._send({ t: 'invite', kind, seats, sha1: { [this.me]: own.sha1 }, crc: { [this.me]: own.crc || null }, system: c.system, caps: [WAGER_CAP], wager: bet, format: fmt }, { relayToo: true });
+    this._send({ t: 'invite', kind, seats, sha1: { [this.me]: own.sha1 }, crc: { [this.me]: own.crc || null }, system: c.system, caps: [WAGER_CAP, DS_CLOCK_CAP], wager: bet, format: fmt }, { relayToo: true });
   }
 
   /** Answer an invite – `wager`: the most this player puts in (less than offered: the wager is lowered for everybody). */
@@ -289,7 +302,7 @@ export class LinkSessions {
     const own = c?.slots?.[this.me];
     // (Game Boy and Game Boy Color games share the cable: Blue ↔ Yellow, Gold ↔ Crystal …)
     const bad = !c?.tool ? 'linkMissing' : !c.supported || !sameLinkSystem(c.system, st.system) ? 'linkSystem' : !own?.rom ? 'linkOwnMissing'
-      : this.block((st.seats || []).filter((s) => s !== this.me), st.kind);
+      : st.system === 'nds' && !st.dsClock ? 'linkOlder' : this.block((st.seats || []).filter((s) => s !== this.me), st.kind);
     if (bad) {
       this._send({ t: 'refuse', reason: bad }, { relayToo: true });
       return this._set({ phase: 'ended', error: bad, ended: { reason: bad, mine: true, at: Date.now() } });
@@ -304,7 +317,7 @@ export class LinkSessions {
       st.wager.accepts[this.me] = stake;
     }
     this._set({ phase: 'preparing' });
-    this._send({ t: 'accept', sha1: { [this.me]: own.sha1 }, crc: { [this.me]: own.crc || null }, caps: [WAGER_CAP], wager: stake }, { relayToo: true });
+    this._send({ t: 'accept', sha1: { [this.me]: own.sha1 }, crc: { [this.me]: own.crc || null }, caps: [WAGER_CAP, DS_CLOCK_CAP], wager: stake }, { relayToo: true });
     this._resolve();
   }
 
@@ -476,6 +489,7 @@ export class LinkSessions {
     // once per session: both sides see a desync at the same time, and the other's bye arrives while this one ends
     if (this.endingSid && this.endingSid === st.sid) return;
     this.endingSid = st.sid;
+    if (st.sid) diag('link', { type: 'end', reason, mine, phase: was, frame: this.stats.frame ?? null, ...this._diagCounts() });
     store.set(REJOIN_KEY(this.runId), null);
     let restored = null;
     if (reason === 'linkDesync' && st.id && (was === 'running' || was === 'rejoining')) {
@@ -522,6 +536,7 @@ export class LinkSessions {
         wager: { offer: m.kind === 'battle' && Array.isArray(m.caps) && m.caps.includes(WAGER_CAP) ? Math.max(0, Math.floor(Number(m.wager) || 0)) : 0, accepts: {},
           caps: { [m.from]: Array.isArray(m.caps) && m.caps.includes(WAGER_CAP) } },
         format: m.kind === 'battle' && ['single', 'double', 'multi'].includes(m.format) ? m.format : null,
+        dsClock: hasDsClock(m.caps), // (the inviter's build links DS consoles the way this one does)
       });
     }
     if (m.sid !== st.sid) return;
@@ -530,6 +545,7 @@ export class LinkSessions {
     if (m.t === 'bye') return this._end(m.reason || 'left');
     if (m.t === 'accept') {
       if (typeof m.sha1?.[m.from] !== 'string') return;
+      if (st.system === 'nds' && !hasDsClock(m.caps)) return this._fail('linkOlder'); // (a 3.0.0 partner: its consoles would differ)
       st.sha1[m.from] = m.sha1[m.from];
       st.crc[m.from] = m.crc?.[m.from] || null;
       st.accepted[m.from] = true;
@@ -595,7 +611,10 @@ export class LinkSessions {
     if (m.t === 'in' && (st.phase === 'preparing' || st.phase === 'rejoining')) return this.early.length < 4096 && this.early.push(m); // (our host is still starting)
     if (m.t === 'need' && st.phase === 'running') return this._need(m);
     if (m.t === 'hash' && st.phase === 'running') return this._hash(m.from, m.f, m.h);
-    if (m.t === 'rejoin' && st.phase === 'running') return this._donate(m.from);
+    if (m.t === 'rejoin' && st.phase === 'running') {
+      this.stall = null; // (a partner coming back: the wait has a reason and an end)
+      return this._donate(m.from);
+    }
     if (m.t === 'state' && st.phase === 'rejoining') return this._stateIn(m);
     if (m.t === 'state-busy' && st.phase === 'rejoining') return this._fail('linkRejoinBusy'); // (the others stop waiting too)
   }
@@ -682,6 +701,8 @@ export class LinkSessions {
       // the wager every seat agreed to (each peer works it out from the same invite and accepts)
       const stake = st.wager ? agreedWager({ offer: st.wager.offer, seats: st.seats, host: st.host, accepts: st.wager.accepts, caps: st.wager.caps, cap: wagerRules(this.rules()).cap }) : 0;
       this._set({ phase: 'running', id: r.id, delay, rtc, local: r.local, waiting: null, startedAt: Date.now(), seamless, models, stake, rejoined: !!state });
+      diag('link', { type: 'start', kind: st.kind, system: st.system, seats: st.seats, me: this.me, local: r.local, delay, seamless, rejoined: !!state,
+        fromState: st.seats.filter((s) => !!snapOf(s)), route: st.route || null });
       // the battles: read from every seat's console from now on (a rejoin can't know what happened while it was away)
       if (!state) {
         const startSaves = Object.fromEntries(st.seats.map((s) => [s, st.saves[s]?.b64 ? unb64(st.saves[s].b64) : null]));
@@ -778,9 +799,30 @@ export class LinkSessions {
       this.stats.sent = (this.stats.sent || 0) + 1;
     } else if (d?.type === 'emu-link-hash') {
       this._send({ t: 'hash', f: d.frame, h: d.hash });
+      this.stats.frame = d.frame;
+      this.stall = null;
+      const now = Date.now();
+      if (now - this.diagAt >= DIAG_EVERY_MS) {
+        this.diagAt = now;
+        // (done: each console's finished frames, have: each seat's buttons known – from the link host; lastIn: what the
+        // partners' buttons reached here)
+        diag('link', { type: 'run', frame: d.frame, done: d.done ?? null, have: d.have ?? null, ...this._diagCounts(), route: this.state.route || null });
+      }
       this._hash(this.me, d.frame, d.hash);
+    } else if (d?.type === 'emu-link-stuck') {
+      // a console far behind the session (the same on every computer: they all compute the same consoles)
+      diag('link', { type: 'stuck', frame: d.frame, seats: d.seats, behind: d.behind });
+      this._fail('linkStuck');
     } else if (d?.type === 'emu-link-wait') {
       this._set({ waiting: { seats: d.seats, ms: d.ms, frame: d.frame, at: Date.now() } });
+      const at = Date.now();
+      if (!this.stall || this.stall.frame !== d.frame) this.stall = { frame: d.frame, since: at, logged: 0 };
+      const waited = at - this.stall.since;
+      if (at - this.stall.logged >= 2000) {
+        this.stall.logged = at;
+        diag('link', { type: 'wait', frame: d.frame, seats: d.seats, waited, ...this._diagCounts() });
+      }
+      if (waited >= STALL_MS) return this._fail('linkStalled');
       // a gap: ask every partner for the missing seats' buttons from that frame (any of them can answer)
       const now = Date.now();
       this.state.seats.forEach((slot, s) => {
@@ -821,6 +863,13 @@ export class LinkSessions {
     if (!Number.isInteger(seat) || seat < 0 || seat >= this.state.seats.length || seat === this.state.local || !k.length || k.length > 4096) return;
     this._cmd(LINK_CMD.RINPUT, [seat, m.f >>> 0, ...k]);
     this.stats.received = (this.stats.received || 0) + 1;
+    if (Number.isInteger(m.f)) this.lastIn[seat] = Math.max(this.lastIn[seat] ?? -1, m.f + k.length - 1);
+  }
+
+  /** What the diagnostics keep of a session's traffic: buttons sent / received, gaps asked for and answered. */
+  _diagCounts() {
+    const s = this.stats;
+    return { sent: s.sent || 0, received: s.received || 0, needs: s.needs || 0, resends: s.resends || 0, lastIn: { ...this.lastIn } };
   }
 
   /** A command to the link host (u32 words), batched: one request at a time, what comes meanwhile goes along. */

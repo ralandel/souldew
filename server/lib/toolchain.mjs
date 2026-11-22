@@ -6,6 +6,7 @@ import { join, delimiter, dirname, resolve, sep } from 'node:path';
 import { listZip, readZipEntry } from './zip.mjs';
 import { TOOLS_DIR, BUNDLED_TOOLS, CACHE_DIR } from './paths.mjs';
 import { httpError, removeQuietly } from './fsutil.mjs';
+import { redactHome } from './ctr.mjs';
 import { PRESETS, buildValues, toProperties } from '../../shared/randomizer-options.mjs';
 
 export const UPR_VERSION = '4.6.1';
@@ -114,26 +115,89 @@ function javaCandidates() {
   return list;
 }
 
-export function detectJava(force = false) {
+/**
+ * How long `java -version` may take. A Java started for the first time can be slow: macOS's XProtect scans a new
+ * binary before it runs (seconds on a busy Mac), antivirus on Windows does the same. A check that ran out is tried
+ * once more – the scan is done by then.
+ */
+export const JAVA_CHECK_MS = 40000;
+
+/**
+ * Did this Java crash rather than answer? On macOS 27 with System Integrity Protection off, every HotSpot JVM on Apple
+ * Silicon dies while it sets up its code cache (SIGBUS in CodeHeap::allocate, #40) – the bundled one and any the
+ * player installs. A signal, the exit codes a signal turns into (128 + 6 SIGABRT, + 10 SIGBUS, + 11 SIGSEGV; Java's
+ * own crash handler exits with 134) or the JVM's crash report.
+ */
+export function javaCrashed(r) {
+  if (!r || r.error?.code === 'ENOENT') return false;
+  if (['SIGBUS', 'SIGSEGV', 'SIGABRT', 'SIGILL', 'SIGTRAP'].includes(r.signal)) return true;
+  if ([134, 135, 138, 139].includes(r.status)) return true;
+  return /CodeHeap|SIGBUS|SIGSEGV|A fatal error has been detected by the Java Runtime/i.test(`${r.stderr || ''}${r.stdout || ''}`);
+}
+
+/** One candidate's answer, as diagnostics keep it: the path, how it ended, the first lines it wrote (home shortened). */
+function javaTry(bin, r, tries) {
+  const text = `${r.stderr || ''}${r.stdout || ''}`;
+  return {
+    path: redactHome(bin),
+    exit: r.status ?? null,
+    signal: r.signal || null,
+    ...(r.error ? { error: r.error.code || r.error.name || 'error' } : {}),
+    ...(tries > 1 ? { tries } : {}),
+    ...(javaCrashed(r) ? { crashed: true } : {}),
+    // (a JVM crash report starts with lines of nothing but "#": left out, so the signal and the frame fit)
+    out: redactHome(text.split(/\r?\n/).filter((l) => l.replace(/^#/, '').trim()).slice(0, 6).join('\n')).slice(0, 800),
+  };
+}
+
+/**
+ * The first Java that answers `-version` (the bundled one first) → { ok, bin, version, major, bundled, vendor, checked }.
+ * None: { ok: false, crashed } – crashed when one of them started and crashed (the page then says why instead of
+ * "Java wasn't found"). `checked`: every candidate's answer, for "Save diagnostics".
+ * `spawn`/`candidates`: for tests.
+ */
+export function detectJava(force = false, { spawn = spawnSync, candidates = javaCandidates, timeoutMs = JAVA_CHECK_MS } = {}) {
   if (javaCache && !force) return javaCache;
-  for (const bin of javaCandidates()) {
+  const checked = [];
+  for (const bin of candidates()) {
+    let r = null;
+    let tries = 0;
     try {
       // windowsHide: java.exe is a console program – without it every check would flash a console window
-      const r = spawnSync(bin, ['-version'], { encoding: 'utf8', timeout: 15000, windowsHide: true });
-      const text = `${r.stderr || ''}${r.stdout || ''}`;
-      const m = text.match(/version "([^"]+)"/);
-      if (r.status === 0 && m) {
-        const raw = m[1];
-        const major = raw.startsWith('1.') ? Number(raw.split('.')[1]) : Number(raw.split(/[.+-]/)[0]);
-        javaCache = { ok: major >= 8, bin, version: raw, major, bundled: bin === BUNDLED_JAVA || bin === BUNDLED_FALLBACK, vendor: text.split(/\r?\n/)[1]?.trim() || '' };
-        return javaCache;
-      }
-    } catch {
-      // try next candidate
+      do {
+        tries++;
+        r = spawn(bin, ['-version'], { encoding: 'utf8', timeout: timeoutMs, windowsHide: true });
+      } while (tries < 2 && r?.error?.code === 'ETIMEDOUT');
+    } catch (e) {
+      r = { status: null, signal: null, error: e, stderr: '', stdout: '' };
     }
+    const text = `${r.stderr || ''}${r.stdout || ''}`;
+    const m = text.match(/version "([^"]+)"/);
+    if (r.status === 0 && m) {
+      const raw = m[1];
+      const major = raw.startsWith('1.') ? Number(raw.split('.')[1]) : Number(raw.split(/[.+-]/)[0]);
+      checked.push(javaTry(bin, r, tries));
+      javaCache = { ok: major >= 8, bin, version: raw, major, bundled: bin === BUNDLED_JAVA || bin === BUNDLED_FALLBACK, vendor: text.split(/\r?\n/)[1]?.trim() || '', checked };
+      return javaCache;
+    }
+    // (a name that isn't there – "java" without an installed Java – is no news: only kept short)
+    checked.push(r.error?.code === 'ENOENT' ? { path: redactHome(bin), error: 'ENOENT' } : javaTry(bin, r, tries));
   }
-  javaCache = { ok: false, bin: null, version: null, major: 0 };
+  javaCache = { ok: false, bin: null, version: null, major: 0, crashed: checked.some((c) => c.crashed), checked };
   return javaCache;
+}
+
+/** What "Save diagnostics" keeps of the Java check: the answer and every candidate's (paths with the home shortened). */
+export function javaDiagnostics() {
+  const j = detectJava();
+  return { ok: j.ok, version: j.version, major: j.major, bundled: !!j.bundled, crashed: !!j.crashed, path: j.bin ? redactHome(j.bin) : null, checked: j.checked || [] };
+}
+
+/** The missing tool for the page: 'java' (none found), 'javaCrash' (Java starts and crashes – #40), 'upr', or null. */
+export function missingToolNow() {
+  const j = detectJava();
+  if (!j.ok) return j.crashed ? 'javaCrash' : 'java';
+  return uprStatus().installed ? null : 'upr';
 }
 
 export function uprStatus() {
@@ -189,7 +253,7 @@ export async function inspectRom(path, { gen = null, run = runBridge, dir = CACH
     }
     return info;
   } catch (e) {
-    const missingTool = !detectJava().ok ? 'java' : !uprStatus().installed ? 'upr' : null;
+    const missingTool = missingToolNow();
     if (!missingTool) console.warn('[inspect]', e.message);
     return { unsupported: true, reason: missingTool ? null : 'unreadable', missingTool };
   } finally {
@@ -410,6 +474,7 @@ function freeGb(dir, statfs = statfsSync) {
  */
 export function runBridge(args, { timeoutMs, ctr = false, onLine = null, spawnFn = spawn, removeDir = undefined } = {}) {
   const java = detectJava();
+  if (!java.ok && java.crashed) return Promise.reject(httpError(409, 'Java crashes on this computer (on a Mac usually because System Integrity Protection is turned off).', 'javaCrash'));
   if (!java.ok) return Promise.reject(httpError(409, 'Java 8+ wasn’t found. Install Java (e.g. Temurin 21 from adoptium.net).', 'javaMissing'));
   if (!existsSync(UPR_JAR)) return Promise.reject(httpError(409, 'Universal Pokemon Randomizer ZX is missing – reinstall souldew, or play without the randomizer.', 'uprMissing'));
   const limit = timeoutMs ?? (ctr ? CTR_TIMEOUT_MS : 180000);

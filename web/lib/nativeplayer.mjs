@@ -7,6 +7,7 @@
 import * as controls from '/lib/controls.mjs';
 import { setLang, guessLang, t } from '/lib/i18n.mjs';
 import { serverErrorText } from '/lib/errors.mjs';
+import { openHostStream } from '/lib/hoststream.mjs';
 import { LINK_CMD, LINK_MSG } from '/shared/link.mjs';
 import { b64 } from '/lib/bytes.mjs';
 import { installWorld } from '/lib/worldoverlay.mjs';
@@ -519,7 +520,7 @@ function onEvent(p) {
   } else if (e.event === 'written') written.shift()?.fn?.(!!e.ok);
   else if (e.event === 'stateLoaded') waiters.loaded.splice(0).forEach((f) => f(!!e.ok));
   else if (e.event === 'seatState' && !e.size) waiters.seatState.splice(0).forEach((f) => f(null));
-  else if (LINK_SESSION && (e.event === 'hash' || e.event === 'wait')) post({ type: `emu-link-${e.event}`, ...e });
+  else if (LINK_SESSION && (e.event === 'hash' || e.event === 'wait' || e.event === 'stuck')) post({ type: `emu-link-${e.event}`, ...e });
   else if (e.event === 'error') {
     st.error = e.message;
     fail(t('native.failed', 'The game can’t run in the fast player: {why}', { why: e.message }));
@@ -546,11 +547,11 @@ function fail(text) {
 let pumpGen = 0;
 async function pump() {
   const gen = ++pumpGen;
-  const res = await fetch(`/api/native/stream?id=${st.id}`);
-  if (gen !== pumpGen) return res.body?.cancel().catch(() => {}); // (switched meanwhile)
-  if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
+  // a WebSocket (an endless HTTP response filled antivirus caches on Windows – #38, lib/hoststream.mjs)
+  const reader = await openHostStream(`/api/native/stream?id=${st.id}`);
+  if (gen !== pumpGen) return reader.cancel(); // (switched meanwhile)
+  st.streamKind = reader.kind;
   cmd(CMD.RESYNC); // the whole RAM, whatever was sent before this page listened
-  const reader = res.body.getReader();
   let buf = new Uint8Array(0);
   let parts = [];
   let partsLen = 0;
@@ -1043,7 +1044,7 @@ window.__emu = {
   },
   /** Switches into and out of link sessions: { to: 'link' | 'solo', ms (the picture stood still), at } – the last 20. */
   switches: () => st.switches.slice(),
-  perf: () => ({ fps: st.fps, speed: st.hostSpeed, frames: st.hostFrame, shown: st.frames, audioIn: st.audioIn || 0, audioOn: !!audio.node, core: st.core, info: st.info, error: st.error, log: st.log.slice(-20), pacing: { core: st.core, native: true } }),
+  perf: () => ({ fps: st.fps, speed: st.hostSpeed, frames: st.hostFrame, shown: st.frames, audioIn: st.audioIn || 0, audioOn: !!audio.node, core: st.core, info: st.info, error: st.error, log: st.log.slice(-20), pacing: { core: st.core, native: true }, stream: st.streamKind || null }),
   setOption(k, v) {
     if (/screens?_layout$/.test(k)) {
       st.lr = /left/i.test(v);

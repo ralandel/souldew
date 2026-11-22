@@ -30,20 +30,30 @@ export const HERO_LOOK = { banner: 'night-train', frame: 'brass-ring', nameplate
  *   'free'                             signed in, no membership
  *   'supporter'                        tier 1: thanked, souldew+ still offered (the looks are tier 2)
  *   'member' | 'patron'                souldew+: the thank-you version, everything marked "Yours"
+ *   'trial'                            souldew+ from the 7-day trial alone (API.md §8.6): the looks are theirs, nobody is
+ *                                      thanked for paying, the end date and the membership are shown
+ * `trial` (when the service sent one): { state: available | running | used | unavailable, until, reason, only } – the page
+ * offers "Try souldew+ free for 7 days" only while it is 'available'.
  * `acct`: the account store (lib/account.mjs useAccount()).
  */
 export function plusState(acct) {
   const me = acct?.session?.signedIn ? acct.me : null;
   if (!me) return { kind: 'signedOut', tier: 'none', name: '', until: null };
   const tier = me.entitlement?.tier || 'none';
-  const kind = tier === 'patron' ? 'patron' : tier === 'plus' ? 'member' : tier === 'supporter' ? 'supporter' : 'free';
-  return { kind, tier, name: me.name || '', until: me.entitlement?.until ?? null };
+  const trial = me.entitlement?.trial || null;
+  const onlyTrial = tier === 'plus' && trial?.state === 'running' && trial.only === true;
+  const kind = tier === 'patron' ? 'patron' : onlyTrial ? 'trial' : tier === 'plus' ? 'member' : tier === 'supporter' ? 'supporter' : 'free';
+  return { kind, tier, name: me.name || '', until: me.entitlement?.until ?? null, ...(trial ? { trial } : {}) };
 }
 
 /** souldew+ (all the looks) for this state? */
-export const hasPlusLooks = (state) => state.kind === 'member' || state.kind === 'patron';
-/** A member of any tier – they are thanked (the rail says "thank you" too). */
-export const isMember = (state) => state.kind === 'supporter' || hasPlusLooks(state);
+export const hasPlusLooks = (state) => state.kind === 'member' || state.kind === 'patron' || state.kind === 'trial';
+/** A member of any tier – they are thanked (the rail says "thank you" too). A trial is not a membership. */
+export const isMember = (state) => state.kind === 'supporter' || state.kind === 'member' || state.kind === 'patron';
+/** "Try souldew+ free for 7 days" – only while the service says this account may start it. */
+export const trialOffered = (state) => state.trial?.state === 'available' && (state.kind === 'free' || state.kind === 'supporter');
+/** Thanked in the rail: a tier from a membership, grant or role – not souldew+ from the trial alone. */
+export const thankedFor = (entitlement) => (entitlement?.tier || 'none') !== 'none' && !(entitlement?.trial?.only && entitlement.trial.state === 'running');
 
 /**
  * The hero card's look: a member's own banner / frame / nameplate where they picked one, the page's pick everywhere
@@ -56,6 +66,7 @@ export function heroLook(me, state) {
 
 /** A tier card's button for this state: 'current' (disabled), 'switch' (members: change it on BMC) or 'join'. */
 export function tierAction(state, tierId) {
+  if (state.kind === 'trial') return 'join'; // a trial isn't a tier: every card is a way to keep it
   if (state.tier === tierId) return 'current';
   return isMember(state) ? 'switch' : 'join';
 }

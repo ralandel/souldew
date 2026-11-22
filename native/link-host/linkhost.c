@@ -19,8 +19,9 @@
 // INPUT, SPEED, SAVE / LOAD (a state in the fast player's format), QUIT, RESET, WRITE (cheats), FLUSH, SRAM (a battery
 // save given late), RESYNC, STEP, WATCH; out VIDEO (RGB565), AUDIO, STATE, LOG, EVENT, RAM, SRAM, WATCHED. In a link
 // session: INPUT, SPEED, SAVE / LOAD (whole-session states), QUIT, FLUSH (+ SEATSRAM), RESYNC, STEP, VIEW, RINPUT,
-// READ / POKE (tests), UNTIL, NEED, SEATSTATE; out LINPUT, SEATSRAM, SEATSTATE, MEM and the events hash {frame, hash}
-// every 120 frames and wait {seats, frame, ms}. Both: CMD_LINK / CMD_SOLO (the server only, never the page).
+// READ / POKE (tests), UNTIL, NEED, SEATSTATE; out LINPUT, SEATSRAM, SEATSTATE, MEM and the events hash {frame, hash,
+// done, have} every 120 frames, stuck {seats, frame, behind} (a console far behind the session) and wait {seats, frame,
+// ms}. Both: CMD_LINK / CMD_SOLO (the server only, never the page).
 // Events: loaded {engine, mode, core, system, seats, local, net, delay, width, height, fps, sampleRate, frame, ram,
 // saveSize, stateSize, state} | stats {fps, speed, shown, frame, ffk, ffHoles} | ffrate {k} | audioRate | stepped | saved | written | stateLoaded | seatState |
 // error | ended.
@@ -44,6 +45,7 @@
 #include <time.h>
 
 #define HASH_EVERY 120
+#define STUCK_FRAMES 600 // a console this many frames behind the session stands still for its player: event "stuck"
 #define MAX_CMD_LEN (64u * 1024 * 1024)
 #define MAX_SETTLE 600
 
@@ -130,6 +132,39 @@ static int state_loaded = -1; // the loaded event's "state": -1 none asked for, 
 
 static bool linked(void) { return !seats_solo; }
 
+// ---- watching the consoles: each must keep up with the session's frames (a DS console can stop mid-frame for a
+// wireless packet – it must never do so for long; if it does, its player would see a frozen or black game with
+// nothing said: the page ends the link with a message instead, docs/MULTIPLAYER.md › "Netcode") -----------------------
+static uint32_t watch_frame0, watch_done0[LINK_MAX_SEATS];
+/** From now on: the session's frame and every console's finished frames (after seats are formed, after a state). */
+static void watch_reset(void) {
+  watch_frame0 = session_frame();
+  for (int s = 0; s < seats_n; s++) watch_done0[s] = B->frames ? B->frames(s) : 0;
+}
+/** How many frames console `s` is behind the session. */
+static uint32_t watch_behind(int s) {
+  if (!B->frames) return 0;
+  const uint32_t ran = session_frame() - watch_frame0, done = B->frames(s) - watch_done0[s];
+  return ran > done ? ran - done : 0;
+}
+/** Every HASH_EVERY frames in a link session: the hash, with what the page logs for diagnostics (each console's frames
+ *  done, each seat's buttons known), and "stuck" for consoles far behind. */
+static void send_hash(uint32_t frame) {
+  char done[96] = "", have[96] = "";
+  size_t dn = 0, hn = 0;
+  int stuck = 0;
+  uint32_t worst = 0;
+  for (int s = 0; s < seats_n; s++) {
+    const uint32_t b = watch_behind(s);
+    if (b > STUCK_FRAMES) stuck |= 1 << s;
+    if (b > worst) worst = b;
+    dn += (size_t)snprintf(done + dn, sizeof done - dn, "%s%u", s ? "," : "", frame - b);
+    hn += (size_t)snprintf(have + hn, sizeof have - hn, "%s%u", s ? "," : "", session_have(s));
+  }
+  host_event("{\"event\":\"hash\",\"frame\":%u,\"hash\":\"%016llx\",\"done\":[%s],\"have\":[%s]}", frame, (unsigned long long)B->hash(HOST_FNV0), done, have);
+  if (stuck) host_event("{\"event\":\"stuck\",\"seats\":%d,\"frame\":%u,\"behind\":%u}", stuck, frame, worst);
+}
+
 static uint8_t *locate(int index, uint32_t addr, uint32_t len, void *ctx) {
   (void)index, (void)ctx;
   return B->mem(session_local(), addr, len);
@@ -155,6 +190,7 @@ static void send_loaded(void) {
 /** After the seats were (re-)formed: memory, picture, sound and pacing follow, and the page hears what plays now. */
 static void seats_formed(int local, bool net, int delay) {
   session_begin(seats_n, local, net, delay);
+  watch_reset();
   view_seat = local;
   step_left = until_frame = 0;
   ram_locate(&rs, locate, NULL);
@@ -256,6 +292,7 @@ static void go_link(uint8_t *p, uint32_t len) {
     uint8_t *b = host_read_file(a.load, &n);
     if (!b || !session_load_state(b, n)) host_die("link: not a session state of these games");
     free(b);
+    watch_reset();
   }
   host_log("link: %d seats formed in %.0f ms (seat %d is ours, delay %d)", a.n, (host_now() - t0) * 1000, a.local, a.delay);
   speed = 1.0f;
@@ -358,6 +395,9 @@ static int link_depth(void *ctx, int on, int x, int y, int w, int h, uint32_t *o
 }
 /** The seat's picture – after its depth (asked for) and the watched bytes, as retrohost sends them. */
 static void seat_picture(int seat, struct ram_stream *r, uint32_t frame) {
+  // (a console that hasn't finished a frame since the seats were formed has no picture yet – the page keeps the one it
+  // has, the game as it was before the link, instead of a black screen)
+  if (linked() && B->frames && !B->frames(seat)) return;
   if (r) depth_send(&dreq, frame, link_depth, (void *)(intptr_t)seat);
   avout_picture(seat, r, frame);
 }
@@ -412,6 +452,7 @@ static bool command(struct host_cmd *c, bool *wrote) {
     break;
   case CMD_LOAD: {
     const bool ok = linked() ? session_load_state(c->p, c->len) : B->import_state(0, c->p, c->len);
+    if (ok) watch_reset();
     ram_locate(&rs, locate, NULL);
     host_event("{\"event\":\"stateLoaded\",\"ok\":%s}", ok ? "true" : "false");
     break;
@@ -519,6 +560,7 @@ int main(int argc, char **argv) {
     uint8_t *b = host_read_file(a.load, &n);
     if (!b || !session_load_state(b, n)) host_die("--load: not a session state of these games");
     free(b);
+    watch_reset();
   }
   if (a.bench) bench(&a);
 
@@ -553,7 +595,7 @@ int main(int argc, char **argv) {
     session_run_frame();
     cadence_frame(&cad);
     const uint32_t frame = session_frame();
-    if (linked() && frame % HASH_EVERY == 0) host_event("{\"event\":\"hash\",\"frame\":%u,\"hash\":\"%016llx\"}", frame, (unsigned long long)B->hash(HOST_FNV0));
+    if (linked() && frame % HASH_EVERY == 0) send_hash(frame);
     const bool stepped = (step_left && --step_left == 0) || (until_frame && frame >= until_frame);
     if (until_frame && frame >= until_frame) until_frame = 0;
     if (stepped) speed = 0.0f;

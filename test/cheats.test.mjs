@@ -498,6 +498,23 @@ test('Ultra Moon / Sun 1.0: an empty bag is the bag where the game’s pocket ta
   assert.deepEqual(addRareCandies(ctr(XY), memory(), { g67: 1 }).tried, [{ at: '0x08C67554', why: 'empty' }, { at: '0x08C67564', why: 'empty' }]);
 });
 
+test('Ultra Sun / Ultra Moon: a slot the game emptied but kept the id of (count 0) doesn’t hide the bag (#45)', () => {
+  for (const t of [USUM, '00040000001B5000']) {
+    const e = ctr(t);
+    const base = 0x33011934;
+    // a Quick Claw given to a Pokémon: its id stays in the slot with count 0 (seen in slot 3 and in the last slot)
+    for (const at of [3 * 4, 426 * 4]) {
+      const m = g7Bag(memory(), base, { items: [[0, g7(1, 5)], [at, g7(217, 0)]] });
+      assert.deepEqual(addRareCandies(e, m, { g67: 0 }), { ok: true, before: 0, after: 99, added: 99 }, `${t} @${at}`);
+      assert.equal(u32(m, base + 0xb74), (50 | (99 << 10) | 0x40000000) >>> 0);
+      assert.equal(u32(m, base + at), (217 >>> 0), 'the emptied slot stays as the game left it');
+    }
+    // still refused: an id beyond the game's items with count 0
+    const bad = g7Bag(memory(), base, { table: false, items: [[0, g7(1, 5)], [12, g7(1000, 0)]] });
+    assert.equal(addRareCandies(e, bad, { g67: 0 }).error, 'notFound');
+  }
+});
+
 test('3DS search: Ultra Moon’s bag where no known update keeps it – found by the pocket table, kept for the session', async () => {
   const e = ctr(USUM);
   for (const shift of [0x1f000, -0x2f2c4, 0x4f000]) {

@@ -15,6 +15,8 @@ bool session_net(void);
 int session_delay(void);
 /** The session's frame: every console started this many frames. */
 uint32_t session_frame(void);
+/** Seat `s`'s buttons are known for the frames before this one (net mode: what its peer sent so far; diagnostics). */
+uint32_t session_have(int s);
 
 /** INPUT: the fast player's 17 bytes (buttons, the pointer = DS touch) for the local seat; tests in local mode: exactly
  *  8 bytes { link_input bits, u32 seat }. `screen_h`: the picture's height the pointer is relative to. */

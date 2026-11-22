@@ -13,13 +13,13 @@ import { t } from '../lib/i18n.mjs';
 import { Icon } from '../lib/icons.mjs';
 import { useApp, openExternal } from '../lib/ui.mjs';
 import { LINKS } from '../lib/links.mjs';
-import { useAccount } from '../lib/account.mjs';
+import { useAccount, startTrial } from '../lib/account.mjs';
 import { settingsLink } from '../lib/settingsindex.mjs';
-import { catalog, has, packState, previewSkin, startPackPreview } from '../lib/cosmetics/index.mjs';
+import { catalog, has, packState, previewSkin, startPackPreview, refreshPack } from '../lib/cosmetics/index.mjs';
 import { Banner, Nameplate, Frame, useCosmetics } from '../lib/cosmetics/components.mjs';
 import { PreviewPicture, usePreviews } from '../lib/cosmetics/previews.mjs';
 import { prefersReduced } from '../lib/cosmetics/motion.mjs';
-import { TIERS, CURATED, plusState, hasPlusLooks, isMember, heroLook, tierAction, curatedFrom, plusCounts, plusSkins, themeLook, themeVars } from '../lib/pluspage.mjs';
+import { TIERS, CURATED, plusState, hasPlusLooks, isMember, trialOffered, heroLook, tierAction, curatedFrom, plusCounts, plusSkins, themeLook, themeVars } from '../lib/pluspage.mjs';
 import { TitlePlate, achTitle, Badges } from './social.mjs';
 import { HandheldShowcase } from './handheldtile.mjs';
 import { LaunchLooks } from './launchlooks.mjs';
@@ -262,7 +262,7 @@ function Cancel() {
 function Faq({ navigate }) {
   const qa = [
     [t('plus.q1', 'Does souldew+ change what the app can do?'), t('plus.a1', 'No. Every feature stays free for everyone – souldew+ adds looks only: colour themes, banners, frames, nameplates and launch animations.')],
-    [t('plus.q2', 'Can I try it first?'), t('plus.a2', 'Signed in, you can try any theme on the whole app for 15 minutes, a few times a day. In the profile editor you can try on every banner, frame and nameplate as long as you like – saving keeps your free one.')],
+    [t('plus.q2', 'Can I try it first?'), html`${t('plus.a2', 'Signed in, you can try any theme on the whole app for 15 minutes, a few times a day. In the profile editor you can try on every banner, frame and nameplate as long as you like – saving keeps your free one.')} ${t('plus.a2Trial', 'Or try all of souldew+ free for 7 days – once per Discord account, if it’s at least 30 days old and never had souldew+. Nothing to pay, nothing renews, nothing to cancel.')}`],
     [t('plus.q3', 'I already support souldew on Buy Me a Coffee – how do I get it?'), html`${t('plus.a3', 'Link the membership in Settings › Account with the email you used there, or with /supporter claim in the souldew Discord.')} <a href="#" onClick=${(e) => { e.preventDefault(); navigate('settings', settingsLink('plus')); }}>${t('plus.a3Link', 'Link a membership')}</a>`],
     [t('plus.q4', 'What do my friends see?'), t('plus.a4', 'Your banner, frame and nameplate – on your profile and in their friends lists. Themes and launch animations are just for you.')],
   ];
@@ -272,9 +272,52 @@ function Faq({ navigate }) {
   </section>`;
 }
 
+function trialError(e) {
+  if (e?.vars?.code === 'trial_used') return t('plus.trialUsed', 'The free trial was already used on this Discord account.');
+  if (e?.vars?.reason === 'account_age') return t('plus.trialAge', 'The free trial needs a Discord account that’s at least 30 days old.');
+  if (e?.vars?.reason === 'had_plus' || e?.vars?.reason === 'member') return t('plus.trialHad', 'The free trial is for accounts that never had souldew+ or Legend.');
+  if (e?.vars?.code === 'rate_limited') return t('plus.trialLater', 'Too many tries – please try again later.');
+  return t('plus.trialFailed', 'The trial couldn’t be started. Check your connection and try again.');
+}
+
+/** "Try souldew+ free for 7 days": starts the trial (§8.6), then loads the looks. */
+function useTrial() {
+  const { toast } = useApp();
+  const [state, setState] = useState(null); // null | 'busy' | Error
+  const run = async () => {
+    setState('busy');
+    try {
+      const r = await startTrial();
+      refreshPack().catch(() => {});
+      setState(null);
+      toast({ kind: 'ok', title: t('plus.trialOn', 'souldew+ is yours for 7 days'), text: r.until ? t('plus.trialEnds', 'Trial · ends {date}', { date: dateOf(r.until) }) : '' });
+    } catch (e) {
+      setState(e);
+    }
+  };
+  return [state, run];
+}
+
+/** The trial offer: a clear button and, right under it, what it is – no card details, nothing renews. */
+function TrialOffer({ big }) {
+  const [trial, run] = useTrial();
+  return html`<button type="button" class=${`btn ${big ? 'big' : ''}`} disabled=${trial === 'busy'} onClick=${run}><${Icon} name="clock" size=${14} />${t('plus.trialTry', 'Try souldew+ free for 7 days')}</button>
+    ${trial && trial !== 'busy' && html`<p class="small warning info plus-trial-msg" role="status">${trialError(trial)}</p>`}`;
+}
+
 /** The hero's words and buttons for this state. */
 function HeroText({ state, me, navigate }) {
   const mark = html`<div class="plus-wordmark" aria-hidden="true"><span>souldew</span><span class="plus-box"><${Icon} name="plus" size=${14} /></span></div>`;
+  if (state.kind === 'trial') {
+    const ends = dateOf(state.trial?.until || state.until);
+    return html`${mark}<h1 class="plus-h1">${t('plus.trialH', 'Enjoy souldew+, {name}.', { name: state.name })}</h1>
+      <p class="plus-lede">${t('plus.trialLede', 'Everything on this page is yours until {date}. Nothing renews and there’s nothing to cancel – afterwards souldew goes back to its free looks, and your picks wait for you.', { date: ends })}</p>
+      <div class="plus-member">
+        <div class="row tight"><span class="chip">${t('plus.trialEnds', 'Trial · ends {date}', { date: ends })}</span></div>
+        <div class="row"><button type="button" class="btn go" onClick=${membership}><${Icon} name="external" size=${14} />${t('plus.trialKeep', 'Keep it on Buy Me a Coffee')}</button>
+          <button type="button" class="btn ghost" onClick=${() => navigate('profile', { edit: '1' })}>${t('plus.dressUp', 'Dress up your profile')}</button></div>
+      </div>`;
+  }
   if (hasPlusLooks(state)) {
     return html`${mark}<h1 class="plus-h1">${t('plus.thanksH', 'Thank you, {name}.', { name: state.name })}</h1>
       <p class="plus-lede">${t('plus.thanksLede', 'You help keep souldew free for everyone – the servers, the signing certificates, the time. Everything on this page is yours to use.')}</p>
@@ -288,13 +331,17 @@ function HeroText({ state, me, navigate }) {
   if (state.kind === 'supporter') {
     return html`${mark}<h1 class="plus-h1">${t('plus.thanksH', 'Thank you, {name}.', { name: state.name })}</h1>
       <p class="plus-lede">${t('plus.supLede2', 'Your Supporter badge helps keep souldew free for everyone – and your games start on your own handheld in 3D. souldew+ adds the looks below – themes, banners, frames, nameplates, and the shells, skins and stickers for your handheld.')}</p>
-      <div class="row">${join}<button type="button" class="btn ghost big" onClick=${() => document.getElementById('plus-tiers')?.scrollIntoView({ behavior: prefersReduced() ? 'auto' : 'smooth' })}>${t('plus.seeTiers', 'Compare the tiers')}</button></div>`;
+      <div class="row">${join}${trialOffered(state) ? html`<${TrialOffer} big />`
+        : html`<button type="button" class="btn ghost big" onClick=${() => document.getElementById('plus-tiers')?.scrollIntoView({ behavior: prefersReduced() ? 'auto' : 'smooth' })}>${t('plus.seeTiers', 'Compare the tiers')}</button>`}</div>
+      ${trialOffered(state) && html`<p class="small faint plus-fine">${t('plus.trialFine', '7 days, once per Discord account. No payment details – nothing renews, nothing to cancel.')}</p>`}`;
   }
   return html`${mark}<h1 class="plus-h1">${t('plus.heroH', 'souldew stays free.')}<br /><span class="plus-h1-2">${t('plus.heroH2', 'souldew+ makes it yours.')}</span></h1>
     <p class="plus-lede">${t('plus.lede', 'Everything that plays – emulators, SoulLink, Nuzlocke tracking, sync, trophies, friends – costs nothing, forever. souldew+ is how you help pay for the servers and the time, and get a few beautiful things for it.')}</p>
     <div class="row">${join}
       ${state.kind === 'signedOut' ? html`<button type="button" class="btn ghost big" onClick=${() => navigate('settings', settingsLink('account'))}>${t('plus.signIn', 'Sign in to try a theme')}</button>`
-        : html`<button type="button" class="btn ghost big" onClick=${() => navigate('settings', settingsLink('skin'))}>${t('plus.tryAny', 'Try a theme for 15 minutes')}</button>`}</div>
+        : trialOffered(state) ? html`<${TrialOffer} big />`
+          : html`<button type="button" class="btn ghost big" onClick=${() => navigate('settings', settingsLink('skin'))}>${t('plus.tryAny', 'Try a theme for 15 minutes')}</button>`}</div>
+    ${trialOffered(state) && html`<p class="small faint plus-fine">${t('plus.trialFine', '7 days, once per Discord account. No payment details – nothing renews, nothing to cancel.')}</p>`}
     <p class="small faint plus-fine">${t('plus.fine', 'Billed by Buy Me a Coffee. Cancel there whenever you like – nothing you earned in souldew goes away.')}
       ${' '}<a href="#" onClick=${(e) => { e.preventDefault(); navigate('settings', settingsLink(state.kind === 'signedOut' ? 'account' : 'plus')); }}>${t('plus.already', 'Already a member? Link it')}</a></p>`;
 }
@@ -303,7 +350,7 @@ export function PlusView() {
   const { navigate } = useApp();
   const acct = useAccount();
   useCosmetics();
-  if (!acct.loaded) return null;
+  if (!acct.known) return html`<div class="empty-state"><p class="muted">${t('common.loading', 'Loading …')}</p></div>`;
   const state = plusState(acct);
   const me = acct.me;
   return html`<div class="plus-page" data-state=${state.kind}>

@@ -121,6 +121,13 @@ struct link_backend {
    * stops keeping it; else a rectangle of 24-bit depths, returns 1 (| 2 W-buffered), 0 nothing kept yet, -1 none.
    */
   int (*depth)(int seat, int on, int x, int y, int w, int h, uint32_t *out);
+  /**
+   * Optional (the DS, whose consoles may stop mid-frame for a wireless packet): how many frames the seat's console
+   * finished since the seats were opened. The session watches it – a console that falls far behind the session's frames
+   * stands still for its player (event "stuck", docs/MULTIPLAYER.md › "Netcode"). Backends whose consoles always finish
+   * the session frame leave it NULL.
+   */
+  uint32_t (*frames)(int seat);
 };
 
 extern const struct link_backend link_backend_mgba;

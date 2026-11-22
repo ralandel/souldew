@@ -89,15 +89,23 @@ of the fork's branch melonDS DS fetches), so both carry the patch. The cores are
 page draws the picture), the DS core with its Wi-Fi switched off at run time. `npm run dist` checks the folder
 (`build-native.mjs --check`); `SLS_NO_NATIVE=1 npm run dist` builds without it – everything then plays in the browser
 emulator. Windows and Linux: `.github/workflows/native.yml` (Ubuntu 22.04 for Linux, MinGW-w64 cross build for Windows,
-checked for foreign DLLs) feeds `release.yml`, `windows.yml` and `linux.yml`. macOS: the app is ad-hoc signed without
-the hardened runtime, so the JIT's executable memory (MAP_JIT) needs no entitlement.
+checked for foreign DLLs) feeds `release.yml`, `windows.yml` and `linux.yml`. macOS: `npm run dist` signs ad hoc without
+the hardened runtime; the release build (`npm run dist:mac-signed`, see "Releasing updates") signs with the Developer ID
+and the hardened runtime – the JIT's executable memory (MAP_JIT) then needs `com.apple.security.cs.allow-jit`, which
+`build/entitlements.mac.inherit.plist` gives every program souldew starts (Java, the hosts). The compilers get
+`-ffile-prefix-map` from both build scripts (`scripts/buildpaths.mjs`), so no binary carries the build machine's paths
+(the home folder holds the account name); `--check` refuses a part that does.
 
 ## Nintendo 3DS
 
 3DS games play in souldew's own player through a small native host (`native/ctr-host/ctrhost.c`) that runs Azahar's
 libretro core with Vulkan, and `web/player3ds.html` / `web/lib/ctrplayer.mjs`, which offer the play view the same
 `window.__emu` API as the EmulatorJS player. `server/lib/ctr.mjs` starts the host and passes its messages through
-(`/api/ctr/*`). The binaries live in `tools/ctr/<platform>-<arch>/` (not in the repository) and go into the DMG:
+(`/api/ctr/*`). The host's messages (pictures, sound, memory – ~25 MB/s) reach the page over a WebSocket on
+`/api/ctr/stream` (the fast player: `/api/native/stream`; `server/lib/wsstream.mjs`, `web/lib/hoststream.mjs`), the
+page's commands go by POST. Since 3.0.1: as one endless HTTP response, antivirus with HTTP scanning kept the whole body
+in `C:\Windows\Temp` until the game closed (#38). The page says how much it has handled; the server holds the host back
+while the page is more than 2 MB behind, as TCP did for the HTTP stream. The HTTP stream stays as the fallback. The binaries live in `tools/ctr/<platform>-<arch>/` (not in the repository) and go into the DMG:
 
 ```sh
 brew install cmake ninja spirv-tools vulkan-headers   # as Azahar's own CI
@@ -258,12 +266,29 @@ Your data stays untouched on both.
    - Otherwise (today: macOS runners don't start for this repository) it creates a **draft** release with the Windows installer and the Linux packages – invisible to the apps. Finish it on your Mac:
 
      ```sh
-     npm run dist                                                        # the DMG
+     npm run dist:mac-signed                                             # the DMG: Developer ID, notarized, stapled
      gh release download v2.1.0 --pattern '*-win-x64-setup.exe' --pattern '*-linux-*' --dir dist   # what the workflow built
      npm run release                                                     # signs one latest.json for all three
      gh release upload v2.1.0 dist/release-2.1.0/souldew-2.1.0-arm64.dmg dist/release-2.1.0/latest.json
      gh release edit v2.1.0 --draft=false --latest
      ```
+
+**The signed macOS build** (since 3.0.1 – `scripts/dist-mac-signed.mjs`): `npm run dist:mac-signed` builds the DMG
+like `npm run dist`, but signs the app and every program and library in it (the bundled Java, the fast player, the link
+host, the 3DS player, their cores) with the Developer ID Application certificate and the hardened runtime
+(`build/entitlements.mac.plist`, `build/entitlements.mac.inherit.plist`), has Apple notarize the app (staple it), puts it
+into the DMG and signs, notarizes and staples that too. Then it checks everything: `codesign --verify --deep --strict`,
+every Mach-O file with the Team ID, the hardened runtime and a timestamp, the entitlements of the programs souldew
+starts, `spctl`, `stapler validate`, `java -version` from inside the bundle, and the app started hidden with a scratch
+profile (its server, the Java check; with `--roms <folder with a GBA and a DS game>` the randomizer on the GBA game and
+both games in the fast player). It needs, outside the repository: `~/.souldew-keys/developer-id.p12` and its
+`.p12.pass` (or `SLS_DEVID_P12` / `SLS_DEVID_PASS_FILE`) and a notarytool keychain profile `souldew` for team
+VWQM7SSK3D (`xcrun notarytool store-credentials souldew --apple-id … --team-id VWQM7SSK3D`, or `SLS_NOTARY_PROFILE`).
+The certificate is imported into a keychain of its own for the build (random password, its key open to codesign, put in
+front of the keychain search list for the build and deleted afterwards – the list is restored), so no keychain dialog
+comes up; the certificate's name never appears in the output. `--out <dir>` builds
+elsewhere (a dry run), `--no-notarize` only signs, `--verify <souldew.app> [--dmg file] [--roms dir]` only checks. If
+`native/` changed since the parts in `tools/` were built, rebuild them first (`npm run native`, `npm run ctr`).
 
 **By hand** (same result, no workflow): build the DMG (`npm run dist`) on the Mac, the installer (`npm run dist:win`) on Windows and the AppImage + .deb (`npm run dist:linux`) on Linux – or download them from a run of the [Windows](../.github/workflows/windows.yml) / [Linux workflow](../.github/workflows/linux.yml) – and put them into `dist/`. Then `npm run release` (or `npm run release -- --notes "…"`; `--dmg path` / `--win-exe path` / `--appimage path` / `--deb path` for other locations) hashes them, writes and signs `latest.json` and prints the `gh release create …` command with all files. Without a Windows installer or an AppImage in `dist/` it warns and leaves that platform out of the feed (those apps then don't see that version; `--no-win` / `--no-linux` silence the warning). The release must not be a draft or prerelease, otherwise "latest" doesn't point to it.
 

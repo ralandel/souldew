@@ -739,3 +739,74 @@ test('avatars: a picture without a length is read no further than a picture may 
   assert.match(src, /const buf = await readCapped\(r, AVATAR_MAX\)/);
   assert.doesNotMatch(src.slice(src.indexOf('async function avatar(')), /^[^\n]*Buffer\.from\(await r\.arrayBuffer\(\)\)[^\n]*$/m);
 });
+
+test('souldew+ trial (§8.6): offered, started, shown as a trial (not a thank-you), once only; an old app reads the new source kind', async () => {
+  const a = await app();
+  const tri = fake.addUser({ handle: 'trialist', display_name: 'Lena' });
+  await a.signIn(tri);
+  let me = (await a.get('/api/account')).body.me;
+  await until(async () => (me = (await a.get('/api/account')).body.me).entitlement.trial);
+  assert.deepEqual(me.entitlement.trial, { state: 'available', days: 7, until: null, reason: null, only: false });
+  const r = await a.post('/api/account/trial');
+  assert.equal(r.status, 200);
+  assert.equal(r.body.tier, 'plus');
+  assert.equal(r.body.trial.state, 'running');
+  assert.equal(r.body.trial.only, true);
+  me = (await a.get('/api/account')).body.me;
+  assert.equal(me.entitlement.tier, 'plus');
+  assert.equal(me.entitlement.trial.only, true);
+  const ent = (await a.get('/api/account/entitlements')).body;
+  assert.deepEqual(ent.sources.map((x) => x.kind), ['trial']);
+  assert.match(ent.packKey, /^[A-Za-z0-9_-]{43}$/, 'a trial is souldew+: the pack key comes');
+  const again = await quiet(() => a.post('/api/account/trial'));
+  assert.equal(again.status, 409);
+  assert.equal(again.body.vars.code, 'trial_used');
+  // offline: still a trial (the page says "Trial · ends …", never "thank you")
+  fake.offlinePaths.add('/v1/entitlements');
+  const kept = (await a.get('/api/account/entitlements')).body;
+  fake.offlinePaths.delete('/v1/entitlements');
+  assert.deepEqual([kept.offline, kept.tier, kept.trial?.only], [true, 'plus', true]);
+  // souldew 3.0.0 mapped unknown kinds to 'bmc' – 'trial' is known now, anything newer still counts as a source
+  assert.equal(clean.cleanEntitlements({ sources: [{ kind: 'trial', tier: 'plus', until: '2026-12-01T00:00:00Z' }, { kind: 'future', tier: 'plus' }] }).sources.map((x) => x.kind).join(), 'trial,bmc');
+  assert.equal(clean.cleanTrial({ state: 'running' }), null, 'a running trial without an end is not believed');
+  assert.deepEqual(clean.cleanTrial({ state: 'unavailable', reason: 'account_age', until: 'x' }), { state: 'unavailable', days: 7, until: null, reason: 'account_age' });
+});
+
+test('trial: refused for a young Discord account – the reason reaches the page', async () => {
+  const a = await app();
+  const young = fake.addUser({ handle: 'youngone' });
+  young.trialOffer = 'unavailable:account_age';
+  await a.signIn(young);
+  const r = await quiet(() => a.post('/api/account/trial'));
+  assert.equal(r.status, 403);
+  assert.equal(r.body.vars.code, 'trial_unavailable');
+  assert.equal(r.body.vars.reason, 'account_age');
+});
+
+test('Find a SoulLink partner (§14): the form goes out cleaned, the Discord link comes back; an open post brings its link', async () => {
+  const a = await app();
+  const sam = fake.addUser({ handle: 'sam_links', display_name: 'Sam' });
+  await a.signIn(sam);
+  const post = { game: '  Emerald ', partners: 2, lang: 'English, UTC+1', schedule: 'Weekday   evenings', rules: 'Set mode\r\nLevel caps\n\n', extra: 'dropped' };
+  const r = await a.post('/api/account/lfg', post);
+  assert.equal(r.status, 200);
+  assert.match(r.body.url, /^https:\/\/discord\.com\/channels\/\d+\/\d+\/\d+$/);
+  assert.deepEqual(fake.lfgPosts.at(-1), { by: sam.id, game: 'Emerald', partners: 2, rules: 'Set mode\nLevel caps', lang: 'English, UTC+1', schedule: 'Weekday evenings' });
+  assert.equal((await quiet(() => a.post('/api/account/lfg', { ...post, partners: 4 }))).status, 400);
+  assert.equal((await quiet(() => a.post('/api/account/lfg', { ...post, schedule: ' ' }))).status, 400);
+  fake.lfgAnswer = { status: 409, code: 'lfg_active', extra: { url: 'https://discord.com/channels/1570873327566852146/1570873327566852150/1573924615737049999' } };
+  const open = await quiet(() => a.post('/api/account/lfg', post));
+  assert.equal(open.status, 409);
+  assert.equal(open.body.vars.code, 'lfg_active');
+  assert.match(open.body.vars.url, /1573924615737049999$/);
+  fake.lfgAnswer = { status: 409, code: 'lfg_active', extra: { url: 'https://evil.example/x' } };
+  assert.equal((await quiet(() => a.post('/api/account/lfg', post))).body.vars.url, undefined, 'only Discord message links pass');
+  fake.lfgAnswer = { status: 201, body: { url: 'https://evil.example/x' } };
+  assert.equal((await quiet(() => a.post('/api/account/lfg', post))).status, 502);
+  fake.lfgAnswer = null;
+  // signed out: nothing goes out
+  await a.post('/api/account/logout');
+  const n = fake.lfgPosts.length;
+  assert.equal((await quiet(() => a.post('/api/account/lfg', post))).status, 401);
+  assert.equal(fake.lfgPosts.length, n);
+});

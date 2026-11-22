@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { decryptPK6, encryptPK6, pk6Mon, slotBytes, partyFromRegion, readGen67, readGen67Battle, runningVersion, SLOT_STRIDE, STATS_OFFSET, BOX_SIZE, PARTY_BYTES } from '../shared/live/gen67.mjs';
+import { decryptPK6, encryptPK6, pk6Mon, slotBytes, partyFromRegion, readGen67, readGen67Battle, runningVersion, SLOT_STRIDE, STATS_OFFSET, BOX_SIZE, PARTY_BYTES, partyObjectAt, scanPartyObjects, ctrPartyPlan, locateCtrParty } from '../shared/live/gen67.mjs';
 import { findEntry, regionsFor, readLiveParty, regionReader, readLiveBattle } from '../shared/live/parse.mjs';
 import { areaLabel } from '../shared/overlay.mjs';
 
@@ -407,4 +407,116 @@ test('readGen67 (#35): the lock holds through a moment without a party, moves af
     assert.equal(readGen67(oras, memory(both), t).version, '1.4');
   }
   assert.equal(t.g67Log, undefined);
+});
+
+/** A party object as the game keeps it: the six slots, then u32 6 and u32 the count (Omega Ruby 1.0, checked live). */
+function partyObject(mons) {
+  const r = new Uint8Array(PARTY_BYTES + 8);
+  r.set(ramParty(mons));
+  w32(r, PARTY_BYTES, 6);
+  w32(r, PARTY_BYTES + 4, mons.length);
+  return r;
+}
+
+test('the party object: slots + capacity 6 + the count – found in a window of memory, nothing else passes', () => {
+  const torchic = mon({ ec: 0x4079df0c, pid: 0x4079df0c, species: 255, nick: 'Torchic', level: 5, hp: 20, maxHp: 20 });
+  const obj = partyObject([torchic]);
+  assert.equal(partyObjectAt(obj, 0, 6)[0].species, 255);
+  // the count must match the Pokémon in it, the capacity must be 6
+  const wrong = obj.slice();
+  w32(wrong, PARTY_BYTES + 4, 2);
+  assert.equal(partyObjectAt(wrong, 0, 6), null);
+  w32(wrong, PARTY_BYTES + 4, 1);
+  w32(wrong, PARTY_BYTES, 5);
+  assert.equal(partyObjectAt(wrong, 0, 6), null);
+  // the save data's copy (the box layout, 0x104 per Pokémon, no tail) and a bare party without the tail aren't one
+  const win = new Uint8Array(0x10000);
+  win.set(ramParty([torchic]), 0x100);
+  win.set(encryptPK6(torchic).subarray(0, BOX_SIZE), 0x2000);
+  win.set(obj, 0x727c - 0x7000 + 0x1000);
+  assert.deepEqual(scanPartyObjects(0x08cf6000, win, 6).map((h) => h.addr.toString(16)), ['8cf727c']);
+  // the plan: Gen 6 only, the heap in rounds of a few windows, the ones by the known addresses first
+  const oras = addresses.games.find((g) => g.id === 'oras');
+  const plan = ctrPartyPlan(oras);
+  assert.ok(plan.length > 40 && plan.every((r) => r.length <= 5));
+  const first = plan[0].map((w) => w.addr);
+  assert.ok(first.some((a) => a <= 0x08cf727c && a + 0x10000 >= 0x08cf727c + PARTY_BYTES + 8), 'the 1.0 address in the first round');
+  const all = plan.flat().map((w) => w.addr);
+  assert.ok(all.some((a) => a <= 0x08000000) && all.some((a) => a + 0x10000 >= 0x09000000));
+  assert.deepEqual(ctrPartyPlan(addresses.games.find((g) => g.id === 'sm')), [], 'Gen 7: not checked in a game – no search');
+});
+
+/** A 3DS player's memory for locateCtrParty: `objs` { addr: bytes } in an otherwise empty heap. */
+function heap(objs) {
+  let watched = [];
+  return {
+    watched: () => watched,
+    keys: {},
+    async watch(regions, key = 'extra') {
+      this.keys[key] = regions;
+      watched = Object.values(this.keys).flat();
+      return true;
+    },
+    read(addr, len) {
+      if (!watched.some((r) => addr >= r.addr && addr + len <= r.addr + r.len)) return null;
+      const b = new Uint8Array(len);
+      for (const [a, bytes] of Object.entries(objs)) {
+        const at = Number(a) - addr;
+        if (at + bytes.length <= 0 || at >= len) continue;
+        const from = Math.max(0, -at);
+        b.set(bytes.subarray(from, Math.min(bytes.length, len - at)), Math.max(0, at));
+      }
+      return b;
+    },
+  };
+}
+
+test('locateCtrParty: the one party object in the heap is found and read next to the known addresses (#37)', async () => {
+  const xy = addresses.games.find((g) => g.id === 'xy');
+  const toffee = mon({ ec: 21, pid: 21, species: 650, nick: 'Toffee', level: 14 });
+  const oreo = mon({ ec: 22, pid: 22, species: 659, nick: 'Oreo', level: 12 });
+  const pretzel = mon({ ec: 23, pid: 23, species: 511, nick: 'Pretzel', level: 10 });
+  // the team at a place no address knows; the 1.0 address holds a copy of the team that stands still
+  const live = 0x08d2a510;
+  const objs = { [live]: partyObject([toffee, oreo]), 0x08ce1ce8: partyObject([toffee, oreo]) };
+  const mem = heap(objs);
+  const state = {};
+  // the copy at 1.0 is read first
+  const read = (a, n) => mem.read(a, n) || memory({ 0x08ce1ce8: objs[0x08ce1ce8] })(a, n);
+  assert.equal(readGen67(xy, read, state).version, '1.0');
+  // two more party objects of the player's away from the known addresses: ambiguous – nothing is taken
+  const third = 0x08d40000;
+  objs[third] = partyObject([toffee, oreo]);
+  let r = await locateCtrParty(xy, mem, state, { team: readGen67(xy, read, state).party });
+  assert.equal(r.found, null);
+  assert.equal(r.why, 'ambiguous');
+  assert.equal(state.g67Extra, undefined);
+  delete objs[third];
+  // one at the known address, one elsewhere: the other one is read next to it
+  r = await locateCtrParty(xy, mem, state, { team: [pk6Mon(encryptPK6(toffee), 6)] });
+  assert.equal(r.found, '0x8D2A510');
+  assert.equal(r.alongside, 1);
+  assert.ok(r.windows > 100);
+  assert.deepEqual(state.g67Extra, [{ addr: '0x8D2A510', version: null, found: true }]);
+  assert.deepEqual(mem.keys.party, [{ addr: live, len: PARTY_BYTES, name: 'party' }], 'the party found stays watched');
+  assert.deepEqual(mem.keys.partySearch, [], 'the search windows are let go');
+  // Pretzel is caught: only the live object gets it – the lock moves there at once
+  const read2 = (a, n) => mem.read(a, n) || memory({ 0x08ce1ce8: objs[0x08ce1ce8] })(a, n);
+  assert.equal(readGen67(xy, read2, state).party.length, 2);
+  objs[live] = partyObject([toffee, oreo, pretzel]);
+  const got = readGen67(xy, read2, state);
+  assert.deepEqual(got.party.map((m) => m.nickname), ['Toffee', 'Oreo', 'Pretzel']);
+  assert.deepEqual(state.g67Log, [{ from: '1.0', to: 'found', why: 'grew' }]);
+  // only the known address has one: nothing to add
+  const s3 = {};
+  r = await locateCtrParty(xy, heap({ 0x08ce1ce8: partyObject([toffee]) }), s3, { team: [pk6Mon(encryptPK6(toffee), 6)] });
+  assert.deepEqual([r.found, r.known, s3.g67Extra], ['0x8CE1CE8', true, undefined]);
+  // another trainer's party (a battle's) is never taken for the player's
+  const foe = mon({ ec: 99, pid: 99, species: 19, nick: 'Rattata', level: 3, tid: 1, sid: 2 });
+  const s2 = {};
+  r = await locateCtrParty(xy, heap({ 0x08d00000: partyObject([foe]) }), s2, { team: [pk6Mon(encryptPK6(toffee), 6)] });
+  assert.equal(r.found, null);
+  assert.equal(s2.g67Extra, undefined);
+  // Gen 7 isn't searched (not checked in a game)
+  assert.equal(await locateCtrParty(addresses.games.find((g) => g.id === 'sm'), mem, {}), null);
 });

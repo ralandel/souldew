@@ -687,9 +687,11 @@ export function logRulesChange(doc, manifest, by, before, after) {
 }
 
 /** `slot` let the area's encounter get away (fled, knocked out, ball missed): the area is spent. */
-export function markMissed(doc, manifest, area, slot, { species = null, by } = {}) {
+export function markMissed(doc, manifest, area, slot, { species = null, by, asked = false } = {}) {
   if (encounter(doc, area, slot)) return false;
-  setEncounter(doc, manifest, area, slot, { outcome: 'missed', species, ...(by ? { by } : {}) }, { quiet: true });
+  // (`asked`: from the play view's question – a catch of that species right after it turns it into the catch, see
+  // CAUGHT_AFTER_MISS)
+  setEncounter(doc, manifest, area, slot, { outcome: 'missed', species, ...(by ? { by } : {}), ...(asked ? { asked: true } : {}) }, { quiet: true });
   feedMsg(doc, manifest, { type: 'missed', slot, area, ...(species ? { species } : {}), msg: missedMsg(doc, manifest, area, species) });
   return true;
 }
@@ -753,6 +755,25 @@ export function lastWildAt(doc, manifest, gen, area, slot) {
   const w = doc.get(`where:${slot}`, null);
   if (!w?.wild?.species || !area) return null;
   return areaForPlace(doc, manifest, gen, w) === area ? w.wild : null;
+}
+
+/**
+ * Pokémon of `slot`'s game a hand-entered "Caught" of `species` can be linked to (a manual entry with no key isn't
+ * followed by live tracking – "in box" only): the ones waiting in "From your game" (`inbox`: the board's inbox items,
+ * this computer's player only) and the team members the live data has no area for, none already filed for this player.
+ * → [{ key, species, nickname, level, shiny, gender, form? }], the inbox's first.
+ */
+export function linkCandidates(doc, slot, species, inbox = []) {
+  if (!doc || !species) return [];
+  const used = new Set(Object.entries(doc.scan('enc:')).filter(([k, e]) => k.endsWith(`:${slot}`) && e?.key).map(([, e]) => e.key));
+  const out = [];
+  const add = (m) => {
+    if (!m?.key || used.has(m.key) || m.species !== species || m.isEgg || m.egg || out.some((x) => x.key === m.key)) return;
+    out.push({ key: m.key, species: m.species, nickname: m.nickname ?? m.nick ?? '', level: m.level ?? m.metLevel ?? null, shiny: !!m.shiny, gender: m.gender ?? null, ...(m.form ? { form: m.form } : {}) });
+  };
+  for (const it of inbox || []) add(it?.mon);
+  for (const m of live(doc, slot)?.party || []) if (!m.area) add(m);
+  return out;
 }
 
 /**
@@ -1152,6 +1173,12 @@ const lastBattle = new WeakMap();
 export const BATTLE_GRACE = 5000;
 /** How long after a wild battle a Pokémon joining the team counts as caught in it (catch, nickname, Pokédex screens). */
 export const WILD_CATCH_WINDOW = 60000;
+/**
+ * "Mark as spent" in the play view's question, and then the Pokémon turns up after all (a 3DS game files it only after
+ * the Pokédex and nickname screens; a slow catch animation, a late read): a Pokémon of that species that joins within
+ * this long is the area's catch – the miss is taken back.
+ */
+export const CAUGHT_AFTER_MISS = 300000;
 
 /** doc → Map(`${slot}:${key}` → when a tracked mon was first missing from a live snapshot). */
 const missingSince = new WeakMap();
@@ -1323,7 +1350,8 @@ export function logSaveImport(doc, manifest, slot, { undo = false } = {}) {
 }
 
 /**
- * Apply a snapshot of `slot`'s game: { party: [mon], boxes: [mon]|null, badges, trainer, playTime, source }.
+ * Apply a snapshot of `slot`'s game: { party: [mon], boxes: [mon]|null, box?: [mon], badges, trainer, playTime, source }
+ * (`box`: the one PC box a game keeps in RAM – Gen 1's – for catches only).
  * Mons are normalized: { key, species, nickname, level, hp, maxHp, status, shiny, gender, metLocation, metLevel, isEgg, inParty }.
  * `battle` (optional, the live battle right now): { kind: 'wild'|'trainer', enemy: { species, level } } – a mon
  * that falls in it gets that opponent as its death cause.
@@ -1426,7 +1454,9 @@ export function applySnapshot(doc, manifest, gen, slot, snap, { auto = true, rd 
   const deaths = [];
   const writes = {};
   const party = trustLevels(doc, slot, (snap.party || []).map((m) => ({ ...m, inParty: true })), known, snap.source);
-  const all = [...party, ...(snap.boxes || [])];
+  // (`box`: Gen 1's box chosen in the PC – a catch with a full team goes there, #83; not the whole PC, so nothing in it
+  // says a Pokémon is gone)
+  const all = [...party, ...(snap.boxes || []), ...(snap.box || [])];
   const seen = new Set();
   // the Pokémon the app saw as eggs (a hatched Pokémon keeps the egg's key – Crystal: hatchedMon): the eggs of the last
   // live team, the hatched ones it still carries untracked (liveMon `hatched` – the egg is gone from the team after the
@@ -1560,6 +1590,19 @@ export function applySnapshot(doc, manifest, gen, slot, snap, { auto = true, rd 
     // where the player is – the place the sign shows (snap.here, read live like the battle)
     if (!guess && gen <= 2 && m.metLocation == null && snap.source === 'live' && snap.here && recent?.battle?.kind === 'wild' && Date.now() - recent.at < WILD_CATCH_WINDOW) {
       guess = areaForPlace(doc, manifest, gen, snap.here, { create: true });
+    }
+    // the area was just marked as spent through the play view's question, and here is its Pokémon: caught after all
+    const late = guess && guess !== 'starter' && !writes[`enc:${guess}:${slot}`] ? encounter(doc, guess, slot) : null;
+    if (late?.outcome === 'missed' && late.asked && late.species === m.species && Date.now() - (late.at || 0) < CAUGHT_AFTER_MISS && auto && !(m.shiny && r.shinyClause)) {
+      const enc = {
+        outcome: 'caught', species: m.species, nickname: m.nickname, level: m.level || m.metLevel, gender: m.gender, shiny: m.shiny,
+        key: m.key, metLocation: m.metLocation ?? null, metLevel: m.metLevel ?? null, at: Date.now(), auto: true, ...(m.form ? { form: m.form } : {}),
+      };
+      writes[`enc:${guess}:${slot}`] = enc;
+      known.set(m.key, { area: guess, enc });
+      newCatches.push(guess);
+      feedMsg(doc, manifest, { type: 'catch', slot, area: guess, species: m.species, msg: msg('feed.caughtAfterAll', '{area}: {name} was caught after all', { area: { area: guess }, name: { species: m.species } }) });
+      continue;
     }
     const occupied = guess ? has(guess) : null;
     // Shiny clause off → a shiny is an ordinary encounter.

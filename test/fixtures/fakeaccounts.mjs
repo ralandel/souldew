@@ -112,6 +112,8 @@ export async function startFakeAccounts({ port = 0 } = {}) {
     ent: entitlementSigner(),
     // test hooks: claims to change in the next token(s), a clock for the token (seconds)
     entClaims: null, entNow: null,
+    // §14 "Find a SoulLink partner": the posts the bot was handed, and the bot's next answer ({ status, body }) or null
+    lfgPosts: [], lfgAnswer: null,
   };
   let base = '';
 
@@ -629,7 +631,13 @@ export async function startFakeAccounts({ port = 0 } = {}) {
         grace_until: e.tier === 'none' ? now : Math.min(until ?? Number.MAX_SAFE_INTEGER, now + 7 * 86400), pack_key_id: String(u.keyEpoch || 1), iat: now, exp: now + 3600,
         ...(f.entClaims || {}),
       });
-      return json(res, 200, { ...e, sources: e.tier === 'none' ? [] : [{ kind: 'bmc', tier: e.tier, status: 'active', until: e.until }], token,
+      // §8.6 the trial: u.trialUntil (ms) once started; u.trialOffer: 'available' (default) | 'unavailable:<reason>'
+      const trialRunning = u.trialUntil && u.trialUntil > Date.now();
+      const trial = u.trialUntil ? { state: trialRunning ? 'running' : 'used', days: 7, until: iso(u.trialUntil) }
+        : (u.trialOffer || 'available').startsWith('unavailable') ? { state: 'unavailable', days: 7, until: null, reason: u.trialOffer.split(':')[1] } : { state: 'available', days: 7, until: null };
+      const sources = [...(e.tier === 'none' || e.fromTrial ? [] : [{ kind: 'bmc', tier: e.tier, status: 'active', until: e.until }]),
+        ...(trialRunning ? [{ kind: 'trial', tier: 'plus', until: iso(u.trialUntil) }] : [])];
+      return json(res, 200, { tier: e.tier, until: e.until, badges: e.badges, sources, token, trial,
         pack_key: plusOk(u) ? packKey(u) : null, pack_key_id: String(u.keyEpoch || 1), offline_grace_days: 7,
         preview: u.preview && u.preview.expires > Date.now() ? { id: u.preview.id, pack_id: 'skins-preview', expires_at: iso(u.preview.expires) } : null });
     }
@@ -637,6 +645,21 @@ export async function startFakeAccounts({ port = 0 } = {}) {
       const tier = f.memberships.get(String(body.email || '').toLowerCase());
       if (tier) u.entitlement = { tier, until: iso(Date.now() + 30 * 86400000), badges: { plus: ['plus'], patron: ['plus', 'patron'] }[tier] || ['supporter'] };
       return json(res, 200, { submitted: true }); // the same answer either way (no supporter oracle)
+    }
+    if (path === '/v1/entitlements/trial' && req.method === 'POST') {
+      if (u.trialUntil) return err(res, 409, 'trial_used', { until: iso(u.trialUntil) });
+      if ((u.trialOffer || '').startsWith('unavailable')) return err(res, 403, 'trial_unavailable', { reason: u.trialOffer.split(':')[1] });
+      u.trialUntil = Date.now() + 7 * 86400000;
+      if (u.entitlement.tier === 'none' || u.entitlement.tier === 'supporter') u.entitlement = { tier: 'plus', until: iso(u.trialUntil), badges: ['plus'], fromTrial: true };
+      return json(res, 201, { trial: { state: 'running', days: 7, until: iso(u.trialUntil) }, tier: 'plus', until: iso(u.trialUntil) });
+    }
+    // ---- §14 "Find a SoulLink partner" ----
+    if (path === '/v1/lfg' && req.method === 'POST') {
+      if (unknown(body, ['game', 'partners', 'rules', 'lang', 'schedule'])) return err(res, 400, 'unknown_field');
+      f.lfgPosts.push({ by: u.id, ...body });
+      const a = f.lfgAnswer;
+      if (a) return a.status >= 400 ? err(res, a.status, a.code, a.extra || {}) : json(res, a.status, a.body);
+      return json(res, 201, { url: 'https://discord.com/channels/1570873327566852146/1570873327566852150/1573924615737049202' });
     }
     if (path === '/v1/entitlements/link' && req.method === 'DELETE') {
       u.entitlement = { tier: 'none', until: null, badges: [] };

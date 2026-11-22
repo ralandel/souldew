@@ -67,6 +67,10 @@ button.rail-me.rail-signin:disabled { cursor: progress; opacity: .8; }
 .rail-signin-wrap.pending button.rail-me.rail-signin { padding-right: 34px; }
 .rail-signin-wrap.pending .rail-signin-mark { animation: rail-signin-wait 1.6s ease-in-out infinite; }
 @keyframes rail-signin-wait { 50% { opacity: .55; } }
+/* the saved sign-in is still being read: the chip's place, neutral, quietly breathing – no Discord colour yet */
+.rail-me.rail-acct-loading { flex: 1; width: 100%; font-size: 12.5px; cursor: default; }
+.rail-acct-loading .rail-signin-mark { background: var(--edge); color: var(--ink-3); animation: rail-signin-wait 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .rail-acct-loading .rail-signin-mark { animation: none; } }
 .rail-signin-x { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0;
   border-radius: 7px; background: none; color: var(--ink-3); cursor: pointer; }
 .rail-signin-x:hover { color: var(--ink); background: var(--lt-hover, #ffffff10); }
@@ -100,6 +104,9 @@ button.rail-me.rail-signin:disabled { cursor: progress; opacity: .8; }
 .fr-invite { margin-right: 8px; opacity: 0; transition: opacity .15s; }
 .fr-row:hover .fr-invite, .fr-row.on .fr-invite, .fr-invite:focus-visible { opacity: 1; }
 .fr-empty { padding: 18px 8px; }
+/* "No partner yet? Find one on the souldew Discord" (views/findpartner.mjs) – a quiet line, never a section */
+.lfg-link { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0; }
+.lfg-link svg { flex: none; }
 .fr-pane { min-width: 0; }
 .fr-card { padding: 0; overflow: hidden; }
 .fr-card-banner { height: 108px; }

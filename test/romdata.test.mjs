@@ -428,6 +428,35 @@ test('Gen 1 and Gold/Silver: a Pokémon that joins right after a wild battle is 
   assert.equal(r2.inbox[0].mon.species, 133);
 });
 
+test('Gen 1 (#83): with a full team the catch goes to the PC box – filed under the place all the same, nothing in the PC is "gone"', async () => {
+  registerHooks({ resolve: (spec, ctx, next) => (spec.startsWith('/shared/') ? next(new URL(spec.slice(1), ROOT).href, ctx) : next(spec, ctx)) });
+  const R = await import('../web/lib/run.mjs');
+  const { RunDoc } = await import('../web/lib/doc.mjs');
+  const doc = new RunDoc('t');
+  doc.by = 'a';
+  doc._persistSoon = () => {};
+  const manifest = { id: 't', mode: 'nuzlocke', players: { p1: { name: 'A' } }, game: { system: 'gb', code: '' } };
+  const team = [4, 16, 19, 21, 23, 27].map((species, i) => ({ key: `g1-${i}`, species, nickname: 'A', level: 6, hp: 20, maxHp: 20, metLocation: null }));
+  const route1 = { gen: 1, id: 11, name: 'Route 1' };
+  const route2 = { gen: 1, id: 13, name: 'Route 2' };
+  R.applySnapshot(doc, manifest, 1, 'p1', { source: 'live', party: team.slice(0, 1), box: [], here: { gen: 1, id: 0, name: 'Pallet Town' } });
+  // the rest of the team was filed on earlier routes (as the board has it)
+  team.slice(1).forEach((m, i) => {
+    doc.set(`area:custom-${i}`, { name: `Area ${i}`, order: i });
+    R.setEncounter(doc, manifest, `custom-${i}`, 'p1', { outcome: 'caught', species: m.species, key: m.key });
+  });
+  R.applySnapshot(doc, manifest, 1, 'p1', { source: 'live', party: team, box: [], here: route1 });
+  R.applySnapshot(doc, manifest, 1, 'p1', { source: 'live', party: team, box: [], here: route2 }, { battle: { kind: 'wild', enemy: { species: 29, level: 3 } } });
+  const nidoran = { key: 'g1-n', species: 29, nickname: 'NIDORAN', level: 3, hp: 0, maxHp: 0, metLocation: null, inBox: true };
+  const res = R.applySnapshot(doc, manifest, 1, 'p1', { source: 'live', party: team, box: [nidoran], here: route2 });
+  assert.deepEqual(res.newCatches, ['m1-13']);
+  assert.equal(doc.get('enc:m1-13:p1').species, 29);
+  assert.equal(res.alerts.length, 0);
+  // another box chosen in the PC: what was filed and isn't in this box is not "gone from your game"
+  const r2 = R.applySnapshot(doc, manifest, 1, 'p1', { source: 'live', party: team, box: [], here: route2 });
+  assert.equal(r2.alerts.length, 0);
+});
+
 test('Fairy matchups only matter where a hack has the type (the built-in chart)', async () => {
   const { effectiveness, defenseChart, typesOfGen } = await import('../shared/typechart.mjs');
   // Fairy: Dragon can't touch it, it beats Dragon; the retail chart is unchanged for everything else

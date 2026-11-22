@@ -571,11 +571,23 @@ export class CtrSessions {
     return i >= 0 ? s.args[i + 1] : null;
   }
 
-  /** The page's stream of host messages (only one: a new one replaces the old). */
+  /**
+   * The page's stream of host messages as an HTTP response (the players of 3.0.0 and the fallback when a WebSocket
+   * can't be opened) – an endless response body, which antivirus with HTTP scanning buffers to disk (#38).
+   */
   attach(id, res) {
-    const s = this.get(id);
+    this.get(id);
     res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     res.on('error', () => {}); // the page went away mid-write – 'close' handles it
+    this.attachStream(id, res);
+  }
+
+  /**
+   * The page's stream of host messages (only one: a new one replaces the old): an HTTP response or the player's
+   * WebSocket (server/lib/wsstream.mjs) – anything with write (false: full, then 'drain'), end and 'close'.
+   */
+  attachStream(id, res) {
+    const s = this.get(id);
     s.stream?.end();
     clearTimeout(s.orphan);
     s.stream = res;

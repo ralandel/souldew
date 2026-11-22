@@ -181,6 +181,108 @@ export function regions67(entry) {
   return (entry.partyAddrs || []).map((a) => ({ addr: hex(a.addr ?? a), len: PARTY_BYTES }));
 }
 
+// ---- finding the party object (Gen 6) -------------------------------------------------------------------------------
+// The game keeps its team in one party object: the six RAM slots, then u32 6 (how many it holds at most) and u32 the
+// count (checked live in Omega Ruby 1.0: 0x08CF727C, `06 00 00 00 01 00 00 00` right behind the slots with Torchic; the
+// party menu shows what is written there). Over the whole heap of Omega Ruby 1.0 (a new game, with a cold start and
+// after a loaded state alike) exactly that one place has it – the save data's copy of the team (0x08C7D4CC) has the
+// box layout (0x104 per Pokémon) and no such tail. Where no known address holds the team, souldew looks for that.
+export const PARTY_TAIL = 8;
+
+/** The team of a party object at `o` in `b` (slots, then u32 6, u32 count = the Pokémon read) – or null. */
+export function partyObjectAt(b, o, gen) {
+  if (!b || o < 0 || o + PARTY_BYTES + PARTY_TAIL > b.length) return null;
+  if (u32(b, o + PARTY_BYTES) !== 6) return null;
+  const count = u32(b, o + PARTY_BYTES + 4);
+  if (count < 1 || count > 6) return null;
+  const party = partyFromRegion(b.subarray(o, o + PARTY_BYTES), gen);
+  return party && party.length === count ? party : null;
+}
+
+/** The party objects in one window of memory (`b` read at `addr`) → [{ addr, party }]. */
+export function scanPartyObjects(addr, b, gen) {
+  const out = [];
+  if (!b) return out;
+  for (let o = 0; o + PARTY_BYTES + PARTY_TAIL <= b.length; o += 4) {
+    // (the tail first: two words, cheap – the slots are decrypted only behind one)
+    if (b[o + PARTY_BYTES] !== 6 || b[o + PARTY_BYTES + 1] || b[o + PARTY_BYTES + 2] || b[o + PARTY_BYTES + 3]) continue;
+    const party = partyObjectAt(b, o, gen);
+    if (party) out.push({ addr: (addr + o) >>> 0, party });
+  }
+  return out;
+}
+
+const PARTY_WINDOW = 0x10000;
+const PARTY_STEP = PARTY_WINDOW - 0x1000; // (a party object is 0xB60 bytes: every one lies whole in some window)
+const PARTY_PER_ROUND = 5; // windows per read (the player watches 16 regions at most: the game's own, the bag and the party found)
+/** Gen 6's application heap, where the party lives (Omega Ruby 1.0 uses up to ~0x08E00000). */
+const HEAP6 = [0x08000000, 0x09000000];
+
+/** The windows to read for the search, the ones next to the known addresses first, in rounds. */
+export function ctrPartyPlan(entry) {
+  if (entry?.gen !== 6) return [];
+  const known = (entry.partyAddrs || []).map((a) => hex(a.addr ?? a)).filter(Boolean);
+  const wins = [];
+  for (let w = HEAP6[0]; w < HEAP6[1]; w += PARTY_STEP) wins.push(w);
+  const dist = (w) => (known.length ? Math.min(...known.map((k) => Math.abs(w + PARTY_WINDOW / 2 - k))) : 0);
+  wins.sort((x, y) => dist(x) - dist(y) || x - y);
+  const rounds = [];
+  for (let i = 0; i < wins.length; i += PARTY_PER_ROUND) rounds.push(wins.slice(i, i + PARTY_PER_ROUND).map((addr) => ({ addr, len: PARTY_WINDOW, name: 'partySearch' })));
+  return rounds;
+}
+
+const tidSid = (m) => String(m?.key || '').split('-').slice(1).join('-');
+
+/**
+ * Search a Gen 6 game's heap for its party object (when no known address holds the team, or to make sure the one read
+ * is the game's own). `mem.watch(regions, key)` lets the 3DS player read more memory and resolves once it has; the found
+ * party stays watched (key 'party'). Only party objects of the team's trainer count when a team is known (`team` – the
+ * game builds other parties for battles), and only when exactly one of them lies away from the known addresses: kept as
+ * state.g67Extra = [{ addr, version: null, found: true }] – readGen67 reads it next to the known addresses and moves to
+ * it when it is the one that follows the game.
+ * → { found: hex | null, why?, windows, candidates } for the diagnostics.
+ */
+export function locateCtrParty(entry, mem, state, { team = null } = {}) {
+  if (entry?.gen !== 6 || typeof mem?.watch !== 'function' || !state) return Promise.resolve(null);
+  if (state.g67Search) return state.g67Search;
+  const run = async () => {
+    const hits = new Map(); // addr → party
+    let windows = 0;
+    let why = null;
+    for (const round of ctrPartyPlan(entry)) {
+      if (!(await mem.watch(round, 'partySearch'))) {
+        why = 'noMemory';
+        break;
+      }
+      for (const w of round) {
+        const b = mem.read(w.addr, w.len);
+        if (!b) continue; // (not mapped)
+        windows++;
+        for (const h of scanPartyObjects(w.addr, b, entry.gen)) hits.set(h.addr, h.party);
+      }
+    }
+    await mem.watch([], 'partySearch');
+    const owner = new Set((team || []).map(tidSid).filter(Boolean));
+    const knownAt = new Set((entry.partyAddrs || []).map((a) => hex(a.addr ?? a)));
+    const mine = [...hits].filter(([, p]) => !owner.size || p.some((m) => owner.has(tidSid(m))));
+    // one at a known address only: that is where souldew reads already. One elsewhere (with or without one at a known
+    // address – a copy left there that may stand still): read next to them, readGen67 decides by what changes.
+    const other = mine.filter(([a]) => !knownAt.has(a));
+    const done = { windows, candidates: hits.size };
+    const name = (a) => `0x${a.toString(16).toUpperCase()}`;
+    if (!other.length && mine.length) return { found: name(mine[0][0]), known: true, ...done };
+    if (other.length !== 1) return { found: null, why: why || (other.length ? 'ambiguous' : 'none'), ...done };
+    const [addr] = other[0];
+    state.g67Extra = [{ addr: name(addr), version: null, found: true }];
+    await mem.watch([{ addr, len: PARTY_BYTES, name: 'party' }], 'party');
+    return { found: name(addr), ...(mine.length > 1 ? { alongside: mine.length - 1 } : {}), ...done };
+  };
+  state.g67Search = run().finally(() => {
+    state.g67Search = null;
+  });
+  return state.g67Search;
+}
+
 const popcount = (n) => n.toString(2).replace(/0/g, '').length;
 
 /**
@@ -213,12 +315,15 @@ function regionSig(b) {
  *  - `state.ctrVersion` (runningVersion): the update souldew knows the game runs – its address is taken first.
  *  - The lock is checked on every poll: when its party stands still while another address's party changes (twice), it
  *    was a leftover copy and the lock moves; when it holds no party for a few polls while another address does, too
- *    (ticket #35). Each move goes into `state.g67Log` ({ from, to, why: 'update' | 'stale' | 'invalid' }) for the
- *    diagnostics.
+ *    (ticket #35). Each move goes into `state.g67Log` ({ from, to, why: 'update' | 'stale' | 'invalid' | 'grew' }) for
+ *    the diagnostics.
+ *  - A place that holds the locked team and more, and just changed, wins at once ('grew': a catch the locked place
+ *    doesn't show). `state.g67Extra`: party objects found in the heap (locateCtrParty), read like the known addresses.
  * @returns {{party, badges?, version}|null}
  */
 export function readGen67(entry, read, state = {}) {
-  const addrs = entry.partyAddrs || [];
+  // (a party object found by locateCtrParty is read next to the known addresses)
+  const addrs = [...(entry.partyAddrs || []), ...(state.g67Extra || [])];
   if (!addrs.length) return null;
   const seen = (state.g67Seen ||= {});
   const cands = addrs.map((a, i) => {
@@ -242,7 +347,11 @@ export function readGen67(entry, read, state = {}) {
     const moving = valid.find((c) => c !== lock && c.changed);
     if (lock.changed) state.g67Stale = 0;
     else if (moving) state.g67Stale = (state.g67Stale || 0) + 1;
+    // another place holds the locked team and more (a catch the locked place doesn't show): that one is the game's
+    const keys = new Set(lock.party.map((m) => m.key));
+    const grew = valid.find((c) => c !== lock && c.party.length > lock.party.length && lock.party.every((m) => c.party.some((x) => x.key === m.key)) && !c.party.every((m) => keys.has(m.key)));
     if (moving && state.g67Stale >= STALE_CHANGES) [pick, why] = [moving, 'stale'];
+    else if (grew && grew.changed) [pick, why] = [grew, 'grew'];
     // (locked before the update was known – never back once a stale copy was left)
     else if (pref && pref !== lock && !state.g67Moved) [pick, why] = [pref, 'update'];
     else pick = lock;
@@ -252,8 +361,8 @@ export function readGen67(entry, read, state = {}) {
     [pick, why] = [pref || valid[0], 'invalid'];
   } else pick = pref || valid[0];
   if (lock && pick !== lock) {
-    (state.g67Log ||= []).push({ from: lock.a.version || null, to: pick.a.version || null, why });
-    if (why === 'stale') state.g67Moved = true;
+    (state.g67Log ||= []).push({ from: lock.a.version || (lock.a.found ? 'found' : null), to: pick.a.version || (pick.a.found ? 'found' : null), why });
+    if (why === 'stale' || why === 'grew') state.g67Moved = true;
     state.g67Stale = 0;
     state.g67Miss = 0;
     state.g67Len = 0;

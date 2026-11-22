@@ -42,6 +42,7 @@ int session_local(void) { return local_seat; }
 bool session_net(void) { return net_mode; }
 int session_delay(void) { return delay_frames; }
 uint32_t session_frame(void) { return frame; }
+uint32_t session_have(int s) { return s >= 0 && s < nseats ? seat[s].have : 0; }
 
 // ---- input --------------------------------------------------------------------------------------------------------
 /** RETRO_DEVICE_ID_JOYPAD_* bits → link_input. */

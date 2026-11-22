@@ -69,7 +69,7 @@ export const SETTINGS = [
   { id: 'share-screen', section: 'online', keys: ['set.shareScreenAll', 'set.shareScreenHint'],
     kw: 'multiplayer partner players screen share sharing watch soullink stream bildschirm teilen écran partager pantalla compartir schermo condividere' },
   { id: 'discord', section: 'online', keys: ['live.title', 'live.codeLabel'], kw: 'discord live runs hall of fame bot connect link code share post' },
-  { id: 'presence', section: 'online', keys: ['set.presence', 'set.presenceHint'], kw: 'playing now player count anonymous heartbeat privacy statistics discord spielen gerade anonym datenschutz joueurs anonyme jugadores anónimo giocatori anonimo' },
+  { id: 'presence', section: 'online', keys: ['set.presence', 'set.presenceHint2'], kw: 'playing now player count daily usage anonymous heartbeat privacy statistics discord spielen gerade anonym datenschutz joueurs anonyme jugadores anónimo giocatori anonimo' },
   { id: 'coffee-pop', section: 'online', keys: ['set.coffeePop', 'set.coffeePopHint', 'nav.stream'], kw: 'stream streaming obs overlay alerts coffee legendary twitch youtube' },
   // Account
   { id: 'account', section: 'account', keys: ['acct.title', 'acct.signIn', 'acct.handle', 'acct.friendCode', 'acct.signOut', 'acct.signOutAll'],

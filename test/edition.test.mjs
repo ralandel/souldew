@@ -58,7 +58,9 @@ test('no souldew account (3.0): the server says so, every other account route is
   assert.equal(status.session.off, true);
   assert.equal(status.session.loaded, true, 'final: the page never waits for a keychain');
   assert.equal(status.service, '');
-  for (const [m, p] of [['POST', '/api/account/login'], ['GET', '/api/account/friends'], ['POST', '/api/account/presence']]) {
+  const refused = [['POST', '/api/account/login'], ['GET', '/api/account/friends'], ['POST', '/api/account/presence'],
+    ['POST', '/api/account/trial'], ['POST', '/api/account/lfg']];
+  for (const [m, p] of refused) {
     assert.throws(() => find(m, p).handler(), (e) => e.status === 404 && e.code === 'acctOff', `${m} ${p}`);
   }
   assert.equal(find('GET', '/api/account/diagnostics'), undefined, 'diagnostics stay with the server');
@@ -66,6 +68,12 @@ test('no souldew account (3.0): the server says so, every other account route is
   await a.loadSession();
   assert.equal(await a.goOffline(), false);
   assert.deepEqual(calls, []);
+});
+
+test('3.0.1: no daily usage count and no partner finder in this build', () => {
+  const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+  assert.match(read('server/app.mjs'), /createUsage\(\{[^\n]*allowed: EDITION\.presence && \(/, 'allowed false: no timer, no request, no usage.json');
+  assert.match(read('web/views/findpartner.mjs'), /export function FindPartnerLink\([\s\S]*if \(!EDITION\.accounts \|\| !acct\.loaded\) return null;/);
 });
 
 test('Play together and the 3.0 multiplayer modules take every slot of 8', async () => {

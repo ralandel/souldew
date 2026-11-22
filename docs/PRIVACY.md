@@ -2,7 +2,7 @@
 
 > **souldew Renaissance** (this build) differs from the official souldew described below:
 >
-> - **No “playing now” count, no souldew account, no souldew+, no Discord live runs** – it never contacts
+> - **No “playing now” count, no daily usage count, no souldew account, no souldew+ (nor its trial), no partner finder, no Discord live runs** – it never contacts
 >   api.souldew.app or accounts.souldew.app (`shared/edition.mjs`: `presence: false`, `accounts: false`,
 >   `liveRunsUrl: null`).
 > - **Playing with others** goes through the souldew Renaissance server, `souldew.pkmnrenaissance.com` (MQTT broker,
@@ -12,12 +12,12 @@
 >   can be switched off (Settings › About, or on the Windows installer's privacy page).
 > - Its data folder is `souldew Renaissance` (Windows: `%APPDATA%\souldew Renaissance`), never the official app's.
 
-souldew collects no personal data and has no analytics. Your games, save files and runs stay on your computer;
+souldew collects no personal data and has no tracking – the only usage numbers are the anonymous counts below. Your games, save files and runs stay on your computer;
 between players only tracker data travels, encrypted with the key from your invite. The privacy policy:
 <https://souldew.app/privacy.html> (the website's, German and legally binding: <https://souldew.app/datenschutz.html>).
 
-souldew sends two things by itself, and both can be switched off: the anonymous **“playing now”** count (below) and
-the **update check** (see [Other connections](#other-connections)). On Windows the installer shows this before it
+souldew sends two things by itself, and both can be switched off: the anonymous **“playing now”** count with its
+**daily usage count** (below – one switch for both) and the **update check** (see [Other connections](#other-connections)). On Windows the installer shows this before it
 installs anything – see [The Windows installer](#the-windows-installer).
 
 ## “Playing now”
@@ -86,6 +86,50 @@ sends “stopped” right away and nothing more. The setting is stored in your l
 The code: [`web/lib/presence.mjs`](../web/lib/presence.mjs) (when a game runs) and
 [`server/lib/presence.mjs`](../server/lib/presence.mjs) (the request).
 
+## Daily usage count
+
+Under the same switch as “playing now”: once a day souldew counts that it was used – so the team can see how many
+people use it, which versions and systems, and whether people come back. There is no id for your computer or for you.
+
+### When
+
+Once a day, the first time souldew runs that day (a little after start; if it can't reach the bot it tries again the
+next hour – nothing is queued). Only the installed app sends it, never a development build.
+
+### What
+
+```http
+POST https://api.souldew.app/usage
+Content-Type: application/json
+
+{"day_id":"Jb3x1kz0QmW8bC2yT5nV0A","v":"3.0.1","os":"mac","arch":"arm64","first_week":"2026-W47","active7":3,"active28":9,"new":false}
+```
+
+| Field        | What it is                                                                                          |
+|--------------|-----------------------------------------------------------------------------------------------------|
+| `day_id`     | 16 random bytes, made for that day only and kept in memory only – so a retry the same day isn't counted twice. Tomorrow's is a new one; they can't be linked. |
+| `v`          | the souldew version.                                                                                |
+| `os`, `arch` | `mac`, `win` or `linux`; `x64` or `arm64`.                                                          |
+| `first_week` | the calendar week souldew was first used on this computer (e.g. `2026-W47`) – to see how many people come back after their first week. |
+| `active7`    | on how many of the last 7 days souldew ran here (today included), 1–7; `active28` the same for 28 days. |
+| `new`        | `true` on the day of the first use.                                                                 |
+
+To work these out, souldew keeps a small file next to `config.json`, `usage.json`, on your computer: the first-use date
+and the dates (no times) souldew ran in the last 28 days. It never leaves your computer as such. Nothing is recorded
+in it while the switch is off.
+
+### What the bot keeps
+
+Only totals per day: how many apps sent the ping, how many were new, by version, system and processor, and per
+first-use week how many were active that day (plus the sums the weekly and monthly estimates are made from). Kept 400
+days. The `day_id` is kept two days (only to count a retry once), then deleted. No IP address is stored, no body is
+logged, and nothing links one day's ping to another's. The team sees these totals on a password-protected page.
+
+### Switching it off
+
+The same switch: Settings › Online › **“Count me in ‘playing now’ (anonymous)”** – off, and neither the heartbeat nor
+the daily count is sent. The code: [`server/lib/usage.mjs`](../server/lib/usage.mjs).
+
 ## Other connections
 
 For completeness – none of these carry anything about you beyond the request itself:
@@ -102,7 +146,11 @@ For completeness – none of these carry anything about you beyond the request i
   first start, so boards work offline. The souldew+ preview pictures (the library's handheld tile, the souldew+ page)
   come from `accounts.souldew.app/v1/previews`, signed, at most every 10 minutes – no sign-in, nothing about you.
 - **Your souldew account, only once you sign in:** `accounts.souldew.app` – the session, your profile, friends and
-  their online status, invites, souldew+. Signed out, nothing goes there.
+  their online status, invites, souldew+ (also the 7-day souldew+ trial: the service remembers, as a keyed hash of
+  your Discord id, that your Discord account used it – so it can't be started twice). Signed out, nothing goes there.
+- **“Find a SoulLink partner”, only when you post:** what you type in the form (game, partners, language and time
+  zone, when you play, rules) goes through `accounts.souldew.app` to the souldew Discord bot, which posts it in
+  #find-a-partner under your Discord name – like the bot's own form on Discord.
 - **Discord, only if you set it up:** a Discord webhook you enter for a run, or Live runs (Settings › Discord), which
   post the events you share.
 

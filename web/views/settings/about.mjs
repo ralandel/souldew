@@ -142,7 +142,7 @@ export function AboutSection({ cfg, status, save }) {
     <${Group} title="souldew">
       <${Item} id="credits"><div class="stack">
         <dl class="facts small">
-          <dt>${t('set.randomizer', 'Randomizer')}</dt><dd>Universal Pokémon Randomizer ZX ${status?.upr?.version} · Java ${status?.java?.version || t('set.javaMissing', 'not found')}${status?.java?.bundled ? ` (${t('set.bundled', 'bundled')})` : ''}</dd>
+          <dt>${t('set.randomizer', 'Randomizer')}</dt><dd>Universal Pokémon Randomizer ZX ${status?.upr?.version} · Java ${status?.java?.version || (status?.java?.crashed ? t('set.javaCrashed', 'crashes on start') : t('set.javaMissing', 'not found'))}${status?.java?.bundled ? ` (${t('set.bundled', 'bundled')})` : ''}</dd>
           <dt>${t('set.data', 'Pokémon data')}</dt><dd>PokeAPI · ${t('set.covers', 'covers')}: libretro-thumbnails</dd>
           <dt>${t('set.emuCore', 'Built-in emulator')}</dt><dd>EmulatorJS (melonDS, DeSmuME, mGBA, Gambatte) · ${t('set.nativeShort', 'Fast player')}: melonDS DS, mGBA, SameBoy (libretro) · 3DS: Azahar (libretro)</dd>
         </dl>

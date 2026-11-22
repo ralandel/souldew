@@ -124,8 +124,7 @@ function ManualModal({ s, open, onClose }) {
       <li>${t('upd.manual2', 'In the Finder window that opened, drag souldew onto Applications and choose “Replace”.')}</li>
       <li>${t('upd.manual3', 'Open souldew again.')}</li>
     </ol>
-    <p class="small muted">${t('upd.dataSafe', 'Your runs, saves and settings are kept: they live in your Library folder, not inside the app.')}</p>
-    <p class="small muted">${t('upd.gatekeeper', 'If macOS says it can’t check the app for malicious software, right-click it in Applications › Open › Open. That is needed once because souldew is not notarized by Apple.')}</p>`}
+    <p class="small muted">${t('upd.dataSafe', 'Your runs, saves and settings are kept: they live in your Library folder, not inside the app.')}</p>`}
   <//>`;
 }
 

@@ -27,7 +27,7 @@ export function OnlineSection({ cfg, save, toast, reloadStatus }) {
     <//>
     ${(LIVE_RUNS || EDITION.presence) && html`<${Group} title="Discord">${LIVE_RUNS && html`<${Item} id="discord"><${LiveRunsSettings} /><//>`}
       ${EDITION.presence && html`<${Item} id="presence"><label class="check"><input type="checkbox" checked=${cfg.presence !== false} onChange=${(e) => save({ presence: e.target.checked })} /><span>${t('set.presence', 'Count me in “playing now” (anonymous)')}
-        <span class="hint">${t('set.presenceHint', 'Only while a game runs: system, mode (solo, Nuzlocke, SoulLink or Play together) and app version with a random id, for the player count on the souldew Discord – no name, no game, no IP stored.')}
+        <span class="hint">${t('set.presenceHint2', 'Only while a game runs: system, mode (solo, Nuzlocke, SoulLink or Play together) and app version with a random id, for the player count on the souldew Discord. And once a day an anonymous “souldew was used today” for the team’s statistics (version, system, week of first use, how many recent days) – no name, no game, no IP stored, no id that stays.')}
           ${' '}<a href=${LINKS.privacy} onClick=${(e) => { e.preventDefault(); e.stopPropagation(); openExternal(currentLang() === 'de' ? LINKS.privacy : LINKS.privacyDocs); }}>${t('set.presenceMore', 'What exactly is sent')}</a></span></span></label><//>`}
     <//>`}
     <${Group} title=${t('nav.stream', 'Stream')}>

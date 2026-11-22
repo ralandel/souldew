@@ -263,6 +263,10 @@ public class SoulLinkBridge {
         boolean statics5Broken = h instanceof SafeGen5RomHandler && ((SafeGen5RomHandler) h).staticsBroken;
         sb.append("\"introScriptFixes\":").append(safe4 ? ((SafeGen4RomHandler) h).marillEntriesRemoved : 0).append(',');
         sb.append("\"staticsSupported\":").append(safe4 ? !((SafeGen4RomHandler) h).staticsBroken : !statics5Broken && h.canChangeStaticPokemon()).append(',');
+        SafeGen5RomHandler g5 = h instanceof SafeGen5RomHandler ? (SafeGen5RomHandler) h : null;
+        sb.append("\"startersSupported\":").append(g5 == null || !g5.startersBroken).append(',');
+        sb.append("\"tutorsSupported\":").append(g5 == null || !g5.tutorsBroken).append(',');
+        sb.append("\"shopsSupported\":").append(g5 == null || !g5.shopsBroken).append(',');
         sb.append("\"fairyInGame\":").append(h.typeInGame(com.dabomstew.pkrandom.pokemon.Type.FAIRY)).append(',');
         int available = h.miscTweaksAvailable();
         sb.append("\"miscTweaks\":[");
@@ -459,6 +463,12 @@ public class SoulLinkBridge {
         return Enum.valueOf((Class) t, v);
     }
 
+    private static void setField(Settings s, String name, Object value) throws ReflectiveOperationException {
+        Field f = Settings.class.getDeclaredField(name);
+        f.setAccessible(true);
+        f.set(s, value);
+    }
+
     /** Settings made ready for the loaded game – the same for a build and a trial run. */
     private static Settings forRom(RomHandler h, Settings settings) throws Exception {
         settings.setRomName(h.getROMName());
@@ -469,6 +479,21 @@ public class SoulLinkBridge {
             f.setAccessible(true);
             f.set(settings, Settings.StaticPokemonMod.UNCHANGED);
             System.out.println("@@WARN " + json("Static Pokemon cannot be randomized in this ROM hack (scripts differ from vanilla) - left unchanged"));
+        }
+        if (h instanceof SafeGen5RomHandler) {
+            SafeGen5RomHandler g5 = (SafeGen5RomHandler) h;
+            if (g5.startersBroken && settings.getStartersMod() != Settings.StartersMod.UNCHANGED) {
+                setField(settings, "startersMod", Settings.StartersMod.UNCHANGED);
+                System.out.println("@@WARN " + json("Starters cannot be randomized in this ROM hack (its intro script differs from vanilla) - left unchanged"));
+            }
+            if (g5.tutorsBroken && settings.getMoveTutorMovesMod() != Settings.MoveTutorMovesMod.UNCHANGED) {
+                setField(settings, "moveTutorMovesMod", Settings.MoveTutorMovesMod.UNCHANGED);
+                System.out.println("@@WARN " + json("Move tutors cannot be randomized in this ROM hack (their table isn't where the randomizer writes it) - left unchanged"));
+            }
+            if (g5.shopsBroken && settings.getShopItemsMod() != Settings.ShopItemsMod.UNCHANGED) {
+                setField(settings, "shopItemsMod", Settings.ShopItemsMod.UNCHANGED);
+                System.out.println("@@WARN " + json("Shop items cannot be randomized in this ROM hack (its shop code differs from vanilla) - left unchanged"));
+            }
         }
         Settings.TweakForROMFeedback fb = settings.tweakForRom(h);
         if (fb.isChangedStarter()) System.out.println("@@WARN " + json("Custom starters were adjusted for this ROM"));
@@ -713,6 +738,25 @@ public class SoulLinkBridge {
         static final int FAIRY_BYTE = 17;
         boolean staticsBroken;
         boolean fairy;
+        /**
+         * UPR writes the starters into a script file at fixed offsets (StarterOffsets1–3 – Black 2: script 854, the
+         * new game's intro) and its "National Pokédex from the start" tweak patches that script's retail bytes (an
+         * IPS). A ROM hack with its own intro script (Blaze Black 2 Redux) got garbage written into it: the game went
+         * black in the intro, before the name entry (#43). Starters are where UPR expects them when every offset of a
+         * starter holds the same Pokémon.
+         */
+        boolean startersBroken;
+        /** The National Pokédex tweak's script may not be the retail one (a modified ROM where it can't be checked). */
+        boolean natDexScriptUnknown;
+        /** "Fastest text" patches the main program at fixed offsets (an IPS): only on the retail main program. */
+        boolean arm9Changed;
+        /**
+         * Move tutors (Black 2 / White 2): UPR writes the 60 tutor moves into an overlay at a fixed offset – only where
+         * that overlay is the retail one or the table there reads as tutor moves (1…559, 12 bytes apart).
+         */
+        boolean tutorsBroken;
+        /** Shops (Black / White): UPR writes the shop lists into an overlay at fixed offsets – only into the retail one. */
+        boolean shopsBroken;
 
         SafeGen5RomHandler(java.util.Random random) {
             super(random);
@@ -737,6 +781,127 @@ public class SoulLinkBridge {
             } catch (RuntimeException e) {
                 staticsBroken = true;
             }
+            Integer starterFile = null;
+            try {
+                starterFile = startersFile();
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                startersBroken = true;
+            }
+            // the tweak's script: retail when the whole ROM is (UPR's checksums), or when it is the starters' script and
+            // those are where UPR expects them; else unknown – the tweak isn't offered
+            try {
+                Object entry = field("romEntry");
+                Field nums = entry.getClass().getDeclaredField("numbers");
+                nums.setAccessible(true);
+                Object natDex = ((Map<?, ?>) nums.get(entry)).get("NationalDexScriptOffset");
+                natDexScriptUnknown = !isRomValid() && (startersBroken || starterFile == null || !starterFile.equals(natDex));
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                natDexScriptUnknown = !isRomValid();
+            }
+            try {
+                Object entry = field("romEntry");
+                arm9Changed = ((Long) field("actualArm9CRC32")).longValue() != ((Long) entryField(entry, "arm9ExpectedCRC32")).longValue();
+                Map<?, ?> nums = (Map<?, ?>) entryField(entry, "numbers");
+                if (hasMoveTutors()) {
+                    int ovl = (Integer) nums.get("MoveTutorOvlNumber");
+                    tutorsBroken = !overlayRetail(entry, ovl) && !tutorTable(readOverlay(ovl), (Integer) nums.get("MoveTutorDataOffset"));
+                }
+                if (entryField(entry, "romType").equals(Gen5Constants.Type_BW) && nums.get("ShopItemOvlNumber") != null) {
+                    shopsBroken = !overlayRetail(entry, (Integer) nums.get("ShopItemOvlNumber"));
+                }
+            } catch (ReflectiveOperationException | java.io.IOException | RuntimeException e) {
+                arm9Changed = !isRomValid();
+                tutorsBroken = !isRomValid() && hasMoveTutors();
+                shopsBroken = !isRomValid();
+            }
+        }
+
+        private static Object entryField(Object entry, String name) throws ReflectiveOperationException {
+            Field f = entry.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            return f.get(entry);
+        }
+
+        /** Is overlay `ovl` the retail one (UPR's checksum of the game it knows)? */
+        private boolean overlayRetail(Object entry, int ovl) throws ReflectiveOperationException {
+            Long want = (Long) ((Map<?, ?>) entryField(entry, "overlayExpectedCRC32s")).get(ovl);
+            Long have = (Long) ((Map<?, ?>) field("actualOverlayCRC32s")).get(ovl);
+            return want != null && want.equals(have);
+        }
+
+        /** 60 tutor entries of 12 bytes from `at`, each starting with a move (1…559). */
+        private static boolean tutorTable(byte[] ovl, Integer at) {
+            if (at == null || at < 0 || at + 60 * 12 > ovl.length) return false;
+            for (int i = 0; i < 60; i++) {
+                int m = (ovl[at + i * 12] & 0xff) | ((ovl[at + i * 12 + 1] & 0xff) << 8);
+                if (m < 1 || m > Gen5Constants.moveCount) return false;
+            }
+            return true;
+        }
+
+        @Override
+        public void setMoveTutorMoves(List<Integer> moves) {
+            if (!tutorsBroken) super.setMoveTutorMoves(moves);
+        }
+
+        @Override
+        public void setShopItems(Map<Integer, com.dabomstew.pkrandom.pokemon.Shop> shops) {
+            if (!shopsBroken) super.setShopItems(shops);
+        }
+
+        /**
+         * The script file the starters are in (null: this game has no starter offsets) – throws when an offset is outside
+         * its file or the offsets of a starter don't all hold the same Pokémon (1…649).
+         */
+        private Integer startersFile() throws ReflectiveOperationException {
+            Object entry = field("romEntry");
+            Field f = entry.getClass().getDeclaredField("offsetArrayEntries");
+            f.setAccessible(true);
+            Map<?, ?> offsets = (Map<?, ?>) f.get(entry);
+            NARCArchive scripts = (NARCArchive) field("scriptNarc");
+            Integer file = null;
+            for (int i = 1; i <= 3; i++) {
+                Object[] list = (Object[]) offsets.get("StarterOffsets" + i);
+                if (list == null) return file;
+                int species = -1;
+                for (Object o : list) {
+                    Field ef = o.getClass().getDeclaredField("entry");
+                    Field of = o.getClass().getDeclaredField("offset");
+                    ef.setAccessible(true);
+                    of.setAccessible(true);
+                    int e = ef.getInt(o);
+                    int off = of.getInt(o);
+                    byte[] d = scripts.files.get(e);
+                    if (off < 0 || off + 2 > d.length) throw new IllegalStateException("starter offset outside the script");
+                    int v = (d[off] & 0xff) | ((d[off + 1] & 0xff) << 8);
+                    if (v < 1 || v > Gen5Constants.pokemonCount || (species >= 0 && v != species)) throw new IllegalStateException("not the starters");
+                    species = v;
+                    if (file == null) file = e;
+                }
+            }
+            return file;
+        }
+
+        @Override
+        public boolean setStarters(List<Pokemon> starters) {
+            if (startersBroken) return true; // (the hack's starters stay)
+            return super.setStarters(starters);
+        }
+
+        /** The tweaks that patch retail code or scripts at fixed places aren't offered where those aren't retail. */
+        @Override
+        public int miscTweaksAvailable() {
+            int v = super.miscTweaksAvailable();
+            if (natDexScriptUnknown) v &= ~MiscTweak.NATIONAL_DEX_AT_START.getValue();
+            if (arm9Changed) v &= ~MiscTweak.FASTEST_TEXT.getValue();
+            return v;
+        }
+
+        @Override
+        public void applyMiscTweak(MiscTweak tweak) {
+            if (tweak == MiscTweak.NATIONAL_DEX_AT_START && natDexScriptUnknown) return;
+            if (tweak == MiscTweak.FASTEST_TEXT && arm9Changed) return;
+            super.applyMiscTweak(tweak);
         }
 
         @Override

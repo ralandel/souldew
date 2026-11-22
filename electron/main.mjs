@@ -331,7 +331,7 @@ function createWindow() {
     unsaved = null; // a reloaded page reports again once its game runs
   });
   win.on('close', (e) => {
-    if (closeOk || !unsaved) return;
+    if (closeOk || !unsaved) return lastMomentFirst(e);
     e.preventDefault();
     if (asking) return;
     asking = true;
@@ -357,6 +357,34 @@ function createWindow() {
 let unsaved = null; // { title, text, keep, quit } while the running game has unsaved in-game progress
 let closeOk = false;
 let asking = false;
+
+// Quitting while a game runs keeps "where you left off" as "Close game" does: the page takes the game's state and its
+// battery save and uploads them (web/lib/lastmoment.mjs quit), then the window closes – bounded, a page that doesn't
+// answer (crashed, an older page) never keeps the app open.
+const LAST_MOMENT_MS = 9000;
+let lastDone = false;
+let lastAsking = null;
+let quitReady = null;
+function lastMomentFirst(e) {
+  if (lastDone || awake === null || !win || win.webContents.isCrashed()) return; // (no game running: nothing to keep)
+  e.preventDefault();
+  if (lastAsking) return;
+  lastAsking = new Promise((resolve) => {
+    const timer = setTimeout(resolve, LAST_MOMENT_MS);
+    quitReady = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    send('quitting');
+  }).then(() => {
+    lastDone = true;
+    lastAsking = quitReady = null;
+    win?.close(); // (a quit in progress goes on: the last window closed quits the app – window-all-closed)
+  });
+}
+ipcMain.on('quit-ready', (e) => {
+  if (trusted(e)) quitReady?.();
+});
 /** IPC is only answered for the app window's main frame on the app origin (see guards.mjs). */
 const trusted = (e) => isTrustedIpcSender(e, win?.webContents, serverUrl);
 /** ipcMain.handle with the sender check: anything else gets an error instead of the handler. */

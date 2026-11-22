@@ -158,3 +158,21 @@ test('file names: ".sgb" is cut off like ".gb"', () => {
   const withGb = guessHack('Pokemon Brown.gb', 'pokemon-red', cat);
   assert.deepEqual(withSgb, withGb);
 });
+
+// #43: a patch that doesn't fit the ROM (made for another copy of the game, or damaged) stopped the new-run assistant's
+// check with a bare error 500 – now an answer with a code the page words
+test('a patch that doesn\'t fit the ROM: 422 patchNoFit with what the patcher said, not an error without a code', () => {
+  const rom = join(LIB, 'Pokemon Red.sgb');
+  const bps = join(LIB, 'other-copy.bps');
+  // a BPS patch for a 16-byte source: this ROM is another one
+  const enc = (n) => { const b = []; for (;;) { const x = n & 0x7f; n >>= 7; if (!n) { b.push(0x80 | x); break; } b.push(x); n--; } return b; };
+  const body = Buffer.from([0x42, 0x50, 0x53, 0x31, ...enc(16), ...enc(16), ...enc(0)]);
+  const crcs = Buffer.alloc(12);
+  crcs.writeUInt32LE(0x12345678, 0);
+  const withCrc = Buffer.concat([body, crcs]);
+  withCrc.writeUInt32LE(crc32(withCrc.subarray(0, withCrc.length - 4)) >>> 0, withCrc.length - 4);
+  writeFileSync(bps, withCrc);
+  assert.throws(() => preparePatchedRom(rom, bps), (e) => e.status === 422 && e.code === 'patchNoFit' && /BPS/.test(e.vars?.detail || ''));
+  const errors = readFileSync(join(ROOT, 'web/lib/errors.mjs'), 'utf8');
+  assert.match(errors, /patchNoFit: \(v\) => t\('err\.patchNoFit',/);
+});

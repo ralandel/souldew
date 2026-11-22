@@ -5,6 +5,14 @@
 import { t } from './i18n.mjs';
 import { IS_MAC } from './platform.mjs';
 
+/** Java starts and crashes (#40) – on a Mac almost always because System Integrity Protection is off. `extra`: what may follow. */
+export function javaCrashText(extra = '') {
+  const base = IS_MAC
+    ? t('err.javaCrashMac', 'Java crashes on this Mac, so the randomizer can’t run – usually because System Integrity Protection (SIP) is turned off. Turn SIP back on, then try again.')
+    : t('err.javaCrash', 'Java crashes on this computer, so the randomizer can’t run. Save diagnostics (Settings › About) and send them to us.');
+  return extra ? `${base} ${extra}` : base;
+}
+
 /** Which file a randomizer file error is about (toolchain.mjs ioFailure `where`). */
 const randoFile = (where) => where === 'game' ? t('err.randoFile.game', 'the game file')
   : where === 'output' ? t('err.randoFile.output', 'the new game in the run folder')
@@ -201,8 +209,11 @@ const TEXTS = {
   badThumb: () => t('err.badThumb', 'The screenshot isn’t a JPEG picture'),
   badRequest: () => t('err.badRequest', 'The request isn’t valid'),
   badSeed: (v) => t('err.badSeed', 'Invalid seed for {name}', v),
+  patchNoFit: (v) => t('err.patchNoFit', 'The ROM hack’s patch doesn’t fit this game file ({detail}) – it was made for another copy of the game, or the file is damaged.', v),
   wrongBaseRom: (v) => t('err.wrongBaseRom', 'Wrong base ROM: {name} needs the game with CRC32 {expected}, this one has {found}.', v),
   patchResult: (v) => t('err.patchResult', 'Patching gave another game than {name} should (CRC32 {found} instead of {expected}) – is it the right base ROM?', v),
+  // Java starts and crashes (#40: macOS 27 on Apple Silicon with System Integrity Protection off – every HotSpot JVM)
+  javaCrash: () => javaCrashText(),
   javaMissing: () => t('err.javaMissing', 'Java wasn’t found, so the randomizer can’t run. Install Java (e.g. Temurin 21 from adoptium.net) and restart the app.'),
   uprMissing: () => t('err.uprMissing', 'The randomizer (Universal Pokémon Randomizer ZX) is missing – reinstall souldew, or play without the randomizer.'),
   uprDownload: (v) => t('err.uprDownload', 'Downloading the randomizer failed ({detail}) – check the internet connection and try again.', v),

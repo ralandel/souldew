@@ -200,7 +200,9 @@ function readGB(entry, read, T, state = {}) {
   // frame can end halfway. There is no checksum: Gen 1 keeps HP in front of the OT ID and DVs, so a slot rewritten
   // that far reads as the incoming mon's species and HP under the old mon's key – a death or an "evolution" that
   // never happened. So a party that changed counts once it reads the same twice in a row (one poll later).
-  const sig = `${Array.prototype.join.call(head.subarray(0, 1 + count), ',')}|${Array.prototype.join.call(mons.subarray(0, count * size), ',')}|${Array.prototype.join.call(nicks.subarray(0, count * entry.nameLength), ',')}`;
+  // (Gen 1: the box chosen in the PC too – a catch sent there is written a byte at a time as well)
+  const boxHead = gen === 1 && entry.box?.countAddr ? read(hex(entry.box.countAddr), 22) : null;
+  const sig = `${Array.prototype.join.call(head.subarray(0, 1 + count), ',')}|${Array.prototype.join.call(mons.subarray(0, count * size), ',')}|${Array.prototype.join.call(nicks.subarray(0, count * entry.nameLength), ',')}${boxHead ? `|${Array.prototype.join.call(boxHead, ',')}` : ''}`;
   const changed = state.gbSig !== undefined && state.gbSig !== sig;
   state.gbSig = sig;
   if (changed) return { torn: true };
@@ -242,7 +244,46 @@ function readGB(entry, read, T, state = {}) {
   }
   // No party = title screen / intro (WRAM cleared): the badge byte means nothing yet – a 0 here would
   // lower the level cap and make the real count look "newly earned" once the save is loaded.
-  return { party, badges: count ? readBadgeBits(entry, read) : undefined };
+  const box = count ? readBoxGB(entry, read, T) : null;
+  return { party, badges: count ? readBadgeBits(entry, read) : undefined, ...(box ? { box } : {}) };
+}
+
+/**
+ * Gen 1: the PC box chosen in Bill's PC is kept in WRAM (pokered wram.asm wNumInBox / wBoxSpecies / wBoxMons /
+ * wBoxMonNicks – addresses.json `box`), and a catch with a full party goes there (#83). Only that box – the others are
+ * in the save – so it is handed on as `box` (catches), never as the whole PC (`boxes`: what's gone from it). The box
+ * struct is the party struct's first 33 bytes: species, HP, the box level at +0x03, the OT ID and the DVs where the
+ * party has them. null when it doesn't read as a box (a count over 20, no terminator, a species that isn't one).
+ */
+function readBoxGB(entry, read, T) {
+  const b = entry.box;
+  if (entry.gen !== 1 || !b?.countAddr) return null;
+  const head = read(hex(b.countAddr), 22);
+  if (!head) return null;
+  const n = head[0];
+  if (n > 20 || head[1 + n] !== 0xff) return null;
+  if (!n) return [];
+  const size = b.structSize || 33;
+  const mons = read(hex(b.monsAddr), size * n);
+  const nicks = read(hex(b.nicknamesAddr), entry.nameLength * n);
+  if (!mons || !nicks) return null;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const d = mons.subarray(i * size, (i + 1) * size);
+    const species = T.idx1?.[d[0]] || 0;
+    if (!species || T.idx1?.[head[1 + i]] !== species) return null;
+    const level = d[0x03];
+    if (level < 1 || level > 100) return null;
+    const otId = u16be(d, 0x0c);
+    const dv = u16be(d, 0x1b);
+    out.push({
+      key: `g1-${otId.toString(16)}-${dv.toString(16).padStart(4, '0')}`,
+      species, nickname: decodeText(nicks.subarray(i * entry.nameLength, (i + 1) * entry.nameLength), T.cs1, 0x50),
+      level, hp: 0, maxHp: 0, status: 0, item: 0, moves: [d[8], d[9], d[10], d[11]].filter(Boolean),
+      shiny: false, metLocation: null, metLevel: null, isEgg: false, otId, inBox: true,
+    });
+  }
+  return out;
 }
 
 const popcount = (n) => n.toString(2).replace(/0/g, '').length;
@@ -919,6 +960,17 @@ function readDS(entry, read, T, state) {
       return null;
     }
   }
+  // 1b) Gen 4 in the other languages (no pointer of their own): the save data through the NitroSDK module params
+  // (*(0x02000BA8)+0x20 on HGSS/Pt, *(0x02000B70)+0x20 on DP) – its party, once the trainer there owns a Pokémon of it
+  if (!core && gen === 4 && entry.scanOnly) {
+    const own = savedParty4(entry, read, T);
+    if (own) {
+      state.saveBase = own.base;
+      state.partyAddr = own.core;
+      state.ownedTeam = true;
+      return dsResult(entry, read, T, state, own.party);
+    }
+  }
   // 2) remembered address from a previous scan
   if (state.partyAddr) {
     const party = readPartyCore(read, state.partyAddr, size, gen, T);
@@ -930,13 +982,39 @@ function readDS(entry, read, T, state) {
   state.lastScan = Date.now();
   const ram = read(0x02000000, 0x400000);
   if (!ram) return null;
-  const hits = scanPartyCore(ram, size, gen, T);
+  const hits = scanPartyCore(ram, size, gen, T, { limit: 24 });
   if (!hits.length) return null;
-  // The canonical party is the lowest stable hit; battle copies come and go.
-  state.partyAddr = hits[0];
+  // The canonical party is the lowest stable hit; battle copies come and go. Gen 4: the one in the save data of a
+  // trainer who owns a Pokémon of it – the lowest hit may be an opponent's party left in the heap after a battle (#89:
+  // a German HeartGold took the beaten trainer's team for the player's and the run ended)
+  const owned = gen === 4 ? hits.find((a) => ownedCopy(entry, read, T, a, size)) : null;
+  state.partyAddr = owned || hits[0];
   const party = readPartyCore(read, state.partyAddr, size, gen, T);
   if (!party) return null;
   return scannedResult(entry, read, T, state, party, size);
+}
+
+/** Gen 4: the party core at `addr` lies in a save image whose trainer owns a Pokémon of it. */
+function ownedCopy(entry, read, T, addr, size) {
+  if (!entry.partyMonsOffset) return false;
+  const party = readPartyCore(read, addr, size, 4, T);
+  return !!party && !!ownsTeam(entry, read, addr - (hex(entry.partyMonsOffset) - 8), party);
+}
+
+/**
+ * Gen 4 (any language): the save data the NitroSDK module params lead to and the party in it – only when the trainer in
+ * its general block owns a Pokémon of that party. → { base, core, party } or null.
+ */
+function savedParty4(entry, read, T) {
+  if (!entry.partyMonsOffset) return null;
+  const mp = read(/^(diamond|pearl)/.test(entry.id) ? 0x02000b70 : 0x02000ba8, 4);
+  const mpv = mp ? u32le(mp, 0) : 0;
+  const p = mpv >= 0x02000000 && mpv < 0x02400000 ? read(mpv + 0x20, 4) : null;
+  const base = p ? u32le(p, 0) : 0;
+  const core = base + hex(entry.partyMonsOffset) - 8;
+  if (base < 0x02000000 || core + 8 >= 0x02400000) return null;
+  const party = readPartyCore(read, core, 236, 4, T);
+  return party && ownsTeam(entry, read, base, party) ? { base, core, party } : null;
 }
 
 /** Party, PC boxes and badges of a DS game whose party was found at state.partyAddr. */
@@ -961,8 +1039,16 @@ function scannedResult(entry, read, T, state, party, size) {
     const saved = readPartyCore(read, own, size, entry.gen, T);
     if (saved) {
       state.partyAddr = own;
+      state.ownedTeam = true;
       return dsResult(entry, read, T, state, saved);
     }
+  }
+  if (base) state.ownedTeam = true;
+  // Once the team was found in its trainer's save data this session, a party without one is no team of the player's:
+  // an opponent's party in the heap, a battle's copy (#89). Nothing rather than that – the search goes on.
+  else if (state.ownedTeam) {
+    state.partyAddr = null;
+    return null;
   }
   return dsResult(entry, read, T, state, party);
 }

@@ -13,6 +13,13 @@
 
 /** A wild battle ended and no new Pokémon showed up this long after → it got away. */
 export const MISSED_WAIT = 10000;
+/**
+ * The 3DS games put a catch into the team only after the Pokédex entry and the nickname screen (a player's report, X:
+ * the question came while they were still typing the nickname) – they get a minute.
+ */
+export const MISSED_WAIT_3DS = 60000;
+/** How long the play view waits before asking about a battle of a game of generation `gen`. */
+export const missedWait = (gen) => (gen >= 6 ? MISSED_WAIT_3DS : MISSED_WAIT);
 /** At most this many questions wait at once (the oldest go – the first encounter of an area is the oldest one). */
 const MAX_QUEUE = 6;
 
